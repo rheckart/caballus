@@ -1,0 +1,14 @@
+# Whiteboard photographs.
+#
+# These are the primary source for the feed board design (issue #2) and the
+# richest domain evidence we have, but they are large binaries and they show
+# volunteers' names and personal phone numbers. Kept on disk, out of git.
+fhhr-whiteboard/
+
+# OS and editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/

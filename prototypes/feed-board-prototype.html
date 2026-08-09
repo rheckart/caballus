@@ -1,0 +1,1114 @@
+<title>Feed Board — three layouts to react to</title>
+
+<style>
+/* ============================================================
+   PROTOTYPE — Caballus feed board. Throwaway code.
+   Three variants of the feed-room whiteboard as a screen,
+   switchable via ?variant=A|B|C. Forgejo issue #2.
+   Data transcribed from the full-board photos, Aug 2026.
+   No stack chosen yet (#3, #8 open), so this is a single
+   self-contained file rather than a route in the app.
+   ============================================================ */
+
+:root {
+  --ground: #F2F5F9;
+  --board: #FFFFFF;
+  --board-2: #FAFBFD;
+  --sunk: #E8EDF4;
+
+  --tape: #1B1D21;
+  --tape-soft: #4A5058;
+
+  --ink: #23272E;
+  --ink-2: #5A6472;
+  --ink-3: #8792A3;
+  --hair: #C9D6E8;
+  --hair-soft: #DFE6F0;
+
+  /* MARKER SEMANTICS — the barn's own colour code */
+  --grain: #0F7A70;
+  --medical: #CE1F35;
+  --changed: #1B57C4;
+  --alert: #A65C00;
+  --other: #23272E;
+
+  --grain-bg: #E4F4F1;
+  --medical-bg: #FDEAEC;
+  --changed-bg: #E6EEFC;
+  --alert-bg: #FBF0DE;
+
+  --cold: #1B57C4;
+  --cold-bg: #E6EEFC;
+  --hot: #B4451A;
+  --hot-bg: #FCEBE2;
+
+  --done: #0F7A70;
+
+  --shadow: 0 1px 2px rgba(20, 28, 40, .08), 0 8px 24px -12px rgba(20, 28, 40, .18);
+  --shadow-pill: 0 2px 4px rgba(20, 28, 40, .16), 0 12px 32px -8px rgba(20, 28, 40, .3);
+
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #0F1114;
+    --board: #181B20;
+    --board-2: #1D2126;
+    --sunk: #22262C;
+    --tape: #000000;
+    --tape-soft: #3C424B;
+    --ink: #E6EAF0;
+    --ink-2: #A2ADBC;
+    --ink-3: #6E7986;
+    --hair: #2C333C;
+    --hair-soft: #242A31;
+    --grain: #45D6C2;
+    --medical: #FF7385;
+    --changed: #86ADFF;
+    --alert: #E5A63F;
+    --other: #E6EAF0;
+    --grain-bg: #12312E;
+    --medical-bg: #3A1B21;
+    --changed-bg: #1A2842;
+    --alert-bg: #33280F;
+    --cold: #86ADFF;
+    --cold-bg: #1A2842;
+    --hot: #FF9163;
+    --hot-bg: #3A2115;
+    --done: #45D6C2;
+    --shadow: 0 1px 2px rgba(0,0,0,.5), 0 8px 24px -12px rgba(0,0,0,.7);
+    --shadow-pill: 0 2px 4px rgba(0,0,0,.5), 0 12px 32px -8px rgba(0,0,0,.8);
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground: #0F1114;
+  --board: #181B20;
+  --board-2: #1D2126;
+  --sunk: #22262C;
+  --tape: #000000;
+  --tape-soft: #3C424B;
+  --ink: #E6EAF0;
+  --ink-2: #A2ADBC;
+  --ink-3: #6E7986;
+  --hair: #2C333C;
+  --hair-soft: #242A31;
+  --grain: #45D6C2;
+  --medical: #FF7385;
+  --changed: #86ADFF;
+  --alert: #E5A63F;
+  --other: #E6EAF0;
+  --grain-bg: #12312E;
+  --medical-bg: #3A1B21;
+  --changed-bg: #1A2842;
+  --alert-bg: #33280F;
+  --cold: #86ADFF;
+  --cold-bg: #1A2842;
+  --hot: #FF9163;
+  --hot-bg: #3A2115;
+  --done: #45D6C2;
+  --shadow: 0 1px 2px rgba(0,0,0,.5), 0 8px 24px -12px rgba(0,0,0,.7);
+  --shadow-pill: 0 2px 4px rgba(0,0,0,.5), 0 12px 32px -8px rgba(0,0,0,.8);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.45;
+  -webkit-text-size-adjust: 100%;
+}
+
+.label { font-size: 10px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3); }
+.num { font-variant-numeric: tabular-nums; }
+
+.chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 6px; border-radius: 3px;
+  font-size: 10px; font-weight: 700; letter-spacing: .05em;
+  text-transform: uppercase; white-space: nowrap;
+}
+.chip-new   { background: var(--changed-bg); color: var(--changed); }
+.chip-alert { background: var(--alert-bg);   color: var(--alert); }
+.chip-cold  { background: var(--cold-bg);    color: var(--cold); }
+.chip-hot   { background: var(--hot-bg);     color: var(--hot); }
+.chip-ph    { background: var(--sunk);       color: var(--ink-3); }
+.chip-gap   { background: transparent; color: var(--medical); border: 1px dashed var(--medical); }
+.chip-add   { background: transparent; color: var(--grain); border: 1px dashed var(--grain); }
+
+.new-mark {
+  text-decoration: underline;
+  text-decoration-color: var(--changed);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 2px;
+}
+
+/* halter + lead-rope colours, from the board's "Horse's Colors" panel.
+   Two-colour horses get a split disc, because four of eleven have two. */
+.swatch { width: 11px; height: 11px; border-radius: 50%; flex: none; border: 1px solid rgba(0,0,0,.28); }
+
+/* ---------- chrome ---------- */
+
+#chrome { position: sticky; top: 0; z-index: 40; background: var(--board); border-bottom: 2px solid var(--tape); }
+.chrome-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 8px 12px; }
+.chrome-row + .chrome-row { border-top: 1px solid var(--hair-soft); }
+
+.brand { display: flex; flex-direction: column; margin-right: auto; min-width: 0; }
+.brand b { font-size: 14px; font-weight: 800; letter-spacing: -.01em; white-space: nowrap; }
+.brand span { font-size: 11px; color: var(--ink-3); }
+
+.seg { display: inline-flex; border: 1px solid var(--hair); border-radius: 5px; overflow: hidden; background: var(--board-2); }
+.seg button {
+  appearance: none; border: 0; background: transparent; color: var(--ink-2);
+  font: inherit; font-size: 11px; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; padding: 5px 10px; cursor: pointer;
+}
+.seg button + button { border-left: 1px solid var(--hair); }
+.seg button[aria-pressed="true"] { background: var(--tape); color: #fff; }
+.seg button:focus-visible { outline: 2px solid var(--changed); outline-offset: -2px; }
+
+#weatherstrip {
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 8px 12px; font-size: 13px;
+  border-top: 1px solid var(--hair-soft);
+}
+#weatherstrip.cold { background: var(--cold-bg); color: var(--cold); }
+#weatherstrip.hot  { background: var(--hot-bg);  color: var(--hot); }
+#weatherstrip.mild { background: var(--board-2); color: var(--ink-2); }
+#weatherstrip .line { display: flex; flex-wrap: wrap; gap: 3px 8px; align-items: baseline; }
+#weatherstrip b { font-weight: 800; }
+
+#stage { display: flex; justify-content: center; padding: 0 0 120px; }
+#stage[data-w="phone"]  #screen { max-width: 390px; }
+#stage[data-w="tablet"] #screen { max-width: 834px; }
+#stage[data-w="full"]   #screen { max-width: none; }
+#stage:not([data-w="full"]) #screen { border-left: 1px solid var(--hair); border-right: 1px solid var(--hair); }
+#screen { width: 100%; min-width: 0; background: var(--ground); }
+
+/* ============================================================ VARIANT A */
+
+.boardwrap { overflow-x: auto; background: var(--board); }
+table.board { border-collapse: collapse; width: max-content; min-width: 100%; font-size: 12px; }
+table.board th, table.board td {
+  border: 1px solid var(--hair);
+  border-bottom-width: 3px; border-bottom-color: var(--tape);
+  vertical-align: top; padding: 6px 7px;
+}
+table.board thead th {
+  position: sticky; top: 0; z-index: 3; background: var(--board);
+  border-bottom: 3px solid var(--tape); text-align: left; white-space: nowrap; padding: 7px;
+}
+table.board thead th .hdr {
+  display: block; font-size: 11px; font-weight: 800; letter-spacing: .06em;
+  text-transform: uppercase; padding: 3px 6px; border-radius: 2px; border: 1px solid var(--hair);
+}
+th.h-am   .hdr { background: var(--alert-bg);   color: var(--alert); }
+th.h-pm   .hdr { background: var(--grain-bg);   color: var(--grain); }
+th.h-oth  .hdr { background: var(--sunk);       color: var(--ink-2); }
+th.h-alrt .hdr { background: var(--medical-bg); color: var(--medical); }
+th.h-id   .hdr { background: transparent; border-color: transparent; padding-left: 0; }
+th .added { display: block; margin-top: 3px; }
+
+td.idcell, th.idcell {
+  position: sticky; left: 0; z-index: 2; background: var(--board);
+  border-right: 3px solid var(--tape); min-width: 152px;
+}
+table.board thead th.idcell { z-index: 4; }
+
+tr.openrow td { background: var(--board-2); color: var(--ink-3); }
+tr.openrow td.idcell { background: var(--board-2); }
+
+.idhead { display: flex; gap: 8px; }
+.photo {
+  width: 38px; height: 50px; flex: none; border-radius: 2px;
+  background: var(--sunk); border: 1px solid var(--hair);
+  display: grid; place-items: center; font-size: 8.5px; font-weight: 700;
+  letter-spacing: .04em; color: var(--ink-3); text-align: center; line-height: 1.15;
+}
+.idmeta { min-width: 0; }
+.hname { display: flex; align-items: center; gap: 5px; font-size: 15px; font-weight: 800; letter-spacing: -.01em; line-height: 1.1; }
+.hfacts { margin-top: 3px; font-size: 10.5px; color: var(--ink-2); display: flex; flex-wrap: wrap; gap: 2px 7px; }
+
+.wlog { font-family: var(--mono); font-size: 10.5px; line-height: 1.5; }
+.wlog div { display: flex; gap: 7px; justify-content: space-between; color: var(--ink-2); }
+.wlog div:last-child { color: var(--ink); font-weight: 700; }
+.wtrend { font-size: 10.5px; font-weight: 700; margin-top: 3px; }
+
+.blocks { display: flex; flex-direction: column; gap: 6px; max-width: 236px; }
+.blk { display: flex; flex-direction: column; gap: 2px; }
+.blk + .blk { border-top: 1px solid var(--hair-soft); padding-top: 5px; }
+.blk .label { font-size: 9px; }
+.blk ul { margin: 0; padding: 0; list-style: none; }
+.blk li { display: flex; gap: 5px; align-items: baseline; }
+.blk li .amt { font-variant-numeric: tabular-nums; font-weight: 700; white-space: nowrap; }
+.blk p { margin: 0; }
+.t-grain { color: var(--grain); }
+.t-medical { color: var(--medical); }
+.t-alert { color: var(--alert); }
+.t-other { color: var(--other); }
+.seqnote { color: var(--ink-2); font-style: italic; }
+.dash { color: var(--ink-3); }
+
+/* ============================================================ VARIANT B */
+
+.queue { display: flex; flex-direction: column; gap: 10px; padding: 12px; }
+.qsum {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+  background: var(--board); border: 1px solid var(--hair); border-left: 4px solid var(--tape);
+  border-radius: 4px; padding: 10px 12px;
+}
+.qsum .big { font-size: 22px; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.qsum .grow { margin-left: auto; }
+.bar { height: 5px; border-radius: 3px; background: var(--sunk); overflow: hidden; width: 100%; }
+.bar i { display: block; height: 100%; background: var(--done); transition: width .25s ease; }
+
+.barnhead {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 4px; padding-bottom: 2px; border-bottom: 2px solid var(--tape);
+}
+
+.qcard { background: var(--board); border: 1px solid var(--hair); border-radius: 4px; box-shadow: var(--shadow); overflow: hidden; }
+.qcard.done { opacity: .58; }
+.qhead { display: flex; align-items: center; gap: 9px; padding: 9px 11px; border-bottom: 2px solid var(--tape); background: var(--board-2); }
+.qhead .idmeta { margin-right: auto; min-width: 0; }
+.qcount { font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--ink-2); white-space: nowrap; }
+
+.qalerts { display: flex; flex-direction: column; gap: 4px; padding: 8px 11px; background: var(--medical-bg); border-bottom: 1px solid var(--hair); }
+.qalerts .row { display: flex; gap: 6px; font-size: 12.5px; color: var(--medical); }
+.qalerts .row b { font-weight: 800; }
+
+.step {
+  display: flex; gap: 10px; padding: 9px 11px;
+  border: 0; border-top: 1px solid var(--hair-soft);
+  text-align: left; width: 100%; background: transparent;
+  font: inherit; color: inherit; cursor: pointer;
+}
+.step:first-child { border-top: 0; }
+.step:hover { background: var(--board-2); }
+.step:focus-visible { outline: 2px solid var(--changed); outline-offset: -2px; }
+.step[aria-pressed="true"] .tick { background: var(--done); border-color: var(--done); color: #fff; }
+.step[aria-pressed="true"] .stepbody { opacity: .5; text-decoration: line-through; text-decoration-thickness: 1px; }
+.tick {
+  width: 24px; height: 24px; flex: none; border: 2px solid var(--hair); border-radius: 4px;
+  display: grid; place-items: center; font-size: 14px; font-weight: 800; color: transparent; background: var(--board);
+}
+.stepbody { min-width: 0; flex: 1; }
+.steptitle { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 3px; }
+.steplist { margin: 0; padding: 0; list-style: none; font-size: 13.5px; }
+.steplist li { display: flex; gap: 6px; align-items: baseline; }
+.steplist li .amt { font-variant-numeric: tabular-nums; font-weight: 700; white-space: nowrap; }
+.steplock { font-size: 11px; color: var(--ink-3); display: flex; gap: 5px; align-items: center; margin-top: 4px; }
+
+/* ============================================================ VARIANT C */
+
+.roster { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.rlist { background: var(--board); border: 1px solid var(--hair); border-radius: 4px; overflow: hidden; box-shadow: var(--shadow); }
+.rrow {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 11px;
+  background: transparent; border: 0; border-top: 1px solid var(--hair-soft);
+  font: inherit; color: inherit; text-align: left; cursor: pointer;
+}
+.rrow:first-child { border-top: 0; }
+.rrow:hover { background: var(--board-2); }
+.rrow:focus-visible { outline: 2px solid var(--changed); outline-offset: -2px; }
+.rrow.open { cursor: default; color: var(--ink-3); background: var(--board-2); }
+.rdisc {
+  width: 34px; height: 34px; flex: none; border-radius: 50%;
+  display: grid; place-items: center; font-size: 13px; font-weight: 800;
+  color: #fff; border: 2px solid var(--board); box-shadow: 0 0 0 1px var(--hair);
+  text-shadow: 0 1px 2px rgba(0,0,0,.5);
+}
+.rmeta { min-width: 0; flex: 1; }
+.rname { font-size: 15px; font-weight: 800; letter-spacing: -.01em; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.rsub { font-size: 11px; color: var(--ink-2); display: flex; flex-wrap: wrap; gap: 2px 8px; }
+.rflags { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex: none; }
+.rwt { font-family: var(--mono); font-size: 11px; font-weight: 700; }
+.up { color: var(--grain); } .down { color: var(--medical); } .flat { color: var(--ink-3); }
+
+#sheet { position: fixed; inset: 0; z-index: 60; display: none; background: rgba(12,16,22,.5); align-items: flex-end; justify-content: center; }
+#sheet[data-open="1"] { display: flex; }
+.sheetinner {
+  background: var(--board); width: 100%; max-width: 640px; max-height: 88vh; overflow-y: auto;
+  border-radius: 10px 10px 0 0; border-top: 3px solid var(--tape); box-shadow: var(--shadow-pill);
+}
+.sheethead { position: sticky; top: 0; background: var(--board); border-bottom: 2px solid var(--tape); padding: 11px 13px; display: flex; align-items: center; gap: 10px; }
+.sheethead .grow { margin-left: auto; }
+.closebtn {
+  appearance: none; border: 1px solid var(--hair); background: var(--board-2); color: var(--ink);
+  border-radius: 5px; font: inherit; font-size: 12px; font-weight: 700; padding: 6px 11px; cursor: pointer;
+}
+.closebtn:focus-visible { outline: 2px solid var(--changed); outline-offset: 1px; }
+.sheetsec { padding: 11px 13px; border-bottom: 1px solid var(--hair-soft); }
+.sheetsec > .label { display: block; margin-bottom: 6px; }
+.spark { display: block; width: 100%; height: 44px; }
+
+/* ---------- notes ---------- */
+
+.note {
+  margin: 12px; padding: 11px 13px; background: var(--board);
+  border: 1px solid var(--hair); border-radius: 4px;
+  font-size: 12.5px; color: var(--ink-2);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.note b { color: var(--ink); }
+.note h4 { margin: 0; font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.note p { margin: 0; }
+.note ul { margin: 0; padding-left: 18px; }
+.note li + li { margin-top: 3px; }
+.note.loud { border-left: 4px solid var(--medical); }
+.keys { display: flex; flex-wrap: wrap; gap: 5px 9px; }
+
+/* ---------- switcher ---------- */
+
+#switcher {
+  position: fixed; z-index: 70; left: 50%; bottom: 14px; transform: translateX(-50%);
+  display: flex; align-items: stretch; background: var(--tape); color: #fff;
+  border-radius: 999px; box-shadow: var(--shadow-pill); font-size: 12px;
+  max-width: calc(100vw - 20px); border: 1px solid rgba(255,255,255,.16);
+}
+#switcher button {
+  appearance: none; background: transparent; border: 0; color: #fff;
+  font: inherit; font-size: 15px; padding: 0 15px; cursor: pointer; border-radius: 999px;
+}
+#switcher button:hover { background: rgba(255,255,255,.14); }
+#switcher button:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
+#vlabel { display: flex; align-items: center; gap: 7px; padding: 9px 4px; min-width: 0; white-space: nowrap; overflow: hidden; }
+#vlabel .k { font-weight: 800; background: rgba(255,255,255,.18); border-radius: 4px; padding: 1px 6px; }
+#vlabel .n { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<div id="chrome">
+  <div class="chrome-row">
+    <span class="brand">
+      <b>Freedom Hill &mdash; Feed Board</b>
+      <span>Prototype for <a href="https://git.heckart.me/rob/caballus/issues/2" style="color:inherit">issue #2</a> &middot; throwaway</span>
+    </span>
+    <span class="seg" role="group" aria-label="Shift">
+      <button type="button" data-shift="AM" aria-pressed="true">AM</button>
+      <button type="button" data-shift="LUNCH" aria-pressed="false">Lunch</button>
+      <button type="button" data-shift="PM" aria-pressed="false">PM</button>
+    </span>
+    <span class="seg" role="group" aria-label="Simulated screen width">
+      <button type="button" data-w="phone" aria-pressed="true">Phone</button>
+      <button type="button" data-w="tablet" aria-pressed="false">Tablet</button>
+      <button type="button" data-w="full" aria-pressed="false">Full</button>
+    </span>
+  </div>
+  <div class="chrome-row">
+    <span class="label">Real&#8209;feel</span>
+    <span class="seg" role="group" aria-label="Simulated real-feel temperature">
+      <button type="button" data-t="18" aria-pressed="false">18&deg;</button>
+      <button type="button" data-t="32" aria-pressed="false">32&deg;</button>
+      <button type="button" data-t="44" aria-pressed="false">44&deg;</button>
+      <button type="button" data-t="68" aria-pressed="true">68&deg;</button>
+      <button type="button" data-t="88" aria-pressed="false">88&deg;</button>
+    </span>
+    <span class="seg" role="group" aria-label="Conditions">
+      <button type="button" data-flag="wet" aria-pressed="false">Wind / rain</button>
+      <button type="button" data-flag="early" aria-pressed="true">Heat by noon</button>
+    </span>
+  </div>
+  <div id="weatherstrip"></div>
+</div>
+
+<div id="stage" data-w="phone">
+  <div id="screen">
+    <div id="view"></div>
+
+    <div class="note loud">
+      <h4>The finding that matters most</h4>
+      <p><b>The board is a lossy log, and it is already losing.</b> Your first photos and these ones are the
+      same board months apart. In the earlier set, Delilah's cell held <b>six</b> dated weights and Apollo's
+      held four. Today every horse has <b>two</b> &mdash; the rest were wiped to make room. Delilah is gone
+      from the board entirely, Apollo has moved from stall&nbsp;7 to stall&nbsp;10, and stall&nbsp;7 now
+      reads OPEN.</p>
+      <p>Nobody decided to throw that history away. The board ran out of space. The rescue is already
+      trying to keep a weight history and physically cannot &mdash; which is a stronger argument for this
+      app than anything in the brief.</p>
+    </div>
+
+    <div class="note">
+      <h4>How to read this</h4>
+      <p>All eleven horses and their real feed, medical, field, groom, blanket and weight data are
+      transcribed from your photos. Stall&nbsp;7 is on the board as <b>OPEN</b>, so it is here too.
+      Blue occupies <b>stalls 2 and 3</b>. Mystery and Nora are in the <b>Small Barn</b> section, which the
+      board keeps separate with its own AM/PM sub&#8209;table.</p>
+      <div class="keys">
+        <span class="chip" style="background:var(--grain-bg);color:var(--grain)">grain</span>
+        <span class="chip" style="background:var(--medical-bg);color:var(--medical)">medical</span>
+        <span class="chip" style="background:var(--sunk);color:var(--ink-2)">other</span>
+        <span class="chip chip-alert">alert</span>
+        <span class="chip chip-new">changed</span>
+        <span class="chip chip-cold">cold rule</span>
+        <span class="chip chip-hot">heat rule</span>
+        <span class="chip chip-add">not on the board</span>
+      </div>
+      <p><b>Colour is load&#8209;bearing on purpose.</b> On the board, ink colour is convention that drifted
+      &mdash; nobody agreed red means medical, it just mostly does. Here the colour comes from the field, so
+      the meaning holds by construction. <span class="new-mark">Blue underline</span> is the board's own
+      <b>NEW</b> mark, and it stays.</p>
+      <p><b>Halter colour is a field, and four horses have two colours</b> &mdash; River is red and black,
+      Sir lime green and yellow. The discs are split accordingly. Sir's name plate omits his colour even
+      though the Horse's&nbsp;Colors panel records it, so the same fact lives in two places and disagrees.</p>
+      <p><span class="chip chip-add">not on the board</span> marks the one column I added: <b>Lunch</b>.
+      The board has no lunch column, so Dawson's and Apollo's lunch is smuggled into ALERT and into the
+      FEED/GRAIN panel's weekday duty roster.</p>
+      <p><b>Only two of the eleven horses get lunch</b> &mdash; Dawson and Apollo. Everywhere lunch appears,
+      it says so: the grid reads <i>no lunch feeding</i> rather than a dash, and switching the shift to
+      <b>Lunch</b> narrows the queue to those two horses and nobody else.</p>
+      <p><b>The prep handoff is now visible.</b> Switch to <b>Lunch</b> and look at Dawson: his soak is
+      prepared during the <i>AM</i> shift, so the card says whether that actually happened. Tick Dawson's
+      AM medical step, come back to Lunch, and it turns green. This is the failure you described &mdash;
+      the AM leads missed Dawson's lunch prep and the lunchtime person only found out on arrival.</p>
+    </div>
+
+    <div class="note">
+      <h4>Elsewhere on the same board, not modelled here</h4>
+      <p>The feed grid is one panel of about ten. These are the others, and most of them are v1 work that
+      the map does not currently account for:</p>
+      <ul>
+        <li><b>Reminders</b> &mdash; barn&#8209;wide standing rules. Take turns wide, no scissors in fields,
+          scrub fly masks when dirty, check for wet spots when mucking.</li>
+        <li><b>Horse's Colors</b> &mdash; halter colours again, duplicating the name plates.</li>
+        <li><b>Baths 2026</b> &mdash; a per&#8209;horse date log with blanks for not&#8209;yet&#8209;done.
+          A schedule, a history and an implied overdue, exactly as the brief predicted.</li>
+        <li><b>Feed/Grain</b> &mdash; who may prepare grain and meds, and a <b>weekday duty roster by name</b>
+          for Apollo's and Dawson's lunch.</li>
+        <li><b>Hay Amounts</b> &mdash; per&#8209;paddock quantities by receptacle, plus a whole alternate
+          per&#8209;horse hay plan that only applies when the heat rule fires.</li>
+        <li><b>Water</b> &mdash; stall buckets, troughs, electrolytes, salt blocks.</li>
+        <li><b>Sheets and Blankets</b> &mdash; the real threshold model, modelled below.</li>
+        <li><b>Maintenance</b> &mdash; contacts plus an open need: T&#8209;post leaning in A paddock.</li>
+        <li><b>Medicines &amp; Supplements</b> &mdash; product to supplier, with prescription flags.</li>
+        <li><b>Supplies Needed</b> &mdash; a reorder log with dates and who was notified, and a
+          days&#8209;of&#8209;supply table: Senior 14.5 days, Rice Bran 13.</li>
+        <li><b>Escalation contacts</b> &mdash; three named people to text about horse care, the vet clinic
+          with hours, an emergency line, the property owner.</li>
+      </ul>
+      <p>Two more paper artifacts surface here that the map's list of four does not mention: a
+      <b>log book</b> (River's cell says "Text Lori &mdash; note in Log book") and a printed
+      <b>Feed Shift Leaders closing checklist</b> screwed to the wall below.</p>
+    </div>
+  </div>
+</div>
+
+<div id="sheet" data-open="0"><div class="sheetinner" id="sheetinner"></div></div>
+
+<div id="switcher" role="group" aria-label="Prototype variant">
+  <button type="button" id="prev" aria-label="Previous variant">&#8592;</button>
+  <span id="vlabel"></span>
+  <button type="button" id="next" aria-label="Next variant">&#8594;</button>
+</div>
+
+<script>
+/* ============================================================
+   WEATHER RULES — from the board's "Sheets and Blankets" panel.
+   Not one scalar per horse: a default with per-horse overrides,
+   two tiers, a condition modifier, and a heat rule keyed to
+   WHEN the temperature arrives rather than what it is.
+   ============================================================ */
+
+const DEFAULT_RULE = { sheet: 40, blanket: 30, wetNote: "especially if windy or rainy" };
+
+/* "Horses should only stay IN during the day if 85 real feel starts at
+   noon or before. If heat starts AFTER noon, leave out." — marked NEW */
+const HEAT = { at: 85, needsEarly: true };
+
+/* ============================================================
+   DATA — transcribed from the full-board photos, Aug 2026.
+   ============================================================ */
+
+const H = [
+  { stall: "1", name: "Dawson", colours: ["green"], hh: "15.1hh", blkt: "78", field: "A", groom: "PM", barn: "Main",
+    weights: [["11/22/25", 1033], ["4/16/26", 1017]],
+    rule: { sheet: 50, blanket: 35 },
+    am: { grain: [["1 scoop", "Senior"]],
+          seq: "Prepare and let soak: 3 cups Alfalfa Pellets, 3 cups Rice Bran, 6 cups water &mdash; then add to Senior",
+          water: "", medical: [["1 tab", "Prascend"]],
+          medseq: "Prepare for lunch: 3 cups Alfalfa Pellets, 3 cups Rice Bran, 4 cups water &mdash; to soak", after: "" },
+    lunch: { grain: [["3/4 sc", "Senior"]],
+             seq: "Add to the prepared soaked alfalfa and rice bran in his feed bucket, then add 5 cups water",
+             water: "5 cups water", medical: [],
+             after: "When he is done eating, prepare 3 cups Alfalfa Pellets and 3 cups Rice Bran, add 3 cups water, and <b>cover to soak for PM</b>" },
+    pm: { grain: [["1 scoop", "Senior"]], seq: "Add to prepared alfalfa / rice bran in feed bucket",
+          water: "6 cups water", medical: [["1/4", "Previcox"], ["2 wells", "SmartPaks Flex"]], after: "" },
+    prepInAM: "3 cups Alfalfa Pellets, 3 cups Rice Bran, 4 cups water &mdash; soaked and covered",
+    other: ["Summer sore cream on both hind pasterns, above the hoof line &mdash; inside right, outside left"],
+    alerts: [] },
+
+  { stall: "2 &amp; 3", name: "Blue", colours: ["blue"], hh: "16.1hh", blkt: "84", field: "A", groom: "PM", barn: "Main",
+    weights: [["10/26/25", 1150], ["4/16/26", 1399]],
+    rule: null,
+    am: { grain: [["2 cups", "Senior"]], water: "2 cups water", medical: [["3 sc", "Elevate"], ["1 sc", "Ponazuril"]], after: "" },
+    lunch: null,
+    pm: { grain: [["2 cups", "Senior"]], water: "2 cups water", medical: [["3 sc", "Elevate"], ["1/4 tab", "Previcox"]], after: "" },
+    other: ["Zinc oxide or sunblock on muzzle", "Summer sore cream on back of right front pastern"],
+    alerts: [] },
+
+  { stall: "4", name: "River", colours: ["red", "black"], hh: "15.3hh", blkt: "78", field: "A", groom: "PM", barn: "Main",
+    weights: [["11/22/25", 959], ["4/16/26", 985]],
+    rule: null,
+    am: { grain: [["1/2 sc", "Senior"]], water: "3 cups water", medical: [["1 sc", "Elevate"], ["3 wells", "SmartPaks"]], after: "" },
+    lunch: null,
+    pm: { grain: [["1/2 sc", "Senior"]], water: "3 cups water", medical: [["1 sc", "Elevate"]], after: "" },
+    other: ["Zinc oxide or sunblock on muzzle", "Summer sore cream on right front pastern (scratches)"],
+    conditional: [{ when: "On cold rainy days, if congested", give: "5 mL Ventipulmin", then: "Text Lori, and note it in the log book" }],
+    alerts: [] },
+
+  { stall: "5", name: "Badger", colours: ["blue", "red"], hh: "14.2hh", blkt: "72", field: "All of C + D", groom: "AM", barn: "Main",
+    weights: [["11/22/25", 1033], ["4/16/26", 1001]],
+    rule: null,
+    am: { grain: [["1 cup", "Senior"]], water: "1 cup water",
+          medical: [["1 sc", "Elevate"], ["1 sc", "Cosequin"], ["1 sc", "Ponazuril &mdash; in his meal"]], after: "" },
+    lunch: null,
+    pm: { grain: [["1 cup", "Senior"]], water: "1 cup water", medical: [["1/4 tab", "Previcox"], ["1 sc", "Elevate"]], after: "" },
+    other: ["Only use the yellow bottle by his stall, labelled with his name, for fly spray",
+            "Do <b>not</b> pick hind hooves at grooming",
+            "Fly sheet on AM, off PM &middot; fly boots and fly mask"],
+    flysheet: true,
+    alerts: [] },
+
+  { stall: "6", name: "Storm", colours: ["purple", "teal"], hh: "15.2hh", blkt: "80", field: "All of C + D", groom: "AM", barn: "Main",
+    weights: [["5/15/26", 1017]],
+    rule: { sheet: 35, blanket: 20 },
+    am: { grain: [["1/4 scoop", "Senior"], ["2 cups", "Alfalfa Pellets"]], water: "4 cups water",
+          medical: [["1 scoop", "MSM"], ["1 scoop", "Salt"], ["1 large scoop", "Glucosamine"], ["1 cup", "Outlast"]], after: "" },
+    lunch: null,
+    pm: { grain: [["1/4 sc", "Senior"], ["2 cups", "Alfalfa Pellets"]], water: "4 cups water",
+          medical: [["1 scoop", "Salt"], ["1 scoop", "Tri-Amino"], ["1 cup", "Outlast"]], after: "" },
+    other: ["Fly sheet on AM, off PM"],
+    flysheet: true,
+    stayingIn: "Give 2 scoops soaked alfalfa pellets in a large bucket &mdash; it will be half a bucket after soaking",
+    alerts: [] },
+
+  { stall: "7", open: true, barn: "Main" },
+
+  { stall: "8", name: "Molly", colours: ["pink"], hh: "14.1hh", blkt: "69/70", field: "All of C + E", groom: "PM", barn: "Main",
+    weights: [["3/14/26", 831], ["4/16/26", 821]],
+    rule: null,
+    am: { grain: [["1 cup", "Senior", true]], water: "1/2 cup water", medical: [], after: "" },
+    lunch: null,
+    pm: { grain: [["1 cup", "Senior", true]], water: "1/2 cup water", medical: [], after: "" },
+    other: [], alerts: [] },
+
+  { stall: "9", name: "Sir", colours: ["limegreen", "yellow"], hh: "15.3hh", blkt: "78/80", field: "B", groom: "PM", barn: "Main",
+    plateMissingColour: true,
+    weights: [["11/22/25", 1049], ["4/16/26", 1085]],
+    rule: null,
+    am: { grain: [["1/2 sc", "Senior"], ["1 cup", "Alfalfa Pellets"]], water: "5 cups water", medical: [],
+          after: "A bowl of chopped forage in his stall for after meals" },
+    lunch: null,
+    pm: { grain: [["1/2 sc", "Senior"], ["1 cup", "Alfalfa Pellets"]], water: "5 cups water", medical: [],
+          after: "A bowl of chopped forage in his stall for after meals" },
+    other: [], alerts: [] },
+
+  { stall: "10", name: "Apollo", colours: ["blue"], hh: "15.2hh", blkt: "78", field: "B", groom: "AM", barn: "Main",
+    weights: [["5/5/26", 1017]],
+    rule: { sheet: 50, blanket: 35 },
+    am: { grain: [["1 sc", "Senior"], ["2 cups", "Alfalfa Pellets"], ["2 cups", "Rice Bran"], ["1 cup", "Topline Balancer"]],
+          water: "6 cups water", medical: [["3 wells", "SmartPaks"], ["1 cup", "Outlast"]], after: "" },
+    lunch: { grain: [["1/2 sc", "Senior"], ["2 cups", "Alfalfa Pellets"], ["2 cups", "Rice Bran"]],
+             water: "5 cups water", medical: [], after: "" },
+    pm: { grain: [["1 sc", "Senior"], ["2 cups", "Alfalfa Pellets"], ["2 cups", "Rice Bran"], ["1 cup", "Topline Balancer"]],
+          water: "6 cups water", medical: [["1/4 tab", "Previcox"], ["1 cup", "Outlast"]], after: "" },
+    other: ["Fly mask with nose piece", "Coat Defense powder or Nu-Med spray on hip wound"],
+    alerts: [] },
+
+  { stall: "&mdash;", name: "Mystery", colours: ["green"], hh: "14.2hh", blkt: "72", field: "Small Barn", groom: "&mdash;", barn: "Small",
+    weights: [["6/11/26", 1088]],
+    rule: null,
+    am: { grain: [["1/4 sc", "Senior"], ["1 cup", "Alfalfa Pellets"]], water: "4 cups water",
+          medical: [["1 tab", "Prascend"], ["1 cup", "Outlast"]], after: "" },
+    lunch: null,
+    pm: { grain: [["1/2 sc", "Senior"], ["1 cup", "Alfalfa Pellets"]], water: "4 cups water",
+          medical: [["1 cup", "Outlast"]], after: "Bowl of chopped forage after meal" },
+    other: [], alerts: [] },
+
+  { stall: "&mdash;", name: "Nora", colours: ["turquoise"], hh: "16.1hh", blkt: "81", field: "Small Barn", groom: "&mdash;", barn: "Small",
+    weights: [["6/17/26", 1100]],
+    rule: null,
+    am: { grain: [["1/2 sc", "Senior", true]], water: "5 cups water", medical: [["1 cup", "Outlast", true]], after: "" },
+    lunch: null,
+    pm: { grain: [], water: "5 cups water", medical: [["1 cup", "Outlast"], ["1/4 tab", "Previcox"]], after: "" },
+    other: [], alerts: [] }
+];
+
+/* the FEED/GRAIN panel's weekday duty roster for Apollo & Dawson lunch */
+const LUNCH_ROSTER = {
+  Sun: "Beth M.", Mon: "Valerie / Sharon (alternate)", Tue: "Terri A.",
+  Wed: "Leah M.", Thu: "Debbie H.", Fri: "Valerie M.", Sat: "Valerie / Rob H."
+};
+
+const COLOUR_HEX = {
+  green: "#2E9E5B", blue: "#2D62C4", turquoise: "#1FB8C4", purple: "#8256C8",
+  red: "#D33B3B", yellow: "#E0B020", pink: "#DE6BA0", black: "#2A2A2A",
+  teal: "#12A594", limegreen: "#8DC63F"
+};
+
+const VARIANTS = [
+  ["A", "The board, faithfully"],
+  ["B", "This shift's prep queue"],
+  ["C", "Roster, detail on tap"]
+];
+
+let variant = (new URLSearchParams(location.search).get("variant") || "A").toUpperCase();
+if (!VARIANTS.some(v => v[0] === variant)) variant = "A";
+let shift = "AM";
+let temp = 68;
+let wet = false;
+let heatEarly = true;
+const ticked = new Set();
+
+/* ---------- weather ---------- */
+
+function ruleFor(h) { return h.rule || DEFAULT_RULE; }
+
+function wxFor(h) {
+  if (h.open) return [];
+  const r = ruleFor(h), out = [];
+  if (temp < r.blanket) out.push({ kind: "cold", text: `Blanket on &mdash; under ${r.blanket}&deg;` });
+  else if (temp < r.sheet) out.push({ kind: "cold", text: `Sheet on &mdash; under ${r.sheet}&deg;${wet && !h.rule ? " (windy or rainy)" : ""}` });
+  if (h.flysheet && (wet || temp > 90)) out.push({ kind: "hot", text: "No fly sheet &mdash; rain or over 90&deg;" });
+  else if (h.flysheet && shift === "AM") out.push({ kind: "hot", text: "Fly sheet on" });
+  if (temp >= HEAT.at && heatEarly) out.push({ kind: "hot", text: "Keep in &mdash; heat by noon" });
+  return out;
+}
+
+function heatHolds() { return temp >= HEAT.at && heatEarly; }
+
+/* ---------- helpers ---------- */
+
+const horses = () => H.filter(h => !h.open);
+const shiftKey = () => shift === "LUNCH" ? "lunch" : shift.toLowerCase();
+const meal = h => h.open ? null : h[shiftKey()];
+
+function disc(h, big) {
+  const cs = (h.colours || []).map(c => COLOUR_HEX[c] || "#888");
+  const bg = cs.length > 1
+    ? `linear-gradient(135deg, ${cs[0]} 0 50%, ${cs[1]} 50% 100%)`
+    : cs[0] || "var(--ink-3)";
+  return `background:${bg}`;
+}
+
+function swatch(h) {
+  if (h.open) return "";
+  const title = (h.colours || []).join(" + ") + " halter and lead rope";
+  return `<span class="swatch" style="${disc(h)}" title="${title}"></span>`;
+}
+
+function changeCount(h) {
+  if (h.open) return 0;
+  let c = 0;
+  ["am", "lunch", "pm"].forEach(k => {
+    const m = h[k]; if (!m) return;
+    (m.grain || []).forEach(i => { if (i[2]) c++; });
+    (m.medical || []).forEach(i => { if (i[2]) c++; });
+  });
+  return c;
+}
+
+function trend(h) {
+  const w = h.weights || [];
+  if (w.length < 2) return { d: 0, cls: "flat", arrow: "&ndash;", only: true };
+  const d = w[w.length - 1][1] - w[w.length - 2][1];
+  return { d, cls: d > 0 ? "up" : d < 0 ? "down" : "flat", arrow: d > 0 ? "&#9650;" : d < 0 ? "&#9660;" : "&ndash;" };
+}
+
+function items(list) {
+  if (!list || !list.length) return "";
+  return "<ul>" + list.map(([amt, what, isNew]) =>
+    `<li><span class="amt">${amt}</span><span class="${isNew ? "new-mark" : ""}">${what}${isNew ? ' <span class="chip chip-new">new</span>' : ""}</span></li>`
+  ).join("") + "</ul>";
+}
+
+function alertsOf(h) {
+  const out = (h.alerts || []).slice();
+  (h.conditional || []).forEach(c => out.push(`<b>${c.when}:</b> ${c.give}. ${c.then}.`));
+  if (h.stayingIn && heatHolds()) out.push(`<b>Staying in today:</b> ${h.stayingIn}`);
+  if (h.plateMissingColour) out.push('His name plate has no halter colour, though the Horse&rsquo;s Colors panel says lime green and yellow.');
+  return out;
+}
+
+function idBlock(h, withPhoto) {
+  if (h.open) return `<div class="idhead"><div class="idmeta"><div class="hname" style="color:var(--ink-3)">Stall ${h.stall}</div>
+    <div class="hfacts"><b>OPEN</b> &mdash; on the board, with no horse</div></div></div>`;
+  return `
+    <div class="idhead">
+      ${withPhoto ? '<div class="photo">PHOTO</div>' : ""}
+      <div class="idmeta">
+        <div class="hname">${swatch(h)}${h.name}</div>
+        <div class="hfacts">
+          <span>stall ${h.stall}</span>
+          <span>${h.hh}</span>
+          <span>blkt ${h.blkt}</span>
+          ${h.plateMissingColour ? '<span class="chip chip-gap">plate blank</span>' : ""}
+        </div>
+      </div>
+    </div>`;
+}
+
+function sparkline(h) {
+  const w = h.weights, n = w.length;
+  if (n < 2) return "";
+  const vals = w.map(x => x[1]);
+  const lo = Math.min(...vals), hi = Math.max(...vals), span = (hi - lo) || 1;
+  const W = 240, Ht = 44, pad = 5;
+  const pts = vals.map((v, i) => [pad + i * (W - pad * 2) / (n - 1), Ht - pad - ((v - lo) / span) * (Ht - pad * 2)]);
+  const line = pts.map(p => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ");
+  const last = pts[n - 1];
+  return `<svg class="spark" viewBox="0 0 ${W} ${Ht}" preserveAspectRatio="none" role="img" aria-label="Weight trend">
+    <polygon points="${pad},${Ht - pad} ${line} ${W - pad},${Ht - pad}" fill="var(--grain-bg)"></polygon>
+    <polyline points="${line}" fill="none" stroke="var(--grain)" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"></polyline>
+    <circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="3" fill="var(--grain)"></circle>
+  </svg>`;
+}
+
+/* ============================================================ VARIANT A */
+
+function cellFeed(m, kind) {
+  if (!m) return '<span class="dash">&mdash;</span>';
+  const out = [];
+  if (kind === "grain") {
+    if (m.grain && m.grain.length)
+      out.push(`<div class="blk t-grain"><span class="label">Grain</span>${items(m.grain)}${m.seq ? `<p class="seqnote">${m.seq}</p>` : ""}</div>`);
+    if (m.water) out.push(`<div class="blk"><span class="label">Water</span><p>${m.water}</p></div>`);
+    if (m.after) out.push(`<div class="blk"><span class="label">After meal</span><p>${m.after}</p></div>`);
+  } else {
+    if (m.medical && m.medical.length)
+      out.push(`<div class="blk t-medical"><span class="label">Medical</span>${items(m.medical)}</div>`);
+    if (m.medseq) out.push(`<div class="blk"><p class="seqnote t-medical">${m.medseq}</p></div>`);
+  }
+  return out.length ? `<div class="blocks">${out.join("")}</div>` : '<span class="dash">&mdash;</span>';
+}
+
+function renderA() {
+  const rows = H.map(h => {
+    if (h.open) return `<tr class="openrow">
+      <td class="idcell">${idBlock(h, false)}</td><td colspan="11" style="font-style:italic">OPEN</td></tr>`;
+    const wx = wxFor(h), al = alertsOf(h);
+    return `<tr>
+      <td class="idcell">${idBlock(h, true)}
+        ${wx.map(w => `<div style="margin-top:4px"><span class="chip chip-${w.kind}">${w.text}</span></div>`).join("")}</td>
+      <td>${h.field}</td>
+      <td><b>${h.groom}</b></td>
+      <td>
+        <div class="wlog">${h.weights.map(w => `<div><span>${w[0]}</span><span>${w[1]}</span></div>`).join("")}</div>
+        ${trend(h).only ? '<div class="wtrend flat">one entry only</div>'
+          : `<div class="wtrend ${trend(h).cls}">${trend(h).arrow} ${Math.abs(trend(h).d)} lb</div>`}
+      </td>
+      <td>${cellFeed(h.am, "grain")}</td>
+      <td>${cellFeed(h.am, "med")}</td>
+      <td>${h.lunch ? cellFeed(h.lunch, "grain")
+        : '<span class="dash" style="font-style:italic">no lunch feeding</span>'}</td>
+      <td>${cellFeed(h.pm, "grain")}</td>
+      <td>${cellFeed(h.pm, "med")}</td>
+      <td><div class="blocks"><div class="blk t-other">
+        ${(h.other || []).map(o => `<p>${o}</p>`).join("")}
+        ${ruleFor(h) !== DEFAULT_RULE ? `<p><span class="chip chip-cold">sheet ${h.rule.sheet}&deg; &middot; blanket ${h.rule.blanket}&deg;</span></p>` : ""}
+        ${(h.other || []).length || h.rule ? "" : '<span class="dash">&mdash;</span>'}
+      </div></div></td>
+      <td><div class="blocks"><div class="blk t-alert">
+        ${al.map(a => `<p>${a}</p>`).join("") || '<span class="dash">&mdash;</span>'}
+      </div></div></td>
+    </tr>`;
+  }).join("");
+
+  return `<div class="boardwrap"><table class="board">
+    <thead><tr>
+      <th class="idcell h-id"><span class="hdr">Horse</span></th>
+      <th class="h-id"><span class="hdr">Field</span></th>
+      <th class="h-id"><span class="hdr">Groom</span></th>
+      <th class="h-id"><span class="hdr">Weight</span></th>
+      <th class="h-am"><span class="hdr">AM Grain</span></th>
+      <th class="h-am"><span class="hdr">AM Medical</span></th>
+      <th class="h-am"><span class="hdr">Lunch</span><span class="chip chip-add added">added</span></th>
+      <th class="h-pm"><span class="hdr">PM Grain</span></th>
+      <th class="h-pm"><span class="hdr">PM Medical</span></th>
+      <th class="h-oth"><span class="hdr">Other</span></th>
+      <th class="h-alrt"><span class="hdr">Alert</span></th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table></div>`;
+}
+
+/* ============================================================ VARIANT B */
+
+function step(h, key, title, cls, body, locked) {
+  const id = `${h.stall}:${shift}:${key}`;
+  const on = ticked.has(id);
+  return `<button type="button" class="step" data-step="${id}" aria-pressed="${on}">
+    <span class="tick">&#10003;</span>
+    <span class="stepbody">
+      <span class="steptitle ${cls}">${title}</span>
+      ${body}
+      ${locked ? '<span class="steplock">&#128274; Feed Shift Lead or Co&#8209;Lead prepares &middot; others may add water and stir</span>' : ""}
+    </span></button>`;
+}
+
+function renderB() {
+  let total = 0, done = 0;
+  let out = "";
+  let barn = "";
+
+  /* Only some horses get a lunch feeding — currently Dawson and Apollo.
+     At lunch the queue shows those two and nobody else. */
+  const list = shift === "LUNCH" ? horses().filter(h => h.lunch) : horses();
+
+  list.forEach(h => {
+    if (h.barn !== barn && shift !== "LUNCH") {
+      barn = h.barn;
+      out += `<div class="barnhead"><span class="label">${barn === "Main" ? "Main barn &mdash; in stall order" : "Small barn"}</span></div>`;
+    }
+    const m = meal(h), wx = wxFor(h), al = alertsOf(h), steps = [];
+
+    if (m) {
+      if (m.grain && m.grain.length)
+        steps.push(step(h, "grain", "Grain", "t-grain",
+          items(m.grain) + (m.seq ? `<p class="seqnote">${m.seq}</p>` : "") + (m.water ? `<p><b>${m.water}</b></p>` : ""), true));
+      else if (m.water)
+        steps.push(step(h, "water", "Water", "", `<p><b>${m.water}</b></p>`, false));
+      if (m.medical && m.medical.length)
+        steps.push(step(h, "med", "Medical", "t-medical",
+          items(m.medical) + (m.medseq ? `<p class="seqnote t-medical">${m.medseq}</p>` : ""), true));
+      if (m.after) steps.push(step(h, "after", "After meal", "", `<p>${m.after}</p>`, false));
+    }
+    if (h.groom === shift) steps.push(step(h, "groom", "Groom", "", `<p>Groom ${h.name} &mdash; the board assigns him to the ${shift} shift</p>`, false));
+    wx.forEach((w, i) => steps.push(step(h, "wx" + i, `${w.kind === "cold" ? "Cold" : "Heat"} rule`, "", `<p><b>${w.text}</b></p>`, false)));
+    if (h.stayingIn && heatHolds()) steps.push(step(h, "sin", "Staying in &mdash; extra forage", "t-grain", `<p>${h.stayingIn}</p>`, false));
+
+    if (!steps.length) steps.push(`<div class="step" style="cursor:default"><span class="tick" style="border-style:dashed"></span>
+      <span class="stepbody"><span class="steptitle">Nothing at ${shift.toLowerCase()}</span></span></div>`);
+
+    const ids = [...steps.join("").matchAll(/data-step="([^"]+)"/g)].map(x => x[1]);
+    const d = ids.filter(i => ticked.has(i)).length;
+    total += ids.length; done += d;
+
+    /* The handoff that actually failed in the barn: the AM shift prepares a
+       soak for lunch, and the lunch person finds out on arrival whether it
+       happened. Showing it is the whole point. */
+    let handoff = "";
+    if (shift === "LUNCH" && h.prepInAM) {
+      const ok = ticked.has(`${h.stall}:AM:med`);
+      handoff = `<div class="qalerts" style="background:${ok ? "var(--grain-bg)" : "var(--medical-bg)"}">
+        <span class="row" style="color:${ok ? "var(--grain)" : "var(--medical)"}">
+          <b>${ok ? "&#10003;" : "!"}</b>
+          <span><b>${ok ? "Prepped on the AM shift" : "Not prepped on the AM shift"}</b> &mdash;
+          ${h.prepInAM}. ${ok ? "" : "You will have to soak it now, or feed him without it."}</span>
+        </span></div>`;
+    }
+
+    out += `<div class="qcard ${ids.length && d === ids.length ? "done" : ""}">
+      <div class="qhead">${idBlock(h, false)}<span class="qcount">${d}/${ids.length}</span></div>
+      ${handoff}
+      ${al.length ? `<div class="qalerts">${al.map(a => `<span class="row"><b>!</b><span>${a}</span></span>`).join("")}</div>` : ""}
+      <div class="qbody">${steps.join("")}</div>
+    </div>`;
+  });
+
+  const pct = total ? Math.round(done / total * 100) : 0;
+  const duty = shift === "LUNCH"
+    ? `<div class="qsum" style="border-left-color:var(--alert)">
+        <span class="label">Lunch is only two horses</span><span class="grow"></span>
+        <span style="font-size:12.5px"><b>Dawson and Apollo.</b> The other nine are not fed at lunch, so they
+        are not on this list at all. One person covers it &mdash; today's name comes from the board's weekday
+        roster, and Saturday is <b>${LUNCH_ROSTER.Sat}</b>.</span></div>`
+    : "";
+
+  return `<div class="queue">
+    <div class="qsum">
+      <span class="label">${shift === "LUNCH" ? "Lunch" : shift + " shift"}</span>
+      <span class="big num">${done}<span style="color:var(--ink-3);font-size:15px">/${total}</span></span>
+      <span class="grow"></span>
+      <span class="label">${shift === "LUNCH" ? `${list.length} of ${horses().length} horses` : `${horses().length} horses &middot; stall 7 open`}</span>
+      <span class="bar"><i style="width:${pct}%"></i></span>
+    </div>
+    ${duty}
+    ${out}
+  </div>`;
+}
+
+/* ============================================================ VARIANT C */
+
+function renderC() {
+  const rows = H.map(h => {
+    if (h.open) return `<div class="rrow open"><span class="rdisc" style="background:var(--sunk);color:var(--ink-3);text-shadow:none">7</span>
+      <span class="rmeta"><span class="rname" style="color:var(--ink-3)">Stall 7</span>
+      <span class="rsub">OPEN &mdash; the board keeps the row</span></span></div>`;
+    const t = trend(h), wx = wxFor(h), ch = changeCount(h), na = alertsOf(h).length;
+    return `<button type="button" class="rrow" data-horse="${h.name}">
+      <span class="rdisc" style="${disc(h)}">${h.name[0]}</span>
+      <span class="rmeta">
+        <span class="rname">${h.name}${h.plateMissingColour ? '<span class="chip chip-gap">plate blank</span>' : ""}</span>
+        <span class="rsub"><span>stall ${h.stall}</span><span>field ${h.field}</span><span>groom ${h.groom}</span><span>${h.hh}</span></span>
+      </span>
+      <span class="rflags">
+        <span class="rwt ${t.cls}">${h.weights[h.weights.length - 1][1]} lb ${t.only ? "" : t.arrow}</span>
+        <span style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">
+          ${na ? `<span class="chip chip-alert">${na} alert${na > 1 ? "s" : ""}</span>` : ""}
+          ${ch ? `<span class="chip chip-new">${ch} new</span>` : ""}
+          ${wx.map(w => `<span class="chip chip-${w.kind}">${w.text}</span>`).join("")}
+        </span>
+      </span>
+    </button>`;
+  }).join("");
+
+  const nAlert = horses().filter(h => alertsOf(h).length).length;
+  const nChange = horses().reduce((a, h) => a + changeCount(h), 0);
+  const nWx = horses().filter(h => wxFor(h).length).length;
+
+  return `<div class="roster">
+    <div class="qsum">
+      <span class="label">Needs attention</span>
+      <span class="grow"></span>
+      <span style="display:flex;gap:6px;flex-wrap:wrap">
+        <span class="chip chip-alert">${nAlert} with alerts</span>
+        <span class="chip chip-new">${nChange} changed</span>
+        ${nWx ? `<span class="chip chip-${temp < 55 ? "cold" : "hot"}">${nWx} weather</span>` : ""}
+      </span>
+    </div>
+    <div class="rlist">${rows}</div>
+  </div>`;
+}
+
+function sheetFor(h) {
+  const sec = (label, body) => body ? `<div class="sheetsec"><span class="label">${label}</span>${body}</div>` : "";
+  const mealSec = (name, m) => m ? sec(name, `<div class="blocks">
+      ${m.grain && m.grain.length ? `<div class="blk t-grain"><span class="label">Grain</span>${items(m.grain)}${m.seq ? `<p class="seqnote">${m.seq}</p>` : ""}</div>` : ""}
+      ${m.water ? `<div class="blk"><span class="label">Water</span><p>${m.water}</p></div>` : ""}
+      ${m.medical && m.medical.length ? `<div class="blk t-medical"><span class="label">Medical</span>${items(m.medical)}${m.medseq ? `<p class="seqnote">${m.medseq}</p>` : ""}</div>` : ""}
+      ${m.after ? `<div class="blk"><span class="label">After meal</span><p>${m.after}</p></div>` : ""}
+    </div>`) : "";
+  const t = trend(h), r = ruleFor(h), al = alertsOf(h);
+
+  return `
+    <div class="sheethead">
+      <span class="rdisc" style="${disc(h)}">${h.name[0]}</span>
+      <span class="idmeta"><span class="hname">${h.name}</span>
+        <span class="hfacts"><span>stall ${h.stall}</span><span>${h.hh}</span><span>blkt ${h.blkt}</span>
+        <span>field ${h.field}</span><span>groom ${h.groom}</span>
+        <span>halter ${(h.colours || []).join(" + ")}</span></span></span>
+      <span class="grow"></span>
+      <button type="button" class="closebtn" id="closesheet">Close</button>
+    </div>
+    ${al.length ? `<div class="qalerts">${al.map(a => `<span class="row"><b>!</b><span>${a}</span></span>`).join("")}</div>` : ""}
+    ${sec("Weight", `${sparkline(h)}<div class="wlog" style="margin-top:6px">${h.weights.map(w =>
+        `<div><span>${w[0]}</span><span>${w[1]} lb</span></div>`).join("")}</div>
+      ${t.only ? '<div class="wtrend flat">One entry. No trend to read.</div>'
+        : `<div class="wtrend ${t.cls}">${t.arrow} ${Math.abs(t.d)} lb since the previous weigh&#8209;in</div>`}
+      <p style="margin:7px 0 0;font-size:12px;color:var(--ink-2);border-top:1px dashed var(--medical);padding-top:6px">
+        The board holds <b>${h.weights.length}</b> ${h.weights.length === 1 ? "entry" : "entries"}. Earlier photos of
+        the same board show up to six per horse &mdash; the rest were wiped for space. Every weigh&#8209;in the
+        rescue has ever recorded and then erased is gone.</p>`)}
+    ${mealSec("AM", h.am)}
+    ${h.lunch ? mealSec("Lunch &mdash; not a column on the board", h.lunch) : ""}
+    ${mealSec("PM", h.pm)}
+    ${sec("Other", (h.other || []).map(o => `<p style="margin:0 0 5px">${o}</p>`).join(""))}
+    ${sec("Weather rules", `
+      <p style="margin:0 0 5px"><span class="chip chip-cold">sheet under ${r.sheet}&deg;</span>
+        <span class="chip chip-cold">blanket under ${r.blanket}&deg;</span>
+        ${h.rule ? "&nbsp;named on the board" : `&nbsp;the default for &ldquo;rest of horses&rdquo;, ${DEFAULT_RULE.wetNote}`}</p>
+      <p style="margin:0 0 5px"><span class="chip chip-hot">keep in at ${HEAT.at}&deg;</span>
+        only if the heat starts at noon or before &mdash; if it starts later, leave out</p>
+      ${h.flysheet ? '<p style="margin:0"><span class="chip chip-hot">fly sheet</span> on AM, off PM &mdash; not if rain, or feels&#8209;like over 90&deg;</p>' : ""}
+    `)}
+  `;
+}
+
+/* ============================================================ RENDER */
+
+function weather() {
+  const el = document.getElementById("weatherstrip");
+  const affected = horses().filter(h => wxFor(h).length);
+  const cls = temp < 55 ? "cold" : temp >= HEAT.at ? "hot" : "mild";
+  el.className = cls;
+
+  const lines = [];
+  lines.push(`<div class="line"><b>${temp}&deg;F real&#8209;feel${wet ? ", windy or rainy" : ""}.</b>
+    ${affected.length ? `<span>${affected.length} of ${horses().length} horses have an action.</span>` : "<span>No threshold crossed.</span>"}</div>`);
+
+  const byAction = {};
+  affected.forEach(h => wxFor(h).forEach(w => (byAction[w.text] = byAction[w.text] || []).push(h.name)));
+  Object.entries(byAction).forEach(([act, names]) =>
+    lines.push(`<div class="line"><b>${act}:</b> <span>${names.join(", ")}</span></div>`));
+
+  if (temp >= HEAT.at && !heatEarly)
+    lines.push(`<div class="line"><span>Over ${HEAT.at}&deg; but the heat starts after noon, so horses stay out.</span></div>`);
+
+  el.innerHTML = lines.join("");
+}
+
+function render() {
+  document.getElementById("view").innerHTML =
+    variant === "A" ? renderA() : variant === "B" ? renderB() : renderC();
+  const v = VARIANTS.find(x => x[0] === variant);
+  document.getElementById("vlabel").innerHTML = `<span class="k">${v[0]}</span><span class="n">${v[1]}</span>`;
+  weather();
+}
+
+function setVariant(k) {
+  variant = k;
+  const u = new URL(location.href);
+  u.searchParams.set("variant", k);
+  history.replaceState(null, "", u);
+  render();
+}
+function cycle(d) {
+  const i = VARIANTS.findIndex(v => v[0] === variant);
+  setVariant(VARIANTS[(i + d + VARIANTS.length) % VARIANTS.length][0]);
+}
+
+document.getElementById("prev").addEventListener("click", () => cycle(-1));
+document.getElementById("next").addEventListener("click", () => cycle(1));
+
+addEventListener("keydown", e => {
+  const t = e.target;
+  if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+  if (e.key === "ArrowLeft") cycle(-1);
+  if (e.key === "ArrowRight") cycle(1);
+  if (e.key === "Escape") closeSheet();
+});
+
+document.addEventListener("click", e => {
+  const seg = e.target.closest(".seg button");
+  if (seg) {
+    if (seg.dataset.flag) {
+      const on = seg.getAttribute("aria-pressed") !== "true";
+      seg.setAttribute("aria-pressed", String(on));
+      if (seg.dataset.flag === "wet") wet = on; else heatEarly = on;
+      render();
+      return;
+    }
+    [...seg.parentElement.children].forEach(b => b.setAttribute("aria-pressed", String(b === seg)));
+    if (seg.dataset.shift) { shift = seg.dataset.shift; render(); }
+    if (seg.dataset.w) document.getElementById("stage").dataset.w = seg.dataset.w;
+    if (seg.dataset.t) { temp = +seg.dataset.t; render(); }
+    return;
+  }
+  const st = e.target.closest(".step[data-step]");
+  if (st) {
+    const id = st.dataset.step;
+    ticked.has(id) ? ticked.delete(id) : ticked.add(id);
+    render();
+    return;
+  }
+  const rr = e.target.closest(".rrow[data-horse]");
+  if (rr) { openSheet(rr.dataset.horse); return; }
+  if (e.target.id === "closesheet" || e.target.id === "sheet") closeSheet();
+});
+
+function openSheet(name) {
+  document.getElementById("sheetinner").innerHTML = sheetFor(H.find(h => h.name === name));
+  document.getElementById("sheet").dataset.open = "1";
+}
+function closeSheet() { document.getElementById("sheet").dataset.open = "0"; }
+
+render();
+</script>
