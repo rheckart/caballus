@@ -28,10 +28,6 @@ _Avoid_: midday shift, noon feed
 Which horses a piece of work applies to. Scope belongs to the work, not to the Shift: a Feed Shift feeds every horse but grooms only the horses assigned to it, and Lunch feeds two and grooms none. There is no single set of horses that a Shift "covers".
 _Avoid_: coverage, shift horses, assigned horses
 
-**Medication Authority**:
-Permission to prepare and administer medication, held by a Feed Shift Lead or Co-Lead. A Shift must have at least one person who holds it, because without one the horses cannot be medicated at all. Preparing food carries no such requirement, despite the feed room sign saying otherwise.
-_Avoid_: lead permission, med rights
-
 **Pop-up**:
 A Shift created ad hoc for a specific need — cooling horses in heat, welfare checks in adverse weather, special feeding. A Shift like any other; what differs is that it is created on demand and staffed by sign-up.
 _Avoid_: ad-hoc shift, emergency shift, extra shift
@@ -68,12 +64,48 @@ _Avoid_: mandatory tasks, must-dos, minimum service
 Work a Lead may drop when short: grooming, mucking paddocks and pasture, sweeping, baths. Droppable does not mean unimportant — each carries a tolerance for how long it may go undone, counted in consecutive Shifts skipped, after which it stops being discretionary.
 _Avoid_: optional tasks, nice-to-haves, low priority
 
-### Horses and places
+### Places
+
+**Space**:
+A physical area a horse occupies or uses, of one kind — stall, field or barn — composed of one or more named units that may be physically joined. Stalls 2 and 3 are one Space because the partition between them was removed; "all of C and D" is one Space because the gate between those fields is open. A horse is assigned exactly one Space of each kind.
+_Avoid_: location, area, pen, enclosure
 
 **Field**:
-A turnout area, named by letter (A–E). A horse's field assignment may be a set — "all of C and D" is a real value on the board.
-_Avoid_: paddock, pasture, turnout group — note these are used interchangeably in the barn and their relationship is not yet settled (#10)
+A Space of kind *field* — a turnout area named by letter. Paddock and pasture mean the same thing in the barn; use Field.
+_Avoid_: paddock, pasture, turnout group
+
+**Stall**:
+A Space of kind *stall* — an indoor space a horse is housed in. A Stall may stand empty and still exist; the feed board keeps a row for stall 7, which is OPEN.
+_Avoid_: box, bay
 
 **Small Barn**:
 A second barn housing horses without numbered stalls, kept as its own section of the feed board. Covered by the same Shift as the main barn.
 _Avoid_: annex, second barn
+
+### Horses
+
+**Departed**:
+The status of a horse no longer at the rescue, carrying a departure date. The record is never deleted — shifts, feed history and weights all reference it.
+_Avoid_: inactive, archived, removed, deleted
+
+**Alert**:
+A standing warning on a horse that a volunteer must read before working with it — a care alert, a prohibition ("no treats"), or an allergy. Not a medical condition; those are out of scope.
+_Avoid_: flag, note, warning, caution
+
+### Feed and medication
+
+**Product**:
+Something the rescue buys and gives to a horse — a feed, a supplement or a medication. Its kind is a property of the Product, not of where it was written down: whether Bute is a medication is a fact about Bute.
+_Avoid_: item, feed type, med, supply
+
+**Feed Schedule**:
+The versioned set of lines describing what a horse is given at one Shift Type. Each line names a Product, an amount and a Route.
+_Avoid_: diet, ration, feed plan, meal plan
+
+**Route**:
+How a Product reaches the horse — in feed, orally by syringe or paste, topically, or otherwise. Medication is not always given in feed.
+_Avoid_: method, delivery, administration
+
+**Medication Authority**:
+Permission to prepare and administer medication, held by a Feed Shift Lead or Co-Lead. A Shift needs someone holding it only when that Shift's work actually includes medication — which is why Lunch, being grain and water, runs legally with one non-Lead. Preparing food carries no such requirement, despite the feed room sign saying otherwise.
+_Avoid_: lead permission, med rights
