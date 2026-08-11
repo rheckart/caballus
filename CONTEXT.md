@@ -116,6 +116,10 @@ _Avoid_: lead permission, med rights
 The read-only feed board, shown on a rescue-owned tablet in the barn, doing the whiteboard's glance-at job. It records nothing and therefore credits no actor. Distinct from the shift prep queue, which is the per-horse work list a volunteer actually works from on a phone.
 _Avoid_: dashboard, whiteboard screen, kiosk
 
+**Work Surface**:
+The phone screens a volunteer records work on during a Shift. Distinct from the Board, which only shows, and from the desktop admin screens, which nobody uses in a barn. The Work Surface is the only place an actor is credited.
+_Avoid_: the app, mobile view, shift screen
+
 **Unsent**:
 Work a volunteer has recorded on their phone that has not yet reached the server. Visible on the item it belongs to, never silently dropped, and blocks a Shift from closing — because a record that looks complete and isn't is the lie the paper system already tells.
 _Avoid_: pending, queued, unsynced, offline

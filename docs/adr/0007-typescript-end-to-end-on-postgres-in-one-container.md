@@ -1,0 +1,55 @@
+---
+status: accepted
+---
+
+# The stack is TypeScript end to end, on Postgres, in one container
+
+One TanStack Start application in TypeScript, serving both the interface and its own API, talking to Postgres 18 through Drizzle, deployed as a single Docker container to the VPS of ADR 0006. Server-rendered by default; the volunteer work surface opts out and runs client-side under a service-worker-cached shell.
+
+This is the third attempt at Caballus. The first two — Django with a Next.js frontend, and .NET 10 with Aspire and Blazor WASM — both stopped, and neither stopped on a technical wall. They stopped because the platform question was unresolved and the domain was not yet understood. That is the risk this decision is really guarding against, and the reason it is written down at this length: the stack is now constrained by six prior ADRs rather than by taste, and a taste-driven reversal has to argue with them.
+
+## Considered options
+
+**The client is a browser PWA in every branch** (ADR 0004), and that client is TypeScript: nobody writes an IndexedDB retry queue in another language. So the question was only ever whether the server shares the client's language or the maintainer runs two. Blazor WASM answers it by shipping a .NET runtime to a phone on one bar of signal at 6am, which is the exact bar ADR 0004 says the app must clear. Django answers it by keeping two languages across the boundary that ADR 0005 makes load-bearing. **One language wins because the request and response types are shared rather than transcribed.**
+
+**Next.js was eliminated on the merits, not on taste.** Server Actions are POSTs to build-generated opaque identifiers. A mutation queued in IndexedDB on Tuesday's build cannot be replayed against Thursday's — which is ADR 0005's central guarantee failing silently, the worst available failure mode. **React Router 7** was the recommendation: Remix's lineage, a decade of `react-router` beneath it, loaders and actions that are honest HTTP. **TanStack Start was chosen over it deliberately**, for typed routes and first-class selective SSR, in full knowledge that it is at Release Candidate rather than 1.0. That trade is recorded as a risk below rather than smoothed over.
+
+**Convex was declined without prejudice.** It is in use on another project, and its reactive model aims squarely at the flaky-write problem. Adopting it would silently rewrite ADR 0006, which was accepted three days earlier on a "nothing depends on a proprietary runtime" argument. Reversing that deserves its own ticket, not a footnote in this one. **SQLite** was declined for one specific reason: it takes row-level security off the table, and query-scoping is the retrofit this project was told is expensive.
+
+**Neither prior codebase is ported.** Their models predate versioned care instructions, three persistence tiers, client-minted idempotency keys, and shifts copying their roster. A schema port would import a data model this repo has already decided against. They are reference material.
+
+## Consequences
+
+**Multi-tenancy is enforced by the database, not by discipline.** The app connects as a non-superuser role, every request opens a transaction issuing `SET LOCAL app.org_id`, and policies filter every table. Forgetting it returns **zero rows, not another org's rows** — it fails closed and loudly. A `forOrg(orgId)` handle sits on top as the only sanctioned way to reach the database. With agents writing much of this code, a leak being structurally impossible is worth the price, and the price is real: a query that returns nothing will cost twenty minutes before somebody remembers why. At sixty users there is no connection pooler between app and database, which removes the usual reason people abandon RLS.
+
+**Anything that can be queued is a POST to a stable, versioned URL with an idempotency key.** A Hono application mounted at `/api/v1` through a `/api/$` wildcard route owns every mutation and the Board's read-only token endpoints. Framework server functions are used only for writes that can never be queued — login, admin forms on a desktop with real connectivity. The version in the path exists so that an old client's queued write arriving at a newer server is either accepted or **explicitly rejected and surfaced to the volunteer**, never accepted and misinterpreted. Both halves of this rule are ergonomically inferior to the alternative, which is precisely why they are lint rules rather than prose.
+
+**An entity id and an idempotency key are different things, even where they would coincide.** Primary keys are UUIDv7 minted on the client, so optimistic UI can render a created thing before the server answers. It is tempting to let the entity id serve as the idempotency key — a primary-key conflict is a free dedupe — and it breaks immediately: ticking a checklist item and closing a shift create no row, and those are the majority of a shift's writes.
+
+**Wire shapes are hand-written Zod, not generated from the tables.** `drizzle-zod` was declined because ADR 0003's three persistence tiers mean the two genuinely differ — editing a feed schedule is one request that inserts a *version* rather than updating a row — and a generated schema would quietly teach the API to mirror the tables, letting a client PATCH something that is meant to be immutable. The cost is that schemas and migrations can drift, and nothing but tests will catch it.
+
+**The database is tested, not mocked.** RLS policies, the partial unique index enforcing idempotency keys, and versioned reads are database behaviour; a fake proves nothing about any of them. Integration tests run against a real Postgres in Docker. One end-to-end path is mandatory: tick a checklist item with the network cut, restore it, replay the queue, assert the tick was recorded **exactly once**. `npm run verify` is typecheck, lint, test and migration check — one command, no partial green.
+
+**Migrations never run at boot.** They are an explicit one-shot deploy step before the new container takes traffic. An entrypoint migration turns the 6am restart that ADR 0006 already puts on the critical path into a boot that can hang on a lock or half-apply while a Lead is waiting for the medication list.
+
+**The day boundary belongs to the organisation, not to the browser.** Overdue alerts, the fourteen-day feed-board marker and days-of-supply are all day arithmetic, and a day has no meaning without a timezone. Timestamps are `timestamptz` in UTC; the org carries an IANA timezone and every boundary is computed server-side in it. Shift dates are `date`. Calling `new Date()` to derive a boundary is a lint error alongside the two API rules above.
+
+**Background work is durable because ADR 0004 requires it to be.** "Over-cap messages queue and alert rather than drop" is a specification for a queue that survives a restart, which an in-process interval is not. pg-boss runs in the app process against the same Postgres, so enqueueing a send is transactional with the write that caused it and the queue is inside the same `pg_dump`. It also carries overdue-alert derivation and days-of-supply checks.
+
+**Photo uploads are the one place ADR 0005's guarantee does not reach.** A tick is small JSON and queues beautifully; a barn photo is megabytes, and holding blobs in IndexedDB for replay is a different mechanism with a different failure mode. Uploads go direct to S4 by short-lived presigned PUT, downscaled on the client; reads stay proxied through the app per ADR 0006. **A photo is attached or visibly not attached, never silently pending** — if it fails, the care event still saves and the photo shows a retry affordance. Pretending otherwise would manufacture exactly the confident lie the retry queue exists to prevent.
+
+**What you look at when a volunteer says "it didn't save" is not an error log.** The likeliest truth is a write sitting in IndexedDB in somebody's pocket, where nothing failed anywhere visible. So every mutation logs its idempotency key, actor, org and route as structured JSON to stdout, and the question "did the server ever see key X" is answerable by grep over SSH. Sentry covers browser and server exceptions with volunteer names and mobile numbers scrubbed before send — ADR 0004 makes a phone number load-bearing and it must not leak into a third-party payload. GlitchTip on the same VPS is the exit if volume or scrubbing becomes uncomfortable; the SDKs are compatible, so it is a DSN change.
+
+**CI runs on the OMV8 box at home, never on the VPS.** The runner executes `verify` and builds the image; the VPS only pulls. A dependency install, a Docker build and a Postgres-backed suite are real contention, and evening shift is exactly when code gets pushed. The husky pre-commit stays for formatting and a pre-push runs `verify`, because CI is the backstop and the local loop is the loop.
+
+**The interface is built for gloves and sunlight, which no library default accounts for.** Tailwind with shadcn/ui — components copied in, so they are ours to change. Three properties live in the design tokens rather than in per-component memory: a 48px minimum touch target, contrast chosen for direct sun rather than a monitor, and no affordance that requires hover, since the Board is a touch kiosk and desktop admin is the only place a pointer exists.
+
+**Versions are pinned and already drifting.** The local compose file declares `postgres:17-alpine` while the container actually running is `postgres:18-alpine3.24` — the exact mismatch this pin exists to prevent, present before the first line of application code. Postgres 18 everywhere, Node 24 LTS pinned by digest, npm, a single package with `src/db`, `src/shared`, `src/routes` and `src/server`. No workspaces: client and server are one build, so a shared folder does everything a shared package would without a second `tsconfig`.
+
+## What would make this wrong
+
+**TanStack Start is at Release Candidate, not 1.0.** The tripwire is an RC-stage defect blocking a shift-critical path — there is already an open one where `ssr: false` routes still bundle components into the server output. The exit is React Router 7, which shares Vite, the data model and most of this decision; the API layer, the database, the jobs and the tests are untouched by that swap, which is what makes the risk affordable.
+
+**Drizzle is the youngest of the three data-access options considered**, which cuts directly against this project's instruction to prefer an unfashionable stack with a decade of answers over a clever one with none. It was chosen because migrations are plain `.sql` files — readable at 2am during the restore ADR 0006 requires rehearsing — and because transaction control for `SET LOCAL` is clean. Kysely is the fallback and the port would be mechanical.
+
+**The real risk is none of the above.** Two prior attempts died to unresolved conflictedness rather than to any technology. Unease deferred is attempt number four, so unease is to be raised when it is felt, against these recorded reasons.
