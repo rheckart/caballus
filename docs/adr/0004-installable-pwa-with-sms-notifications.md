@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: accepted, notification channel superseded by 0009
 ---
 
 # The client is an installable PWA, and notifications go out over SMS
+
+> **Superseded in part by ADR 0009.** V1 sends no SMS; email carries everything and the rescue keeps its Facebook group for urgent broadcast. The platform decision below is unaffected — its own tripwire fires only as far as reopening the *notification* question, and with v1 doing no push at all, every argument here for the PWA still holds. Read the SMS specifics as the costed plan for when the channel returns.
 
 Volunteers open **one responsive web app** in whatever browser they already have. It is installable to the home screen, but installing is optional and buys only an icon and a cached shell — never functionality. Messages that must reach people reach them by **SMS**, not push.
 

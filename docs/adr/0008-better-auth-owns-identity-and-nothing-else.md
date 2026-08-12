@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: accepted, credential superseded by 0009
 ---
 
 # Better Auth owns identity, and nothing else
+
+> **Superseded in part by ADR 0009.** The credential is now an email one-time code, not an SMS one, and v1 sends no SMS at all. Everything that follows about the provider, org scoping, the Board's device token, sessions, revocation and support access still stands — read the SMS specifics below as history, including the two-sender arrangement, the STOP recovery path and the carrier-mandated consent capture, all of which ADR 0009 discharges.
 
 Authentication is a self-hosted Better Auth running against the same Postgres as the application, owning exactly three tables: `user`, `session` and `verification`. Volunteers sign in with an SMS one-time code and stay signed in. Organisation membership, roles, domain scopes and shift-level authority are ours, in our tables, where row-level security can reach them.
 

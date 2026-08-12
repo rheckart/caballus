@@ -9,11 +9,11 @@ Terms are added only once settled with the rescue. The barn's own words win over
 ### People
 
 **Volunteer**:
-A person who works at the rescue. Created by the Volunteer Coordinator from a name and a mobile number, and rosterable from that moment — before they have logged in, and possibly without ever doing so. Shifts, ticks and observations reference the Volunteer. The record outlives their leaving, because the work they did still happened.
+A person who works at the rescue. Created by the Volunteer Coordinator from a name and an email address, and rosterable from that moment — before they have logged in, and possibly without ever doing so. Shifts, ticks and observations reference the Volunteer. The record outlives their leaving, because the work they did still happened.
 _Avoid_: user, member, helper, staff
 
 **Account**:
-A Volunteer's means of signing in, claimed by verifying a code sent to their mobile number. A Volunteer may have none — a minor, or the second person on a shared number — and may have theirs revoked. Nothing in the care record ever references an Account.
+A Volunteer's means of signing in, claimed by verifying a code sent to their email address. A Volunteer may have none — a minor, or someone who never onboards — and may have theirs revoked. Nothing in the care record ever references an Account.
 _Avoid_: login, user account, profile, credentials
 
 ### Shifts
