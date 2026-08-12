@@ -16,6 +16,34 @@ _Avoid_: user, member, helper, staff
 A Volunteer's means of signing in, claimed by verifying a code sent to their email address. A Volunteer may have none — a minor, or someone who never onboards — and may have theirs revoked. Nothing in the care record ever references an Account.
 _Avoid_: login, user account, profile, credentials
 
+### Roles and permissions
+
+**Role**:
+A named position in the rescue, held by a Volunteer and carrying Domain Scopes — President, Board Member, Head of Horse Welfare, Head of Maintenance, Volunteer Coordinator, Treasurer, Event Coordinator. A Volunteer holds any number, including none. Roles attach to the Volunteer and never to the Account, because a report routed to a Head must reach them whether or not they have ever signed in. Feed Shift Lead is *not* a Role — see Shift Authority.
+_Avoid_: permission, group, title, position
+
+**Domain Scope**:
+An area of the rescue's work that a Role grants authority over — `horse_care`, `maintenance`, `roster`, `supplies`, `grants`, and the dormant `financial` and `events`. Holding one means you may act in it; there is no read-only half. It is what a report is addressed to, resolved to its current holders at delivery rather than to a name and a number. Always said in full: *Scope* alone means which horses a piece of work applies to, which is the barn's sense and keeps the word.
+_Avoid_: scope (unqualified), permission, area, department
+
+**Shift Authority**:
+Final say over one Shift, held by whoever is its Lead, Co-Lead or Acting Lead — setting the start time, assigning checklist items, dropping Discretionary Work, curating Shift Notes, escalating Observations and closing the Shift. It is authority to **deviate from a care instruction and be accountable for it**, not to rewrite one: changing a Feed Schedule is horse_care work and creates a version. It is held over a particular Shift and expires when that Shift closes; nobody holds it between Shifts.
+_Avoid_: lead permission, shift admin, supervisor rights
+
+**Acting Lead**:
+A rostered volunteer who has claimed Shift Authority on a Shift that has no Lead or Co-Lead. Claimed explicitly, never derived — the app suggests who (Medication Authority first, then tenure) and any rostered volunteer may take it. Carries the full authority set, stays distinct from Lead in the record, and confers no Medication Authority.
+_Avoid_: deputy, stand-in, temporary lead
+
+### Reports
+
+**Observation**:
+Something a volunteer noticed during a Shift and recorded on it — a lame horse, a leaning fence post, a bucket nearly empty. Recorded by anyone rostered, needing no Domain Scope, because a volunteer should never have to know who to tell. It goes no further until it is Escalated.
+_Avoid_: report, issue, note, ticket
+
+**Escalation**:
+The Lead's act of sending an Observation upward, addressed to a Domain Scope and resolved to its holders. The Lead is the rescue's single point of upward communication, so this is the only path from a Shift to a Head — and an Observation never escalated is invisible above the Shift, which is a condition the app must surface rather than let settle.
+_Avoid_: routing, forwarding, referral, hand-off
+
 ### Shifts
 
 **Shift Pattern**:
@@ -74,6 +102,10 @@ _Avoid_: mandatory tasks, must-dos, minimum service
 Work a Lead may drop when short: grooming, mucking paddocks and pasture, sweeping, baths. Droppable does not mean unimportant — each carries a tolerance for how long it may go undone, counted in consecutive Shifts skipped, after which it stops being discretionary.
 _Avoid_: optional tasks, nice-to-haves, low priority
 
+**Shift Notes**:
+What a Shift is handed on with — curated by whoever holds Shift Authority, not written freely by everyone on it. Distinct from an Observation, which is a thing seen and recorded by anyone; Shift Notes are what the Lead decides the next Shift needs to know.
+_Avoid_: handover, comments, log, remarks
+
 ### Places
 
 **Space**:
@@ -117,7 +149,7 @@ How a Product reaches the horse — in feed, orally by syringe or paste, topical
 _Avoid_: method, delivery, administration
 
 **Medication Authority**:
-Permission to prepare and administer medication, held by a Feed Shift Lead or Co-Lead. A Shift needs someone holding it only when that Shift's work actually includes medication — which is why Lunch, being grain and water, runs legally with one non-Lead. Preparing food carries no such requirement, despite the feed room sign saying otherwise.
+Permission to prepare and administer medication — a qualification granted to a **Volunteer** under `horse_care`, not something conferred by leading a Shift. Someone may medicate on a Shift if they are rostered on it and hold the qualification; that the rescue grants it to Leads and Co-Leads is its policy for handing it out, not the definition. A Shift needs someone holding it only when that Shift's work actually includes medication — which is why Lunch, being grain and water, runs legally with one non-Lead. Preparing food carries no such requirement, despite the feed room sign saying otherwise.
 _Avoid_: lead permission, med rights
 
 ### The app
