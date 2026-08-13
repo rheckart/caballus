@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: accepted, one carve-out in 0011
 ---
 
 # Every write carries a client-minted idempotency key
+
+> **One carve-out, in ADR 0011.** Cover and Drop are online-only and never queue. The boundary that ADR draws: **work that happened queues; a promise about work that has not happened yet does not** — an Unsent commitment means two volunteers both believe they have Thursday covered. Everything below still governs every other write, and a second carve-out without an equally sharp argument is this rule dissolving.
 
 Every mutating request generates an identifier **on the phone**, before the request is sent, and carries it to the server. The server records that identifier with the effect and treats a repeat as success rather than as a new event. This is a rule of the data layer and applies to every endpoint, not a convention applied where it seems useful.
 

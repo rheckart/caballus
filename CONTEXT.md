@@ -9,8 +9,12 @@ Terms are added only once settled with the rescue. The barn's own words win over
 ### People
 
 **Volunteer**:
-A person who works at the rescue. Created by the Volunteer Coordinator from a name and an email address, and rosterable from that moment — before they have logged in, and possibly without ever doing so. Shifts, ticks and observations reference the Volunteer. The record outlives their leaving, because the work they did still happened.
+A person who works at the rescue. Created by the Volunteer Coordinator from a name and an email address, and rosterable once they have an Orientation — before they have logged in, and possibly without ever doing so. Shifts, ticks and observations reference the Volunteer. The record outlives their leaving, because the work they did still happened.
 _Avoid_: user, member, helper, staff
+
+**Orientation**:
+The date a Volunteer was oriented, and who recorded it. It is what makes a Volunteer rosterable at all: without one they can be created, hold an Account, hold Roles and read everything, but nobody may put them on a Shift and they may not Cover one. Never lapses and never revoked — leaving the rescue is the act that exists for that. Created-and-not-yet-oriented is a real state and the Coordinator's to-do list.
+_Avoid_: onboarding, training, induction, sign-off
 
 **Account**:
 A Volunteer's means of signing in, claimed by verifying a code sent to their email address. A Volunteer may have none — a minor, or someone who never onboards — and may have theirs revoked. Nothing in the care record ever references an Account.
@@ -79,19 +83,31 @@ The set of volunteers normally expected on a Shift Pattern, assigned by the Volu
 _Avoid_: rota, schedule, the regulars
 
 **Sign-up**:
-Volunteers claiming a place on a Shift themselves, rather than being assigned to it. Used for Pop-ups and for Shifts that are short.
+The Staffing Mode in which volunteers claim a place on a Shift themselves rather than being assigned to it. Used for Pop-ups and for Shifts that are short. The act of claiming is a Cover.
 _Avoid_: registration, booking, volunteering
+
+**Cover** _(provisional — confirm the barn's word)_:
+A volunteer taking a place on a Shift they were not rostered on. It lands on the roster immediately, as a volunteer and never as a Lead, marked as having arrived by Cover rather than from the Standing Roster; there is no approval step. Open to anyone with an Account and an Orientation, and never refused for what the volunteer lacks — a Shift needing medication still takes someone who cannot give it, and says what it still needs.
+_Avoid_: claim, sign up (the act), pick up, take
+
+**Drop**:
+A volunteer taking themselves off one dated Shift. Theirs to do, needing no Domain Scope, because saying you cannot come is not authority over the roster. It marks the roster row rather than removing it — rostered-and-dropped is not the same fact as never-rostered, nor as a no-show — carries an optional reason, and touches only that Shift and never the Shift Pattern behind it.
+_Avoid_: cancel, withdraw, unassign, call off
 
 **Target Headcount**:
 The number of people a Shift is meant to have. At least three for a Feed Shift; one for Lunch.
 _Avoid_: minimum staffing, required volunteers, capacity
 
 **Short**:
-Having fewer people than the Essential Work requires — not merely fewer than the Target Headcount. A Shift can be below headcount and still able to do everything that must be done.
+Having fewer people than the Essential Work requires — not merely fewer than the Target Headcount. A Shift can be below headcount and still able to do everything that must be done. Because that is a judgement about the people rostered rather than a count, Short is **declared** by someone holding Shift Authority or `roster`, recorded with actor and time, and cleared the same way; the app neither declares it nor withdraws it when a Staffing Gap closes.
 _Avoid_: understaffed, low manpower
 
+**Staffing Gap**:
+A shortfall the app can compute — Unstaffed, no Lead, below Target Headcount, or nobody rostered holding Medication Authority on a Shift whose feeding includes it. A fact, shown and never announced, and distinct from Short, which is a person's judgement. **Internal only: the phrase never appears on a screen** — screens show the concrete fact, *no Lead* or *nobody who can give medication*.
+_Avoid_: shortfall, understaffing, alert
+
 **Unstaffed**:
-A Shift with nobody on it. It is never cancelled or removed, because the horses still need feeding; it stays visible and escalates.
+A Shift with nobody on it. It is never cancelled or removed, because the horses still need feeding; it stays visible and escalates — concretely, into the evening digest that holders of `roster` receive, which is the only thing the app sends about staffing.
 _Avoid_: empty shift, cancelled shift
 
 **Essential Work**:
