@@ -9,15 +9,19 @@ Terms are added only once settled with the rescue. The barn's own words win over
 ### People
 
 **Volunteer**:
-A person who works at the rescue. Created by the Volunteer Coordinator from a name and an email address, and rosterable once they have an Orientation — before they have logged in, and possibly without ever doing so. Shifts, ticks and observations reference the Volunteer. The record outlives their leaving, because the work they did still happened.
+A person who works at the rescue. Created by the Volunteer Coordinator from a name and an email address, and rosterable once they have an Orientation — before they have logged in, and possibly without ever doing so. Carries the date they enrolled, because that is when the insurer's cover begins. Shifts, ticks, observations and Attendance reference the Volunteer. The record outlives their leaving, because the work they did still happened.
 _Avoid_: user, member, helper, staff
+
+**Consent**:
+The written permission of a parent or guardian for a Volunteer under 18 to work here. Maryland exempts unpaid minor volunteers from child-labour law only where it exists, so it is a hard gate on rostering anyone under 18, with no override — the same shape as an Orientation and for the same reason. Distinct from the liability release, which every Volunteer signs and which answers to a different question.
+_Avoid_: permission slip, parental approval, sign-off
 
 **Orientation**:
 The date a Volunteer was oriented, and who recorded it. It is what makes a Volunteer rosterable at all: without one they can be created, hold an Account, hold Roles and read everything, but nobody may put them on a Shift and they may not Cover one. Never lapses and never revoked — leaving the rescue is the act that exists for that. Created-and-not-yet-oriented is a real state and the Coordinator's to-do list.
 _Avoid_: onboarding, training, induction, sign-off
 
 **Account**:
-A Volunteer's means of signing in, claimed by verifying a code sent to their email address. A Volunteer may have none — a minor, or someone who never onboards — and may have theirs revoked. Nothing in the care record ever references an Account.
+A Volunteer's means of signing in, claimed by verifying a code sent to their email address. A Volunteer may have none — someone who never onboards, or a child too young for one — and may have theirs revoked. Student volunteers are not that case: they take an Orientation and hold an Account like anyone else. Nothing in the care record ever references an Account.
 _Avoid_: login, user account, profile, credentials
 
 ### Roles and permissions
@@ -121,6 +125,28 @@ _Avoid_: optional tasks, nice-to-haves, low priority
 **Shift Notes**:
 What a Shift is handed on with — curated by whoever holds Shift Authority, not written freely by everyone on it. Distinct from an Observation, which is a thing seen and recorded by anyone; Shift Notes are what the Lead decides the next Shift needs to know.
 _Avoid_: handover, comments, log, remarks
+
+### Attendance
+
+**Attendance** _(provisional — the barn says "sign in" and "sign out" and has no word for the record itself)_:
+One record of a Volunteer being at the rescue: an arrival, a departure, the Shift it belongs to if it belongs to one, and what they came to do if it does not. It is what replaces the sign-in sheet, and it is per-visit rather than per-Shift, because the sheet's bottom section already records people who are here on no Shift at all. Queues like any other record of work. Never inferred from a tick and never closed by the app.
+_Avoid_: check-in, timesheet, hours log, presence
+
+**Visit**:
+An Attendance with no Shift behind it — mowing, a repair, a welfare check by someone who came for that alone. Carries a description of the work in the volunteer's own words and a coarse category, which is the only thing about it that anyone totals.
+_Avoid_: drop-in, casual shift, ad-hoc work
+
+**Open**:
+An Attendance signed in and not yet signed out. A fact, never a guess: the app will not invent a departure time, so an Open Attendance stays open, is visible on the item it belongs to, and **blocks its Shift from closing** — the same treatment as Unsent work, for the same reason. Whoever holds Shift Authority may close it on the Volunteer's behalf, which is what the Lead already does with the paper.
+_Avoid_: dangling, unclosed, missing sign-out, pending
+
+**Supervising Adult**:
+Who was responsible for a Volunteer on a Shift, recorded separately from who was merely present with them. It matters for one reason: a student's service-learning hours may not be verified by their own parent, guardian or relative, and at this rescue the accompanying adult for an under-16 is usually exactly that person. Captured when the Shift closes, and carries a phone number a school can ring.
+_Avoid_: chaperone, responsible adult, mentor
+
+**Attestation** _(provisional)_:
+The Supervising Adult's confirmation that a student did the hours recorded, made per visit at Shift close rather than reconstructed at the end of a term. It is what a school's verification form is asking for, and the app refuses it from anyone related to the student.
+_Avoid_: sign-off, verification, approval, endorsement
 
 ### Places
 
