@@ -119,12 +119,38 @@ Work that happens however short a Shift is: feeding, water, medication, turning 
 _Avoid_: mandatory tasks, must-dos, minimum service
 
 **Discretionary Work**:
-Work a Lead may drop when short: grooming, mucking paddocks and pasture, sweeping, baths. Droppable does not mean unimportant — each carries a tolerance for how long it may go undone, counted in consecutive Shifts skipped, after which it stops being discretionary.
+Work a Lead may drop when short: grooming, mucking paddocks and pasture, sweeping, baths. Droppable does not mean unimportant — each carries a tolerance for how long it may go undone, counted in whatever unit its Task's period uses, days or Shifts. A skip is any outcome that is not Done, blanks included, so that leaving an Item unanswered never scores better than dropping it honestly. At the tolerance the Item shows as overdue and the Drop action is withdrawn: it may still go undone, but only as a Not done with a reason.
 _Avoid_: optional tasks, nice-to-haves, low priority
 
 **Shift Notes**:
 What a Shift is handed on with — curated by whoever holds Shift Authority, not written freely by everyone on it. Distinct from an Observation, which is a thing seen and recorded by anyone; Shift Notes are what the Lead decides the next Shift needs to know.
 _Avoid_: handover, comments, log, remarks
+
+### Checklists
+
+**Task**:
+A kind of work the rescue does — feeding, watering, mucking, grooming, checking the salt blocks. Catalogue data the rescue edits rather than a list in the app, because the whiteboard's list was already longer than the brief's. A Task fixes what the app acts on: what kind of thing it applies to, whether it is Essential or Discretionary, whether it is wanted once a Shift or once a day, whether it needs Medication Authority, what Condition it waits for, its tolerance, and what it says to do. The rescue chooses among those; it does not add to them.
+_Avoid_: chore, job, activity, checklist type
+
+**Item**:
+One Task applied to one subject — Feed × Apollo, Water × Field D, Sweep × the rescue. It is the thing a volunteer ticks, and the reason completion was never a single box on a Shift. Quantities, exceptions and sub-procedures are what an Item *says*, not more Items: hay in Field C is one Item whose instruction carries every receptacle's target. An Item ends Done, Dropped, Not done, or blank, and blank is always shown as blank.
+_Avoid_: task (for the instance), checkbox, step, todo
+
+**Task Assignment**:
+Which Shift Type normally does a Task for a particular horse or Space — the board's `GROOM` column and the AM-takes-stalls-6-to-10 split are one thing, not two. Versioned, and three-valued: assigned, deliberately assigned to none, or **not yet decided**, which is a real state and never to be read as no work. A default and not a division — a per-day Item belongs to the day, and the other Shift may still do it.
+_Avoid_: rota, item assignment, ownership
+
+**Condition**:
+A named weather predicate an Item may wait on, evaluated once for each Shift against that Shift's own hours and then fixed. An alternate plan — the hay regime for a day the horses stay in — is not a mode the app switches to; it is a second set of Items gated the other way, and only one set is ever made. The plan does not change under a volunteer mid-Shift: weather that turns is a Lead deviating, recorded as such.
+_Avoid_: weather rule, trigger, mode, override
+
+**Prep**:
+Work done on one Shift for a later one — the soak covered at morning feed for Dawson's lunch, feed cans filled, bedding carts loaded. It names the Shift Type it is owed to rather than the Item it feeds, because some Prep is owed to a whole Shift and some crosses midnight. The Shift it is owed to says on opening whether it happened, and a Prep still unmet when that Shift closes is recorded as a Not done rather than sent to anyone.
+_Avoid_: prepare-ahead, handoff task, dependency
+
+**New**:
+The marker on a record changed recently enough that someone should notice — derived from version history rather than set by hand, and ageing out on its own, which is what the whiteboard's blue underline never did. The same for everyone, so that a Lead saying *there is a new instruction on Storm* means something; *what changed since I was last here* is a filter over it and not a second answer.
+_Avoid_: unread, updated flag, badge
 
 ### Attendance
 
