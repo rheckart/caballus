@@ -45,12 +45,20 @@ _Avoid_: deputy, stand-in, temporary lead
 ### Reports
 
 **Observation**:
-Something a volunteer noticed during a Shift and recorded on it — a lame horse, a leaning fence post, a bucket nearly empty. Recorded by anyone rostered, needing no Domain Scope, because a volunteer should never have to know who to tell. It goes no further until it is Escalated.
+Something a volunteer noticed and recorded on the Attendance they were working under — a lame horse, a leaning fence post, a bucket nearly empty, a record that no longer matches what the rescue actually does. Free text, with an optional subject taken from wherever it was recorded rather than chosen from a list: a Horse, a Space, a Product, or the record that is wrong. Recorded by anyone present and needing no Domain Scope, because a volunteer should never have to know who to tell; Shift Authority may record one on a rostered volunteer's behalf, naming them as the observer. Never edited or deleted once it reaches the server, and it goes no further until it is given a Disposition.
 _Avoid_: report, issue, note, ticket
 
 **Escalation**:
-The Lead's act of sending an Observation upward, addressed to a Domain Scope and resolved to its holders. The Lead is the rescue's single point of upward communication, so this is the only path from a Shift to a Head — and an Observation never escalated is invisible above the Shift, which is a condition the app must surface rather than let settle.
+An Observation sent upward — the routed report itself, and a record of its own rather than a mark on the Observation. Carries the escalator's framing, is addressed to exactly one Domain Scope and resolved to its holders, and stays Open until a holder of that Scope closes it with a note. Made by whoever holds Shift Authority, or by a Scope holder adopting an Observation into a Scope they hold. One Observation may be escalated twice, because a report addressed to two audiences is a report neither owns. It carries an appended thread anyone may write to, which outlives the close and is how a thing that was not really fixed gets said.
 _Avoid_: routing, forwarding, referral, hand-off
+
+**Disposition**:
+What became of an Observation, and a thing that is always decided rather than allowed to settle: Escalated, curated into Shift Notes, or noted with no action. A Shift will not close while one of its Observations has none — the same treatment as Unsent work — and every Disposition is shown to the whole Shift at close, which is where the loop back to the person who noticed actually closes. On a Visit there is no Lead, and the volunteer dispositions their own at sign-out.
+_Avoid_: triage, outcome, resolution, verdict
+
+**Contacts** _(provisional — the board just gives names and numbers to text)_:
+Who to phone: a name, a number, the hours it is answered, and what it is for — the barn's posted numbers, the equine clinic's office and emergency lines, the property owner. Read-only, readable by everyone because five posted escalation numbers are not the same artifact as sixty volunteers' mobile numbers, and maintained under `roster`. It sits outside routing entirely: the app never resolves an Escalation to it, and the hours are there to be read by a person at 2am rather than acted on by the app.
+_Avoid_: directory, phone book, escalation list, on-call
 
 ### Shifts
 
@@ -123,7 +131,7 @@ Work a Lead may drop when short: grooming, mucking paddocks and pasture, sweepin
 _Avoid_: optional tasks, nice-to-haves, low priority
 
 **Shift Notes**:
-What a Shift is handed on with — curated by whoever holds Shift Authority, not written freely by everyone on it. Distinct from an Observation, which is a thing seen and recorded by anyone; Shift Notes are what the Lead decides the next Shift needs to know.
+What a Shift is handed on with — curated by whoever holds Shift Authority, not written freely by everyone on it. Distinct from an Observation, which is a thing seen and recorded by anyone; Shift Notes are what the Lead decides the next Shift needs to know. Curating an Observation into them is one of its three Dispositions, and the one that says *this is tomorrow's problem, not a Head's*.
 _Avoid_: handover, comments, log, remarks
 
 ### Checklists
