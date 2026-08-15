@@ -9,15 +9,31 @@ Terms are added only once settled with the rescue. The barn's own words win over
 ### People
 
 **Volunteer**:
-A person who works at the rescue. Created by the Volunteer Coordinator from a name and an email address, and rosterable once they have an Orientation — before they have logged in, and possibly without ever doing so. Carries the date they enrolled, because that is when the insurer's cover begins. Shifts, ticks, observations and Attendance reference the Volunteer. The record outlives their leaving, because the work they did still happened.
+A person who works at the rescue. Created by the Volunteer Coordinator from a name and an email address, and rosterable once they hold an Orientation, a Release and — if under 18 — a Consent, before they have logged in and possibly without ever doing so. Carries the date they enrolled, because that is when the insurer's cover begins, and a date of birth, because the rescue checks photo ID and celebrates birthdays. Shifts, ticks, observations and Attendance reference the Volunteer. The record outlives their leaving, because the work they did still happened.
 _Avoid_: user, member, helper, staff
 
+**Candidate**:
+A Volunteer who has not yet been oriented — someone the rescue is still deciding about. It is the Coordinator's to-do list, and it is a state and not a separate kind of person: a Candidate holds a Volunteer record, may hold an Account and Roles, and reads everything. The word stops at Orientation. A volunteer of ten years whose Release has been obsoleted is not a Candidate; they are a Volunteer with a gap.
+_Avoid_: applicant, prospect, trainee, new volunteer
+
+**Date of Birth**:
+Verified against photo ID at intake for anyone who has one, and provided by the parent for a minor who does not — so the record carries **how it was established** as well as the date. The rescue requires the ID; the app never stores it, in any form. Its day and month are readable by everyone, because that is what a birthday is; the year, and the age, sit behind `roster` with contact details. Under-18 is shown as a state rather than as a number: a Lead needs to know a minor is a minor.
+_Avoid_: DOB, age, birthday
+
 **Consent**:
-The written permission of a parent or guardian for a Volunteer under 18 to work here. Maryland exempts unpaid minor volunteers from child-labour law only where it exists, so it is a hard gate on rostering anyone under 18, with no override — the same shape as an Orientation and for the same reason. Distinct from the liability release, which every Volunteer signs and which answers to a different question.
+The written permission of a parent or guardian for a Volunteer under 18 to work here. Maryland exempts unpaid minor volunteers from child-labour law only where it exists, so it is a hard gate on rostering anyone under 18, with no override — the same shape as an Orientation and for the same reason. It becomes historical on the volunteer's eighteenth birthday and is kept, because it was true. Distinct from the Release, which every Volunteer signs and which answers a different question.
 _Avoid_: permission slip, parental approval, sign-off
 
+**Release**:
+A Volunteer's signature against one Release Version, with the date it was given and who recorded it. The signed paper is the original and stays in the rescue's filing cabinet; this is the record that it exists. It is a hard gate on rostering with no override, at the same two doors as an Orientation and never at sign-in — the app will not refuse to record that someone was present. Unlike an Orientation it can go stale: a new Version may obsolete it, an eighteenth birthday obsoletes a parent's signature, and it may be revoked in writing. Never self-recorded, because it is a statement about a piece of paper only the recorder can see.
+_Avoid_: waiver, liability form, hold harmless, sign-off
+
+**Release Version**:
+One issue of the release text — a valid-from date, the blank document itself, and whether publishing it obsoletes the signatures that came before. Versions are immutable and the current one is the latest, so *which text did she actually sign* stays answerable years later. The rescue's current version is marked *Updated 2020*.
+_Avoid_: template, revision, form version
+
 **Orientation**:
-The date a Volunteer was oriented, and who recorded it. It is what makes a Volunteer rosterable at all: without one they can be created, hold an Account, hold Roles and read everything, but nobody may put them on a Shift and they may not Cover one. Never lapses and never revoked — leaving the rescue is the act that exists for that. Created-and-not-yet-oriented is a real state and the Coordinator's to-do list.
+The date a Volunteer was oriented, and who recorded it. It is the first of the three things that make a Volunteer rosterable, and the one the barn treats as the moment someone joins: the ID is sighted and the Release is signed at the same desk, in the same minute. Never lapses and never revoked — leaving the rescue is the act that exists for that. Not yet oriented is a real state, and its name is Candidate.
 _Avoid_: onboarding, training, induction, sign-off
 
 **Account**:
