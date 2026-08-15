@@ -149,7 +149,7 @@ Which Shift Type normally does a Task for a particular horse or Space — the bo
 _Avoid_: rota, item assignment, ownership
 
 **Condition**:
-A named weather predicate an Item may wait on, evaluated once for each Shift against that Shift's own hours and then fixed. An alternate plan — the hay regime for a day the horses stay in — is not a mode the app switches to; it is a second set of Items gated the other way, and only one set is ever made. The plan does not change under a volunteer mid-Shift: weather that turns is a Lead deviating, recorded as such.
+A named weather predicate an Item may wait on — a predicate and a **source for its number**, which is a fixed value for the rescue-wide ones and the horse's own Threshold for the per-horse ones, so *Staying In* is one answer for the barn and *Sheet Weather* is twelve. Evaluated at materialization and then fixed, over a window the Condition itself declares: day-scoped ones once for the day and shared by every Shift in it, shift-scoped ones from a Shift's start until the next Shift begins, because a blanket put on at evening feed is worn all night. An alternate plan — the hay regime for a day the horses stay in — is not a mode the app switches to; it is a second set of Items gated the other way, and only one set is ever made. The plan does not change under a volunteer mid-Shift: weather that turns is a Lead deviating, recorded as such.
 _Avoid_: weather rule, trigger, mode, override
 
 **Prep**:
@@ -159,6 +159,16 @@ _Avoid_: prepare-ahead, handoff task, dependency
 **New**:
 The marker on a record changed recently enough that someone should notice — derived from version history rather than set by hand, and ageing out on its own, which is what the whiteboard's blue underline never did. The same for everyone, so that a Lead saying *there is a new instruction on Storm* means something; *what changed since I was last here* is a filter over it and not a second answer.
 _Avoid_: unread, updated flag, badge
+
+### Weather
+
+**Threshold**:
+A temperature at which a Condition turns, held as a rescue-wide default with named per-horse overrides — the board's three named horses against its *rest of horses*. Carries the **metric** it is measured in and the provider it was calibrated against, because cold is written in air temperature and heat in real feel, and the two are not the same number. Versioned, edited under `horse_care`, and three-valued per horse like a Task Assignment: overridden, deliberately the same as the default, or **not yet decided** — which is an unanswered question rather than agreement with the default, and which still gets the horse its sheet.
+_Avoid_: limit, cutoff, trigger point, setting
+
+**Reading**:
+The weather as it stood when a Shift's list was fixed, kept on the Shift — the resolved Conditions, the hours the evaluation actually read, the provider and metric, the time it was fetched, and whether it was stale. Kept whole rather than as the decision it produced, because *why was this horse blanketed* is answered by the conditions as read at the time and not by a fresh forecast tomorrow. It is what the Board shows and what each weather-driven Item cites, so a tick never looks arbitrary later.
+_Avoid_: snapshot, forecast, weather data, conditions
 
 ### Attendance
 
