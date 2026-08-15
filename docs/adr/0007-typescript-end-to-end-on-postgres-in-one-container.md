@@ -4,6 +4,8 @@ status: accepted
 
 # The stack is TypeScript end to end, on Postgres, in one container
 
+> **Amended by ADR 0016, on how the three unenforced rules below are enforced.** Two of them are not lint rules at all: the idempotency key and ADR 0010's authorization declaration are required arguments to route registration, because the type checker runs on every keystroke and lint does not. The day-boundary ban is **repo-wide** rather than client-side, since selective SSR means no directory means "the client". Everything below stands; read "is a lint error" as "is mechanically enforced, at the tightest loop available".
+
 One TanStack Start application in TypeScript, serving both the interface and its own API, talking to Postgres 18 through Drizzle, deployed as a single Docker container to the VPS of ADR 0006. Server-rendered by default; the volunteer work surface opts out and runs client-side under a service-worker-cached shell.
 
 This is the third attempt at Caballus. The first two — Django with a Next.js frontend, and .NET 10 with Aspire and Blazor WASM — both stopped, and neither stopped on a technical wall. They stopped because the platform question was unresolved and the domain was not yet understood. That is the risk this decision is really guarding against, and the reason it is written down at this length: the stack is now constrained by six prior ADRs rather than by taste, and a taste-driven reversal has to argue with them.
