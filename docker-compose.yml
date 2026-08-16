@@ -1,0 +1,27 @@
+# Postgres for development and for the integration tests. ADR 0007 pins
+# Postgres 18 everywhere and notes that the previous compose file said 17 while
+# the running container was 18 — the exact drift the pin exists to prevent.
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: caballus
+      POSTGRES_PASSWORD: caballus
+      POSTGRES_DB: caballus
+    ports:
+      # 5433 on the host: the development box already runs a Postgres on 5432
+      # and this must not fight it for the port.
+      - '5433:5432'
+    volumes:
+      # A single mount at /var/lib/postgresql, which is what the 18 image wants:
+      # it puts the cluster in a version-named subdirectory so that a later
+      # `pg_upgrade --link` does not straddle a mount point.
+      - caballus-postgres:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U caballus']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  caballus-postgres:

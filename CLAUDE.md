@@ -4,13 +4,38 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-Greenfield. As of the first commit this repo contains only `brainstorming_document.md` — no source, no stack, no dependencies, no CI. Nothing below describes existing code; it describes the domain the code will model.
+The skeleton exists; the domain does not. There is one table (`orgs`), one API endpoint (`GET /api/v1/day`) and one page. Everything in "Domain model" below is still a description of what the code will model, not of what it does — the care record, shifts, checklists and reports land ticket by ticket.
 
-**No stack has been chosen.** Do not assume one. If a task requires picking a framework, database, or language, raise it as a decision rather than silently scaffolding.
+The stack is decided and is not open by default: TypeScript end to end, TanStack Start on Postgres 18 through Drizzle, deployed as one container (ADR 0007). Read `docs/adr/` before designing anything; the ADRs are decisions, not notes.
+
+**The guardrails are armed, and they are not negotiable.** ADR 0016 puts six invariants in `eslint.config.ts` and two more in the types of `src/server/api/route.ts`. A `PostToolUse` hook runs the six on every file write and blocks on a violation. There are no `eslint-disable` comments — `noInlineConfig` is on — and the only way to exempt code is a path override in `eslint.config.ts` with a reason. If a rule fires, the fix is the alternative its message names, never a way around it.
 
 ## Commands
 
-None yet. When a stack is chosen, replace this section with the real build / test / lint / run commands, including how to run a single test.
+```
+npm run dev                  # the application on :3000
+npm run verify               # typecheck, lint, fixtures, tests, migration check — the one gate
+npm test                     # vitest
+npx vitest run src/shared/scrub.test.ts   # a single test file
+npx vitest run -t 'day boundary'          # a single test by name
+npm run lint                 # eslint over the repo
+npm run lint:fixtures        # asserts the ADR 0016 rules still fire, with exact counts
+npm run build && npm start   # the production build, served on :3000
+npm run db:generate          # a migration from a schema change
+npm run db:migrate           # apply migrations (never at boot — ADR 0007)
+npm run db:check             # migration consistency
+```
+
+The database tests need Postgres and skip themselves without it:
+
+```
+docker compose up -d
+docker compose exec -T postgres psql -U caballus -d caballus \
+  -v app_password="caballus" -f - < scripts/provision-database.sql
+cp .env.example .env && npm run db:migrate
+```
+
+Postgres runs on **5433** on the host, because this box already has one on 5432. The application connects as `caballus_app`, a non-superuser, so that the row-level security policies apply to it; migrations connect as the owner through `ADMIN_DATABASE_URL`.
 
 ## Product
 

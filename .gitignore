@@ -5,6 +5,19 @@
 # volunteers' names and personal phone numbers. Kept on disk, out of git.
 fhhr-whiteboard/
 
+# Build output and dependencies
+node_modules/
+.output/
+.nitro/
+.tanstack/
+dist/
+
+# Local configuration. Secrets never enter the repository; .env.example is the
+# list of what a machine needs.
+.env
+.env.*
+!.env.example
+
 # OS and editor noise
 .DS_Store
 Thumbs.db
