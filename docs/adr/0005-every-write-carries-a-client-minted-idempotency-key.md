@@ -1,8 +1,11 @@
 ---
 status: accepted, one carve-out in 0011
+extended-by: 0020 (what a repeat is answered with, what a changed request under the same key is answered with, and how long a key is kept)
 ---
 
 # Every write carries a client-minted idempotency key
+
+> **Extended by ADR 0020, which builds the recording half (#24).** This ADR says the server records the identifier with the effect; it does not say what a *different* request under the same key is answered with, or how long a key is remembered. ADR 0020 settles both — a 409, and thirty days — and puts the record in the `mutation` wrapper's own transaction so no handler can forget it.
 
 > **One carve-out, in ADR 0011.** Cover and Drop are online-only and never queue. The boundary that ADR draws: **work that happened queues; a promise about work that has not happened yet does not** — an Unsent commitment means two volunteers both believe they have Thursday covered. Everything below still governs every other write, and a second carve-out without an equally sharp argument is this rule dissolving.
 

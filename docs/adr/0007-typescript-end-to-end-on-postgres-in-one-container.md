@@ -4,6 +4,8 @@ status: accepted
 
 # The stack is TypeScript end to end, on Postgres, in one container
 
+> **Amended by ADR 0020, on the index that enforces idempotency keys (#24).** "A partial unique index" below is the shape it takes when the key lives on the table the write created a row in, and this ADR gives the reason that cannot work — ticking an item and closing a shift create no row. The keys live in a table of their own and the constraint on it is total. The mandatory end-to-end path below is built and green.
+>
 > **Amended by ADR 0016, on how the three unenforced rules below are enforced.** Two of them are not lint rules at all: the idempotency key and ADR 0010's authorization declaration are required arguments to route registration, because the type checker runs on every keystroke and lint does not. The day-boundary ban is **repo-wide** rather than client-side, since selective SSR means no directory means "the client". Everything below stands; read "is a lint error" as "is mechanically enforced, at the tightest loop available".
 
 One TanStack Start application in TypeScript, serving both the interface and its own API, talking to Postgres 18 through Drizzle, deployed as a single Docker container to the VPS of ADR 0006. Server-rendered by default; the volunteer work surface opts out and runs client-side under a service-worker-cached shell.

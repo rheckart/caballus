@@ -1,6 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 
+import { memoryIdempotency } from '../../db/idempotency.memory'
 import { requestContext } from '../request-context'
 import { domainScope, floor, readEverything } from './authorization'
 import { API_BASE, API_ROOT } from '../../shared/api-client'
@@ -9,9 +10,21 @@ import { createApi, json, queueable } from './route'
 /** The one write these tests register, wherever they register it. */
 const observed = queueable({ note: z.string() })
 
-/** An api with somebody signed in, until accounts exist (ADR 0006). */
+const KEY = '019267c0-6f7e-7a3d-9c2f-2f9a1c7e5b10'
+
+/**
+ * An api with somebody signed in, until accounts exist (ADR 0006), and with
+ * the in-memory store behind it.
+ *
+ * That store proves nothing about dedupe — dedupe is a primary key in Postgres
+ * and ADR 0007 says a fake proves nothing about database behaviour, which is
+ * what `src/db/idempotency.test.ts` is for. What these tests are about is the
+ * wrapper's own decisions: which outcome gets which status, and what reaches
+ * the log.
+ */
 function apiWithVolunteer() {
   return createApi({
+    idempotency: memoryIdempotency(),
     context: (request) => ({
       ...requestContext(request),
       actor: { volunteerId: 'v_01J8', domainScopes: [] },
@@ -197,28 +210,127 @@ describe('mutation', () => {
       return json({ idempotencyKey: input.idempotencyKey }, 201)
     })
 
-    const key = '019267c0-6f7e-7a3d-9c2f-2f9a1c7e5b10'
     const response = await api.fetch(
-      request('POST', '/observations', { note: 'gate latch', idempotencyKey: key }),
+      request('POST', '/observations', { note: 'gate latch', idempotencyKey: KEY }),
     )
 
     expect(response.status).toBe(201)
     expect(seen).toEqual(['gate latch'])
-    await expect(response.json()).resolves.toEqual({ idempotencyKey: key })
+    await expect(response.json()).resolves.toEqual({ idempotencyKey: KEY })
   })
 
   it('refuses a write from nobody, because a tick is a claim by an actor', async () => {
-    const api = createApi()
+    const api = createApi({ idempotency: memoryIdempotency() })
     api.mutation('/observations', floor('record-an-observation'), observed, () => json({}, 201))
 
     const response = await api.fetch(
-      request('POST', '/observations', {
-        note: 'gate latch',
-        idempotencyKey: '019267c0-6f7e-7a3d-9c2f-2f9a1c7e5b10',
-      }),
+      request('POST', '/observations', { note: 'gate latch', idempotencyKey: KEY }),
     )
 
     expect(response.status).toBe(401)
+  })
+})
+
+describe('a key the wrapper has already answered', () => {
+  /** An api with one write on it, and the handler's call count. */
+  function apiRecording(): { api: ReturnType<typeof apiWithVolunteer>; ran: string[] } {
+    const api = apiWithVolunteer()
+    const ran: string[] = []
+    api.mutation('/observations', floor('record-an-observation'), observed, (input) => {
+      ran.push(input.note)
+      return json({ recorded: ran.length }, 201)
+    })
+    return { api, ran }
+  }
+
+  it('runs the handler once and answers the retry with the first response', async () => {
+    const { api, ran } = apiRecording()
+    const write = () =>
+      api.fetch(request('POST', '/observations', { note: 'gate latch', idempotencyKey: KEY }))
+
+    const first = await write()
+    const retry = await write()
+
+    // The case ADR 0005 is written for: the response was lost on the way back,
+    // so the phone sent the same key again. It is success, not a new event.
+    expect(ran).toEqual(['gate latch'])
+    expect(retry.status).toBe(first.status)
+    await expect(retry.json()).resolves.toEqual({ recorded: 1 })
+  })
+
+  it('says on the log that it was a replay, and what it answered', async () => {
+    const { api } = apiRecording()
+    const write = () =>
+      api.fetch(request('POST', '/observations', { note: 'gate latch', idempotencyKey: KEY }))
+
+    await write()
+    const lines = await linesWhile(write)
+
+    // "Did the server see key X, and what did it answer" is one grep (ADR
+    // 0007): arrival, then outcome, both carrying the key.
+    expect(lines.map((line) => line.event)).toEqual(['mutation', 'mutation_answered'])
+    expect(lines[1]).toMatchObject({
+      level: 'info',
+      outcome: 'replayed',
+      status: 201,
+      idempotencyKey: KEY,
+      route: 'POST /observations',
+    })
+  })
+
+  it('refuses the same key carrying a different request', async () => {
+    const { api, ran } = apiRecording()
+
+    await api.fetch(request('POST', '/observations', { note: 'gate latch', idempotencyKey: KEY }))
+    const lines = await linesWhile(() =>
+      api.fetch(request('POST', '/observations', { note: 'gate open', idempotencyKey: KEY })),
+    )
+    const conflict = await api.fetch(
+      request('POST', '/observations', { note: 'gate open', idempotencyKey: KEY }),
+    )
+
+    // A client bug or a collision. The one answer it must not get is the first
+    // response, which would report success for a write nothing recorded.
+    expect(conflict.status).toBe(409)
+    await expect(conflict.json()).resolves.toEqual({ error: 'idempotency_key_reused' })
+    expect(ran).toEqual(['gate latch'])
+    expect(lines[1]).toMatchObject({ level: 'warn', outcome: 'key_reused', status: 409 })
+  })
+
+  it('replays an answer that had no body at all', async () => {
+    const api = apiWithVolunteer()
+    api.mutation('/observations', floor('record-an-observation'), observed, () => new Response(null, { status: 204 }))
+
+    const write = () =>
+      api.fetch(request('POST', '/observations', { note: 'gate latch', idempotencyKey: KEY }))
+
+    // 204 and its three siblings may not carry a body, and a response
+    // reconstructed from the empty string does — which is a TypeError on the
+    // first write that answers this way rather than on a later one.
+    expect((await write()).status).toBe(204)
+    expect((await write()).status).toBe(204)
+  })
+
+  it('leaves nothing behind when the handler throws', async () => {
+    const api = apiWithVolunteer()
+    let attempts = 0
+    api.mutation('/observations', floor('record-an-observation'), observed, () => {
+      attempts += 1
+      if (attempts === 1) throw new Error('the barn lost power')
+      return json({ recorded: true }, 201)
+    })
+
+    const write = () =>
+      api.fetch(request('POST', '/observations', { note: 'gate latch', idempotencyKey: KEY }))
+
+    expect((await write()).status).toBe(500)
+    const retry = await write()
+
+    // A key recorded for work that rolled back would turn a retry into a
+    // permanent silent failure — the write never happens and the phone is told
+    // it did.
+    expect(retry.status).toBe(201)
+    expect(attempts).toBe(2)
   })
 })
 

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-The skeleton exists; the domain does not. There is one table (`orgs`), one API endpoint (`GET /api/v1/day`) and one page. Everything in "Domain model" below is still a description of what the code will model, not of what it does — the care record, shifts, checklists and reports land ticket by ticket.
+The skeleton exists; the domain does not. There are two tables (`orgs`, and `idempotency_keys` which is bookkeeping rather than domain), one API endpoint (`GET /api/v1/day`) and one page. `mutation` dedupes — it opens the transaction, records the key inside it and hands the handler the scoped `db`, so a write's effect and its key commit together (ADR 0020). Everything in "Domain model" below is still a description of what the code will model, not of what it does — the care record, shifts, checklists and reports land ticket by ticket.
 
 The stack is decided and is not open by default: TypeScript end to end, TanStack Start on Postgres 18 through Drizzle, deployed as one container (ADR 0007). Read `docs/adr/` before designing anything; the ADRs are decisions, not notes.
 

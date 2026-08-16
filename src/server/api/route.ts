@@ -9,10 +9,17 @@
  * 2. Every queueable mutation carries an idempotency key. `mutation` takes a
  *    schema whose shape must contain one, so a keyless mutation does not
  *    compile (ADR 0005).
+ *
+ * The key is also *acted on* here rather than in handlers. `mutation` opens
+ * the transaction, records the key inside it and hands the handler the scoped
+ * handle — so a handler cannot opt out of dedupe and cannot forget it, which
+ * is what ADR 0016 means by refusing to enforce an invariant in prose.
  */
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
 
+import type { OrgScopedDatabase } from '../../db/for-org'
+import { postgresIdempotency, type Idempotency, type Outcome } from '../../db/idempotency'
 import {
   API_BASE,
   API_VERSION,
@@ -22,6 +29,7 @@ import {
 import { log, report } from '../observability'
 import { requestContext, type RequestContext } from '../request-context'
 import { authorize, describeAuthorization, type Authorization } from './authorization'
+import { fingerprint } from './fingerprint'
 
 /**
  * Reads only.
@@ -45,9 +53,20 @@ export interface HandlerContext {
 }
 
 export type Handler = (ctx: HandlerContext) => Response | Promise<Response>
+
+/**
+ * What a write gets that a read does not: the transaction its effect belongs
+ * in. It is the same one the idempotency key is recorded in, so a rollback
+ * takes both — which is the guarantee, and it is structural rather than
+ * remembered.
+ */
+export interface MutationContext extends HandlerContext {
+  readonly db: OrgScopedDatabase
+}
+
 export type MutationHandler<TInput> = (
   input: TInput,
-  ctx: HandlerContext,
+  ctx: MutationContext,
 ) => Response | Promise<Response>
 
 /**
@@ -149,6 +168,64 @@ async function boundedBody(request: Request): Promise<string | null> {
   return text + decoder.decode()
 }
 
+/**
+ * What the wrapper answers, and the second line it leaves behind.
+ *
+ * `mutation` has already logged that the key arrived. This says what the
+ * server did with it, so that ADR 0007's question — *did the server see key X,
+ * and what did it answer* — is one grep and not a reconstruction.
+ */
+function answer(
+  outcome: Outcome,
+  about: { route: string; key: string; requestId: string },
+): Response {
+  const line = { route: about.route, idempotencyKey: about.key, requestId: about.requestId }
+
+  switch (outcome.kind) {
+    case 'performed':
+      log('info', 'mutation_answered', {
+        ...line,
+        outcome: 'performed',
+        status: outcome.response.status,
+      })
+      return outcome.response
+
+    case 'replayed':
+      // Not a warning. A replay is the retry queue working exactly as ADR 0005
+      // intends, and a log that cries about it is a log nobody reads.
+      log('info', 'mutation_answered', {
+        ...line,
+        outcome: 'replayed',
+        status: outcome.response.status,
+        firstRecordedAt: outcome.recordedAt,
+      })
+      return outcome.response
+
+    case 'reused':
+      // One key, two different requests. Answering with the first response
+      // would report success for a write nothing recorded, so it is refused —
+      // and refused with a 409, which every client already reads as *stop
+      // retrying, this will not become true*.
+      log('warn', 'mutation_answered', {
+        ...line,
+        outcome: 'key_reused',
+        status: 409,
+        firstRoute: outcome.firstRoute,
+        firstRecordedAt: outcome.recordedAt,
+      })
+      return json({ error: 'idempotency_key_reused' }, 409)
+
+    case 'unfinished':
+      log('warn', 'mutation_answered', {
+        ...line,
+        outcome: 'key_unfinished',
+        status: 409,
+        firstRecordedAt: outcome.recordedAt,
+      })
+      return json({ error: 'idempotency_key_unfinished' }, 409)
+  }
+}
+
 export function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -163,10 +240,18 @@ export interface ApiOptions {
    * put somebody in the barn.
    */
   readonly context?: (request: Request) => RequestContext
+
+  /**
+   * Where a key is written down and looked up. The default is the table; a
+   * test of this module's own decisions supplies the in-memory one, which is
+   * the same contract and proves nothing about the index (ADR 0007).
+   */
+  readonly idempotency?: Idempotency
 }
 
 export function createApi(options: ApiOptions = {}): Api {
   const contextOf = options.context ?? requestContext
+  const idempotency = options.idempotency ?? postgresIdempotency()
   const app = new Hono().basePath(API_BASE)
 
   /**
@@ -269,15 +354,15 @@ export function createApi(options: ApiOptions = {}): Api {
         // The shape constraint guarantees the key at the call site; inside the
         // generic it has to be named.
         const { idempotencyKey: key } = parsed.data as { idempotencyKey: string }
+        const route = `POST ${path}`
 
         // Every mutation logs its key, actor, org and route, so that "did the
-        // server ever see key X" is a grep over SSH (ADR 0007).
-        //
-        // The key is required, parsed and logged; nothing dedupes on it yet.
-        // That needs the partial unique index of ADR 0007 and lands with the
-        // first real mutation, which is also the first time it can be tested.
+        // server ever see key X" is a grep over SSH (ADR 0007). This line is
+        // written on arrival rather than on the way out, so it survives a
+        // handler that throws — receipt is the half of the question that a
+        // failed write still has to answer.
         log('info', 'mutation', {
-          route: `POST ${path}`,
+          route,
           idempotencyKey: key,
           requiring: describeAuthorization(auth),
           actor: ctx.context.actor?.volunteerId ?? null,
@@ -285,7 +370,17 @@ export function createApi(options: ApiOptions = {}): Api {
           requestId: ctx.context.requestId,
         })
 
-        return handler(parsed.data, ctx)
+        const outcome = await idempotency.once(
+          {
+            orgId: ctx.context.orgId,
+            key,
+            route,
+            fingerprint: fingerprint(route, parsed.data),
+          },
+          async (db) => handler(parsed.data, { ...ctx, db }),
+        )
+
+        return answer(outcome, { route, key, requestId: ctx.context.requestId })
       })
     },
 
