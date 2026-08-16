@@ -73,8 +73,12 @@ What became of an Observation, and a thing that is always decided rather than al
 _Avoid_: triage, outcome, resolution, verdict
 
 **Contacts** _(provisional — the board just gives names and numbers to text)_:
-Who to phone: a name, a number, the hours it is answered, and what it is for — the barn's posted numbers, the equine clinic's office and emergency lines, the property owner. Read-only, readable by everyone because five posted escalation numbers are not the same artifact as sixty volunteers' mobile numbers, and maintained under `roster`. It sits outside routing entirely: the app never resolves an Escalation to it, and the hours are there to be read by a person at 2am rather than acted on by the app.
+Who to phone: a name, a number, the hours it is answered, and what it is for — the barn's posted numbers, the equine clinic's office and emergency lines, the property owner. Read-only, readable by everyone because five posted escalation numbers are not the same artifact as sixty volunteers' mobile numbers, and maintained under `roster`. It sits outside routing entirely: the app never resolves an Escalation to it, and the hours are there to be read by a person at 2am rather than acted on by the app. The same screen carries the rescue's **standing rules** — take turns wide, no scissors in fields — the handful of the board's Reminders that belong to no Task and so have nowhere better to be.
 _Avoid_: directory, phone book, escalation list, on-call
+
+**Announcement**:
+News about the rescue, posted to everyone and belonging to no Shift: the hay comes Thursday, the water in the tack room is off until Saturday, the vet is here on Tuesday. It carries no subject — anything about one horse is a care instruction, a measurement or an Observation — and it **expires**, by a date the writer sets rather than one the app assumes, because a note that never expires is a standing rule nobody decided to make. Posted by anyone holding a Domain Scope, edited in place, and read on the home screen and on the Board. It is authored, never a Disposition: if a Lead thinks a volunteer's Observation belongs on the wall, they say so in their own words. **The app sends nothing about it** — this is a wall, not a broadcast, and what has to reach everyone today still goes to the Facebook group.
+_Avoid_: notice, bulletin, post, memo, broadcast
 
 ### Shifts
 
