@@ -29,6 +29,17 @@ beforeEach(() => {
   vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
 })
 
+/** The structured lines the server wrote while `act` ran, parsed. */
+async function linesWhile(act: () => unknown): Promise<Record<string, unknown>[]> {
+  const lines: Record<string, unknown>[] = []
+  vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+    lines.push(JSON.parse(String(chunk)) as Record<string, unknown>)
+    return true
+  })
+  await act()
+  return lines
+}
+
 function request(method: string, path: string, body?: unknown): Request {
   return new Request(`http://barn.invalid${API_BASE}${path}`, {
     method,
@@ -119,6 +130,40 @@ describe('the version in the path', () => {
     // Accepted-and-misinterpreted is the outcome the version exists to prevent
     // (ADR 0007): a v0 write must not reach a v1 handler on path shape alone.
     expect(seen).toEqual([])
+  })
+
+  it('writes down the key of the write it turned away', async () => {
+    const api = createApi()
+    const key = '019267c0-6f7e-7a3d-9c2f-2f9a1c7e5b10'
+
+    const lines = await linesWhile(() =>
+      api.fetch(toVersion('POST', 'v0', '/observations', { note: 'gate latch', idempotencyKey: key })),
+    )
+
+    // The write never reaches `mutation`, so this line is the only record that
+    // the server saw it at all — and "did the server ever see key X" is the
+    // question ADR 0007 keeps this log for.
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).toMatchObject({
+      event: 'unsupported_api_version',
+      received: 'v0',
+      supported: 'v1',
+      idempotencyKey: key,
+      orgId: process.env.APP_ORG_ID,
+    })
+    // Beside the denial `register` logs, so the two read as one request.
+    expect(lines[0]?.requestId).toEqual(expect.any(String))
+  })
+
+  it('will not let a scanner write the log a line at a time', async () => {
+    const api = createApi()
+
+    const lines = await linesWhile(() => api.fetch(toVersion('GET', '.env', '')))
+
+    // Answered the same as any other version this server does not serve —
+    // but an unmatched path is unauthenticated, and the internet's list of
+    // them is long. What is not version-shaped leaves no line (ADR 0006).
+    expect(lines).toEqual([])
   })
 
   it('rejects the versionless root, which is a client that has forgotten the path', async () => {

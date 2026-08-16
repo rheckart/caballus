@@ -77,6 +77,32 @@ export class OutdatedClientError extends ApiError {
   }
 }
 
+/**
+ * The other direction: this build speaks a version *newer* than the server
+ * serves. That is what a rolling deploy looks like from a container that has
+ * not been replaced yet, and what a rollback looks like from a phone that
+ * already loaded the newer bundle.
+ *
+ * Its own class because the queue must do the opposite of what it does with
+ * `OutdatedClientError`: **this write stays queued.** The condition ends by
+ * itself, without the volunteer doing anything, as soon as the deploy finishes
+ * or the rollback is rolled forward — and a write dropped in that window is an
+ * "I fed Apollo" that never arrives, which is the failure ADR 0005 exists to
+ * prevent. There is nothing to tell the volunteer, because there is nothing
+ * for them to do.
+ */
+export class OutdatedServerError extends ApiError {
+  constructor(
+    status: number,
+    body: unknown,
+    readonly supported: string,
+  ) {
+    super(status, body)
+    this.name = 'OutdatedServerError'
+    this.message = `this client speaks ${API_VERSION}; the server still serves ${supported}`
+  }
+}
+
 /** A path below the version, as `route` registers it. */
 export type ApiPath = `/${string}`
 
@@ -116,7 +142,7 @@ async function send<T>(path: ApiPath, init: RequestInit): Promise<T> {
     const rejected = versionRejection(body)
     throw rejected === undefined
       ? new ApiError(response.status, body)
-      : new OutdatedClientError(response.status, body, rejected)
+      : versionError(response.status, body, rejected)
   }
   return body as T
 }
@@ -127,4 +153,45 @@ function versionRejection(body: unknown): string | undefined {
   const { error, supported } = body as { error?: unknown; supported?: unknown }
   if (error !== UNSUPPORTED_API_VERSION) return undefined
   return typeof supported === 'string' ? supported : ''
+}
+
+/**
+ * Which side is out of date, which the server cannot say and only the client
+ * can work out. One response carries both cases — the server answers
+ * `unsupported_api_version` to a phone behind it and to a phone ahead of it
+ * alike — and they need opposite things from the queue. Reading every one of
+ * them as *your client is too old* throws away writes that the next attempt
+ * would have delivered.
+ */
+function versionError(status: number, body: unknown, supported: string): ApiError {
+  // The server named this build's own version and rejected us anyway, so the
+  // fault is in the path rather than in the bundle: `/api//v1/day` gets this,
+  // from a proxy that left a doubled slash behind when it stripped a prefix.
+  // Reloading fixes nothing and neither does retrying, so it stays an ordinary
+  // rejection instead of being dressed as a version problem — and, in
+  // particular, does not tell the volunteer their app is out of date when it
+  // is the only version there is.
+  if (supported === API_VERSION) return new ApiError(status, body)
+
+  const ours = versionOrdinal(API_VERSION)
+  const theirs = versionOrdinal(supported)
+  if (ours !== null && theirs !== null && theirs < ours) {
+    return new OutdatedServerError(status, body, supported)
+  }
+
+  // Everything else, including a version this build cannot compare against:
+  // a rejection naming nothing, or naming something that is not a version, is
+  // a server worth fixing rather than a reason to keep a write in the queue
+  // forever. The direction that costs a volunteer their work is the one we do
+  // not guess at.
+  return new OutdatedClientError(status, body, supported)
+}
+
+/**
+ * The number in a version segment — `v1` is 1 — or `null` for anything this
+ * build cannot order against itself, which is neither ahead nor behind.
+ */
+function versionOrdinal(version: string): number | null {
+  const digits = /^v(\d+)$/.exec(version)
+  return digits === null ? null : Number(digits[1])
 }

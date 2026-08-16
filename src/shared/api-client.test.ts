@@ -6,6 +6,7 @@ import {
   API_ROOT,
   API_VERSION,
   OutdatedClientError,
+  OutdatedServerError,
   apiGet,
   apiPost,
   apiVersionOf,
@@ -79,6 +80,42 @@ describe('the client reading a version rejection', () => {
     expect((failure as OutdatedClientError).message).toBe(
       `this client speaks ${API_VERSION}; the server does not`,
     )
+  })
+
+  it('keeps the write when the server is the one behind', async () => {
+    // Today's client speaks v1, so the only server it can be ahead of is one
+    // still serving v0; from v2 onward this is the ordinary shape of a rolling
+    // deploy, where a queued write meets a container nobody has replaced yet.
+    serverAnswering(400, { error: 'unsupported_api_version', supported: 'v0', received: 'v1' })
+
+    const failure = await apiPost('/observations', { note: 'gate latch' }).catch(
+      (error: unknown) => error,
+    )
+
+    // Dropping this one loses a write the next attempt would have delivered,
+    // which is the failure ADR 0005 exists to prevent.
+    expect(failure).toBeInstanceOf(OutdatedServerError)
+    expect(failure).not.toBeInstanceOf(OutdatedClientError)
+    expect((failure as OutdatedServerError).supported).toBe('v0')
+  })
+
+  it('will not call the client outdated for the version it is running', async () => {
+    // Reachable: `/api`, `/api/`, and `/api//v1/day` are all answered with the
+    // server's own version, and the last is what a proxy leaves behind when it
+    // strips a prefix and forgets the slash.
+    serverAnswering(400, {
+      error: 'unsupported_api_version',
+      supported: API_VERSION,
+      received: '',
+    })
+
+    const failure = await apiGet('/day').catch((error: unknown) => error)
+
+    // The path is malformed; the bundle is fine. Telling a volunteer to reload
+    // would be advice that cannot work.
+    expect(failure).toBeInstanceOf(ApiError)
+    expect(failure).not.toBeInstanceOf(OutdatedClientError)
+    expect(failure).not.toBeInstanceOf(OutdatedServerError)
   })
 
   it('leaves an ordinary denial an ordinary ApiError', async () => {

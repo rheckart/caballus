@@ -10,7 +10,7 @@
  *    schema whose shape must contain one, so a keyless mutation does not
  *    compile (ADR 0005).
  */
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import { z } from 'zod'
 
 import {
@@ -81,6 +81,74 @@ export interface Api {
   fetch(request: Request): Response | Promise<Response>
 }
 
+/**
+ * A segment that could be a version somebody once shipped, which is the only
+ * kind of rejection worth a line on the log.
+ *
+ * Everything under the root that is not the served version gets the same 400,
+ * deliberately: a client that forgot the version and one asking for a version
+ * called `day` are the same request and deserve the same answer. But logging
+ * all of them hands the internet a write primitive — `/api/.env`, `/api/config`
+ * and the rest of the scanner's list would each leave a `warn` carrying a
+ * string somebody else chose, on a box where the log is read over SSH (ADR
+ * 0006). The shape is bounded so that what reaches the line is too.
+ *
+ * The cost is honest: a versionless path from our own client — `/api/day`,
+ * from a call site that skipped the typed client — is answered but not logged.
+ * That one is already a lint error (ADR 0016) and a rejection the caller sees.
+ */
+const VERSION_SHAPED = /^v\d{1,4}$/
+
+/**
+ * The largest body read for the sake of a log line. An unmatched path is
+ * unauthenticated, and buffering whatever arrives on one is a cost this
+ * endpoint should not be able to be made to pay. A queued tick is small JSON
+ * (ADR 0007); nothing this exists to record comes anywhere near it.
+ */
+const MAX_REJECTED_BODY = 64 * 1024
+
+/**
+ * The key a rejected write was carrying, if it was a write and it was carrying
+ * one — read here because nothing downstream will ever see this request.
+ */
+async function rejectedIdempotencyKey(request: Request): Promise<string | null> {
+  if (request.method !== 'POST') return null
+
+  const text = await boundedBody(request)
+  if (text === null) return null
+  const body: unknown = await new Response(text).json().catch(() => undefined)
+  if (typeof body !== 'object' || body === null) return null
+
+  const { idempotencyKey: key } = body as { idempotencyKey?: unknown }
+  return typeof key === 'string' ? key : null
+}
+
+/**
+ * The body, if it fits — read a chunk at a time against the cap rather than
+ * trusting `content-length`, which is the requester's claim about itself and
+ * is absent altogether from a chunked body. Over the cap the read is
+ * abandoned: a log line is not worth holding whatever somebody chose to send.
+ */
+async function boundedBody(request: Request): Promise<string | null> {
+  if (request.body === null) return null
+
+  const reader = request.body.getReader()
+  const decoder = new TextDecoder()
+  let text = ''
+  let size = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    size += value.byteLength
+    if (size > MAX_REJECTED_BODY) {
+      await reader.cancel()
+      return null
+    }
+    text += decoder.decode(value, { stream: true })
+  }
+  return text + decoder.decode()
+}
+
 export function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -113,7 +181,7 @@ export function createApi(options: ApiOptions = {}): Api {
    * needs reloading, and no amount of retrying will change it. This is the
    * whole reason the version is in the path (ADR 0007).
    */
-  app.notFound((c) => {
+  app.notFound(async (c) => {
     const version = apiVersionOf(c.req.path)
     if (version !== null && version !== API_VERSION) {
       // 400 rather than 404, which this would otherwise be indistinguishable
@@ -121,11 +189,7 @@ export function createApi(options: ApiOptions = {}): Api {
       // ahead of this server both land here, and Gone is a lie about the
       // second. What the client needs is *stop retrying and reload*, which
       // every 4xx that is not 401 already says.
-      log('warn', 'unsupported_api_version', {
-        route: `${c.req.method} ${c.req.path}`,
-        received: version,
-        supported: API_VERSION,
-      })
+      if (VERSION_SHAPED.test(version)) await logVersionRejection(c, version)
       return json(
         { error: UNSUPPORTED_API_VERSION, supported: API_VERSION, received: version },
         400,
@@ -133,6 +197,27 @@ export function createApi(options: ApiOptions = {}): Api {
     }
     return json({ error: 'not_found' }, 404)
   })
+
+  /**
+   * The rejection, on a line that answers what ADR 0007 asks of the log.
+   *
+   * A queued write turned away here never reaches `mutation`, so this is the
+   * only place its idempotency key is ever written down — and "did the server
+   * ever see key X" is the question this log exists for. The request id and
+   * org put it beside the denial `register` logs, so the two can be read as
+   * one request rather than two unrelated lines.
+   */
+  async function logVersionRejection(c: Context, version: string): Promise<void> {
+    const ctx = contextOf(c.req.raw)
+    log('warn', 'unsupported_api_version', {
+      route: `${c.req.method} ${c.req.path}`,
+      received: version,
+      supported: API_VERSION,
+      idempotencyKey: await rejectedIdempotencyKey(c.req.raw),
+      requestId: ctx.requestId,
+      orgId: ctx.orgId,
+    })
+  }
   app.onError((error, c) => {
     report(error, { route: `${c.req.method} ${c.req.path}` })
     return json({ error: 'internal_error' }, 500)
