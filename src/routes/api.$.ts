@@ -4,9 +4,11 @@ import { api } from '../server/api/app'
 
 /**
  * The wildcard that hands every `/api/*` request to the Hono application
- * mounted at `/api/v1` (ADR 0007). Anything below `/api/` that the version
- * does not claim falls through to that application's 404, which is what an old
- * client replaying a write against a newer server has to be told.
+ * mounted at `/api/v1` (ADR 0007) — including the ones naming a version that
+ * does not exist, which is why it is a wildcard over the whole of `/api/`
+ * rather than the version. That application answers a path this version does
+ * not claim with a 404 and a version it does not serve with an explicit
+ * rejection, and an old client replaying a write has to be told which.
  */
 export const Route = createFileRoute('/api/$')({
   server: {

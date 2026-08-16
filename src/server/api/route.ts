@@ -13,7 +13,12 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 
-import { API_BASE } from '../../shared/api-client'
+import {
+  API_BASE,
+  API_VERSION,
+  UNSUPPORTED_API_VERSION,
+  apiVersionOf,
+} from '../../shared/api-client'
 import { log, report } from '../observability'
 import { requestContext, type RequestContext } from '../request-context'
 import { authorize, describeAuthorization, type Authorization } from './authorization'
@@ -96,7 +101,38 @@ export function createApi(options: ApiOptions = {}): Api {
   const contextOf = options.context ?? requestContext
   const app = new Hono().basePath(API_BASE)
 
-  app.notFound(() => json({ error: 'not_found' }, 404))
+  /**
+   * Nothing matched. Either the version does not claim this path, or the
+   * request named a version this server does not serve — and those are
+   * different facts that ADR 0010 requires different answers for, because *you
+   * may not do this* and *your client is too old* produce very different things
+   * on a phone in a barn.
+   *
+   * A queued write that comes back 404 looks like a mistyped path to whoever
+   * reads the log; the same write told its version is gone is a bundle that
+   * needs reloading, and no amount of retrying will change it. This is the
+   * whole reason the version is in the path (ADR 0007).
+   */
+  app.notFound((c) => {
+    const version = apiVersionOf(c.req.path)
+    if (version !== null && version !== API_VERSION) {
+      // 400 rather than 404, which this would otherwise be indistinguishable
+      // from, and rather than 410 — a retired version and one from a client
+      // ahead of this server both land here, and Gone is a lie about the
+      // second. What the client needs is *stop retrying and reload*, which
+      // every 4xx that is not 401 already says.
+      log('warn', 'unsupported_api_version', {
+        route: `${c.req.method} ${c.req.path}`,
+        received: version,
+        supported: API_VERSION,
+      })
+      return json(
+        { error: UNSUPPORTED_API_VERSION, supported: API_VERSION, received: version },
+        400,
+      )
+    }
+    return json({ error: 'not_found' }, 404)
+  })
   app.onError((error, c) => {
     report(error, { route: `${c.req.method} ${c.req.path}` })
     return json({ error: 'internal_error' }, 500)

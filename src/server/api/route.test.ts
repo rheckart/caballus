@@ -3,8 +3,11 @@ import { z } from 'zod'
 
 import { requestContext } from '../request-context'
 import { domainScope, floor, readEverything } from './authorization'
-import { API_BASE } from '../../shared/api-client'
+import { API_BASE, API_ROOT } from '../../shared/api-client'
 import { createApi, json, queueable } from './route'
+
+/** The one write these tests register, wherever they register it. */
+const observed = queueable({ note: z.string() })
 
 /** An api with somebody signed in, until accounts exist (ADR 0006). */
 function apiWithVolunteer() {
@@ -62,12 +65,75 @@ describe('route', () => {
     const api = createApi()
     const response = await api.fetch(request('GET', '/nothing-here'))
     expect(response.status).toBe(404)
+    await expect(response.json()).resolves.toEqual({ error: 'not_found' })
+  })
+})
+
+describe('the version in the path', () => {
+  /**
+   * A request naming a version, built by hand: the typed client can only ever
+   * send this build's version, and the client that sends the wrong one is an
+   * older bundle that this code no longer exists to write.
+   */
+  function toVersion(method: string, version: string, path: string, body?: unknown): Request {
+    return new Request(`http://barn.invalid${API_ROOT}/${version}${path}`, {
+      method,
+      ...(body === undefined
+        ? {}
+        : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
+    })
+  }
+
+  it('rejects a version it does not recognise, and says which one it serves', async () => {
+    const api = createApi()
+    const response = await api.fetch(toVersion('GET', 'v2', '/day'))
+
+    // Not the 404 a mistyped path gets: *you may not do this*, *there is no
+    // such thing here* and *your client is too old* are three different
+    // answers on a phone in a barn (ADR 0010).
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({
+      error: 'unsupported_api_version',
+      supported: 'v1',
+      received: 'v2',
+    })
+  })
+
+  it('rejects a queued write from an old client rather than reading it', async () => {
+    const api = apiWithVolunteer()
+    const seen: string[] = []
+    api.mutation('/observations', floor('record-an-observation'), observed, (input) => {
+      seen.push(input.note)
+      return json({}, 201)
+    })
+
+    const response = await api.fetch(
+      toVersion('POST', 'v0', '/observations', {
+        note: 'gate latch',
+        idempotencyKey: '019267c0-6f7e-7a3d-9c2f-2f9a1c7e5b10',
+      }),
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({ error: 'unsupported_api_version' })
+    // Accepted-and-misinterpreted is the outcome the version exists to prevent
+    // (ADR 0007): a v0 write must not reach a v1 handler on path shape alone.
+    expect(seen).toEqual([])
+  })
+
+  it('rejects the versionless root, which is a client that has forgotten the path', async () => {
+    const api = createApi()
+    const response = await api.fetch(toVersion('GET', 'day', ''))
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'unsupported_api_version',
+      received: 'day',
+    })
   })
 })
 
 describe('mutation', () => {
-  const observed = queueable({ note: z.string() })
-
   it('rejects a write with no idempotency key rather than accepting it', async () => {
     const api = apiWithVolunteer()
     api.mutation('/observations', floor('record-an-observation'), observed, () => json({}, 201))
