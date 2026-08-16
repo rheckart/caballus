@@ -10,7 +10,12 @@ import { forOrg } from '../../db/for-org'
 import { orgs } from '../../db/schema'
 import { readEverything } from './authorization'
 import { createApi, json } from './route'
+import { startObservability } from '../observability'
 import { today } from '../time'
+
+// The server's one entry point, so this is where reporting starts. It is a
+// no-op without a DSN, which is the state of every machine until one is set.
+startObservability()
 
 export const api = createApi()
 

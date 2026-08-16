@@ -60,10 +60,13 @@ export function addDays(day: DayString, count: number, timeZone: string): DayStr
   return dayString(iso)
 }
 
-/** Whole days from `from` to `to`, in the organisation's timezone. */
-export function daysBetween(from: DayString, to: DayString, timeZone: string): number {
-  return Math.round(parse(to, timeZone).diff(parse(from, timeZone), 'days').days)
-}
+/**
+ * Whole days between two days is `daysBetween` in `src/shared/time.ts`, and it
+ * is re-exported rather than reimplemented here: once both ends are days in the
+ * same timezone the zone drops out of the arithmetic, and two functions of one
+ * name that agree today are two that can disagree later.
+ */
+export { daysBetween } from '../shared/time'
 
 function parse(day: DayString, timeZone: string): DateTime<true> {
   const parsed = DateTime.fromISO(day, zoned(timeZone)).startOf('day')

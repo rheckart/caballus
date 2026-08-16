@@ -18,12 +18,12 @@ const { BANS, EXEMPTIONS } = await jiti.import('../eslint.config.ts')
 
 /** Violations each fixture must produce, by rule. */
 const EXPECTED_VIOLATIONS = {
-  serverFn: 2,
-  dbClient: 1,
-  dayBoundary: 6,
+  serverFn: 3,
+  dbClient: 4,
+  dayBoundary: 8,
   drizzleZod: 1,
   sentry: 1,
-  apiPath: 2,
+  apiPath: 3,
 }
 
 /** ADR 0016: "Today: two, one, one, zero, one, one." */
@@ -35,6 +35,15 @@ const EXPECTED_EXEMPTIONS = {
   sentry: 1,
   apiPath: 1,
 }
+
+/**
+ * And the paths those entries cover, counted separately.
+ *
+ * Counting entries alone leaves the likelier edit unguarded: widening an
+ * existing override's file list from one path to ten changes no number and
+ * breaks no check, which is not what ADR 0016 promises.
+ */
+const EXPECTED_EXEMPT_PATHS = 9
 
 const failures = []
 
@@ -71,6 +80,12 @@ for (const [id, expected] of Object.entries(EXPECTED_EXEMPTIONS)) {
       `${id}: ADR 0016 counts ${String(expected)} exemption(s), eslint.config.ts has ${String(actual)}`,
     )
   }
+}
+
+if (claimedFiles.size !== EXPECTED_EXEMPT_PATHS) {
+  failures.push(
+    `the overrides cover ${String(claimedFiles.size)} path(s), and ${String(EXPECTED_EXEMPT_PATHS)} were written down`,
+  )
 }
 
 // --- Violations -------------------------------------------------------------

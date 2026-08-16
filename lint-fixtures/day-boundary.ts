@@ -1,7 +1,9 @@
 // Fixture: no day boundary derived outside the organisation's timezone.
-// Six violations: `Date` as a global twice (the constructor, and again as the
-// object of `Date.now`), `Date.now` as a member expression, `Intl`, and the two
-// locale formatters.
+// The globals, the members, the formatters, and the calendar library sitting in
+// package.json — a ban on `Date` that leaves Luxon reachable moves the wrong
+// answer one import along rather than stopping it.
+import { DateTime } from 'luxon'
+
 export function overdueSince(shiftStart: {
   toLocaleDateString: () => string
   toLocaleTimeString: () => string
@@ -9,6 +11,8 @@ export function overdueSince(shiftStart: {
   const startedAt = new Date()
   const elapsed = Date.now() - startedAt.valueOf()
   const formatter = new Intl.DateTimeFormat('en-US')
+  const today = DateTime.now().toISODate()
+  const alsoToday = globalThis.Date.now()
 
-  return `${shiftStart.toLocaleDateString()} ${shiftStart.toLocaleTimeString()} ${formatter.format(elapsed)}`
+  return `${shiftStart.toLocaleDateString()} ${shiftStart.toLocaleTimeString()} ${formatter.format(elapsed)} ${today ?? ''} ${String(alsoToday)}`
 }

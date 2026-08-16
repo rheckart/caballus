@@ -38,8 +38,13 @@ export type Authorization =
   | { readonly kind: 'floor'; readonly because: FloorReason }
   | { readonly kind: 'read-everything' }
 
-/** This endpoint requires a Domain Scope. */
-export function scope(required: DomainScope): Authorization {
+/**
+ * This endpoint requires a Domain Scope.
+ *
+ * Named in full, because `Scope` alone is the barn's word for which horses a
+ * piece of work applies to, and CONTEXT.md keeps it for them.
+ */
+export function domainScope(required: DomainScope): Authorization {
   return { kind: 'scope', scope: required }
 }
 
@@ -59,7 +64,7 @@ export function floor(because: FloorReason): Authorization {
 /**
  * A read. Every Volunteer reads everything in v1 — it is all on a wall in a
  * barn that every volunteer walks into (ADR 0010). The two carve-outs,
- * volunteer contact details and the audit log, declare `scope('roster')`.
+ * volunteer contact details and the audit log, declare `domainScope('roster')`.
  */
 export function readEverything(): Authorization {
   return { kind: 'read-everything' }
@@ -91,7 +96,7 @@ export function authorize(required: Authorization, actor: Actor | null): Decisio
       if (actor === null) {
         return { allowed: false, status: 401, wanted: required.scope }
       }
-      return actor.scopes.includes(required.scope)
+      return actor.domainScopes.includes(required.scope)
         ? { allowed: true }
         : { allowed: false, status: 403, wanted: required.scope }
 

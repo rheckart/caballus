@@ -48,7 +48,7 @@ describe('dayBounds', () => {
 describe('addDays and daysBetween', () => {
   it('crosses a daylight-saving boundary without losing a day', () => {
     expect(addDays(dayString('2026-03-07'), 3, BALTIMORE)).toBe('2026-03-10')
-    expect(daysBetween(dayString('2026-03-07'), dayString('2026-03-10'), BALTIMORE)).toBe(3)
+    expect(daysBetween(dayString('2026-03-07'), dayString('2026-03-10'))).toBe(3)
   })
 
   it('goes backwards over a year end', () => {

@@ -1,9 +1,20 @@
 ---
 status: accepted
 amends: 0007 (the day-boundary ban is repo-wide rather than client-side; the idempotency key and the authorization declaration move from lint to types)
+amended-by: the skeleton (#22), on what each rule actually has to ban and which files each exemption covers
 ---
 
 # An unenforced invariant is a type where it can be, a lint rule where it cannot, and never prose
+
+> **Amended when the rules landed (#22).** Six rules, six exemptions, the counts below unchanged — but writing them out found four bans that named one door each when the door had two, and two exemptions that need a second file. The table and the exemption list are updated in place; what follows is what changed and why, because this file going stale is the tripwire it names for itself.
+>
+> - **`createServerFn` has two import paths.** `@tanstack/react-start` re-exports it from `@tanstack/start-client-core`, which is hoisted and is what auto-import offers. Both are banned. This is the re-export leak the last section predicted, found on day one.
+> - **The day-boundary ban has to cover the calendar libraries too**, not just `Date` and `Intl` — Luxon is in `package.json`, and a ban an agent can step around by importing the library it can see is not a ban. `luxon`, and pre-emptively `date-fns`, `dayjs` and `temporal-polyfill`, plus `globalThis.Date`.
+> - **The database ban covers dynamic imports and the `.js` suffix**, which `no-restricted-imports` patterns do not see.
+> - **The API-path ban covers template literals.** A real path takes parameters, so the backticked form is the likelier half of the traffic.
+> - **Two exemptions cover two files each**, in the way the Sentry row already did. The day-boundary one adds `src/shared/time.ts`, because this ADR puts `formatDay` there and calls it the only place `Intl` is constructed; the API-path one adds `src/routes/api.$.ts`, because the router's own generator writes `createFileRoute('/api/$')` into it. The entry counts are unchanged; the **path** count is nine, and `npm run lint:fixtures` now asserts that too — widening a file list was the one edit the entry count could not see.
+> - **`formatDay` resolves "today" in the organisation's timezone**, which is a day boundary computed in the shared module. It is confined to the display path and needs the timezone passed in, and the alternative — threading a server-resolved `today` through every call site — is the more ergonomic thing to skip, which is the failure this ADR exists to prevent.
+> - **ADR 0010's read floor is a fourth `Authorization` kind, `readEverything()`**, not a fourth `floor()` reason. `floor()` still has exactly the three below, enumerated as a union and pinned by a type test.
 
 ADR 0007 named three rules that nothing enforces, and in all three the **wrong option is the more ergonomic one**. That is the whole problem. A rule whose violation is easier to write than its observance does not survive contact with an agent under context pressure, and `CLAUDE.md` is read once and forgotten. So each of these invariants gets a mechanism, and the mechanism is chosen by how tight its feedback loop is.
 
@@ -14,6 +25,8 @@ The order is: **make the wrong thing unrepresentable, then a type error, then a 
 An invariant earns mechanical enforcement when three things are true: an accepted ADR decided it, the wrong option is the more ergonomic one, and it is detectable with **zero false positives**. All three, or it is a test or a review comment instead.
 
 That test excludes things it is tempting to include. ADR 0007's 48px touch targets and no-hover rule are design tokens, not statically decidable. "Migrations never run at boot" and "an entity id is not an idempotency key" are semantic and fail the third clause. A rule that fires on correct code is worse than no rule, because the exemption that follows teaches everyone that the rules are negotiable.
+
+`toLocaleString` is the closest call, and it is excluded for the same reason rather than by oversight: on a `Date` it renders in the browser's timezone exactly as its two siblings do, but on a `Number` it is how you write *2.5 lb*, which is a thing a feed instruction says. It fails the zero-false-positives clause on the more common of its two uses, so it is a review comment. Type-aware linting would decide it, and ADR 0016's rules are deliberately type-unaware so they can run on every file write.
 
 ## What becomes a type
 
@@ -33,12 +46,12 @@ Six, all deny-by-default, all in `eslint.config.ts`. They are deliberately **typ
 
 | Invariant | Mechanism | Exempt today |
 |---|---|---|
-| Queueable writes POST to `/api/v1`, never a server function | `no-restricted-imports` on `createServerFn` | **2** — login, desktop admin forms |
-| No database handle except through `forOrg` | `no-restricted-imports` on `src/db/client` | **1** — `src/db/for-org.ts` |
-| No day boundary derived outside the org's timezone | `no-restricted-globals` on `Date`, `Intl`; `no-restricted-syntax` on `Date.now`, `toLocaleDateString`, `toLocaleTimeString` | **1** — `src/server/time.ts` |
+| Queueable writes POST to `/api/v1`, never a server function | `no-restricted-imports` on `createServerFn`, from **both** `@tanstack/react-start` and `@tanstack/start-client-core` | **2** — login, desktop admin forms |
+| No database handle except through `forOrg` | `no-restricted-imports` on `src/db/client` and `src/db/client.*`; `no-restricted-syntax` on the dynamic `import()` of either | **1** — `src/db/for-org.ts` |
+| No day boundary derived outside the org's timezone | `no-restricted-globals` on `Date`, `Intl`; `no-restricted-imports` on `luxon`, `date-fns`, `dayjs`, `temporal-polyfill`; `no-restricted-syntax` on `Date.now`, `globalThis.Date`/`globalThis.Intl`, `toLocaleDateString`, `toLocaleTimeString` | **1** — `src/server/time.ts` and `src/shared/time.ts`, the two time modules |
 | Wire shapes are hand-written Zod | `no-restricted-imports` on `drizzle-zod` | **0** |
 | No error report bypasses scrubbing | `no-restricted-imports` on `@sentry/*` | **1** — `src/server/observability.ts` and its browser twin |
-| No unversioned API path | `no-restricted-syntax` on `Literal[value=/^\/api\//]` | **1** — `src/shared/api-client.ts` |
+| No unversioned API path | `no-restricted-syntax` on `Literal[value=/^\/api\//]` and `TemplateElement[value.raw=/^\/api\//]` | **1** — `src/shared/api-client.ts` and `src/routes/api.$.ts`, which the router's generator writes |
 
 **The server-function ban is inverted deliberately.** Lint cannot tell a queueable write from one that can never be queued — *can this be replayed from somebody's pocket on Thursday* is a semantic question. So every `createServerFn` is banned and each legal one is an exemption, which is the only form with no false positives and which puts the count in one reviewable place.
 
@@ -52,7 +65,7 @@ Six, all deny-by-default, all in `eslint.config.ts`. They are deliberately **typ
 
 **There are no `eslint-disable` comments for these rules.** A rule that can be silenced in one line is a rule an agent will silence rather than obey — the exact failure this ADR exists to prevent. The only way to exempt code is a **path override in `eslint.config.ts`**, carrying a one-line reason, visible in one file and appearing in a diff. `linterOptions.reportUnusedDisableDirectives` is `error` repo-wide.
 
-The counts in the table above are stated here so that a seventh exemption is something a person has to write down. **Today: two, one, one, zero, one, one.**
+The counts in the table above are stated here so that a seventh exemption is something a person has to write down. **Today: two, one, one, zero, one, one** — six overrides, covering **nine paths**. Both numbers are asserted, because widening an existing override's file list is the cheaper edit and the entry count cannot see it.
 
 Each rule's message states the correct alternative and the ADR, in one sentence, no URL — these messages are the only documentation anyone reads at the moment they are about to do the wrong thing:
 
@@ -66,7 +79,7 @@ Each rule's message states the correct alternative and the ADR, in one sentence,
 
 ## Consequences
 
-**Paths are named here, before the code exists.** `src/db/client.ts`, `src/db/for-org.ts`, `src/shared/time.ts`, `src/server/time.ts`, `src/server/observability.ts`, `src/shared/api-client.ts`. ADR 0007 already committed to `src/db`, `src/shared`, `src/routes` and `src/server`, so this fills in a half-decided layout rather than inventing one. An ADR that says *the module that wraps the handle* instead of naming it is the prose this ticket says agents forget. If the skeleton wants other names, that is a change to this ADR, made deliberately.
+**Paths are named here, before the code exists.** `src/db/client.ts`, `src/db/for-org.ts`, `src/shared/time.ts`, `src/server/time.ts`, `src/server/observability.ts`, `src/shared/api-client.ts` — and, added when they landed, `src/shared/observability.browser.ts` for the browser twin and `src/shared/scrub.ts` for the scrubbing both of them share. ADR 0007 already committed to `src/db`, `src/shared`, `src/routes` and `src/server`, so this fills in a half-decided layout rather than inventing one. An ADR that says *the module that wraps the handle* instead of naming it is the prose this ticket says agents forget. If the skeleton wants other names, that is a change to this ADR, made deliberately.
 
 **This lands the day the patterns land, and not later.** The whole argument for mechanical enforcement over prose is that it is free while the codebase has zero violations; retrofitting is an afternoon of exemptions and a rule nobody trusts. The application skeleton therefore carries the config and the hook as an acceptance criterion, and the `/api/v1` layer carries the two type constraints.
 

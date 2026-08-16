@@ -35,6 +35,15 @@ const PII_KEY =
 /** Kept from a `user` object; everything else about a person is dropped. */
 const USER_KEEP = ['id'] as const
 
+/**
+ * Keys that `PII_KEY` would otherwise catch on the substring `name`, and that
+ * carry no person: a stack frame's `filename`, a module's name, a function's.
+ * Blanking those loses the frame while `abs_path` beside it carries the same
+ * string — a redaction that costs the maintainer the report and protects
+ * nobody.
+ */
+const STRUCTURAL_KEYS = new Set(['filename', 'abs_path', 'module', 'function', 'pathname'])
+
 const EMAIL = /[\w.+-]+@[\w-]+\.[\w.-]*\w/g
 
 /**
@@ -77,6 +86,8 @@ function scrubValue(value: unknown, seen: WeakSet<object>, depth: number): unkno
   for (const [key, entry] of Object.entries(value)) {
     if (key === 'user') {
       scrubbed[key] = identityOf(entry)
+    } else if (STRUCTURAL_KEYS.has(key)) {
+      scrubbed[key] = scrubValue(entry, seen, depth + 1)
     } else if (PII_KEY.test(key)) {
       scrubbed[key] = REDACTED
     } else {

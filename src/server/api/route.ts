@@ -18,7 +18,17 @@ import { log, report } from '../observability'
 import { requestContext, type RequestContext } from '../request-context'
 import { authorize, describeAuthorization, type Authorization } from './authorization'
 
-export type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+/**
+ * Reads only.
+ *
+ * A `route('POST', …)` would be a write with no schema and no idempotency key,
+ * and it would be *shorter* to write than `mutation` — which is the exact
+ * condition ADR 0016 exists to remove, since a rule whose violation is easier
+ * to write than its observance does not survive contact with an agent under
+ * context pressure. Every write goes through `mutation`, and there is no other
+ * door.
+ */
+export type Method = 'GET'
 
 /** A path below `/api/v1`. The version lives in one place (ADR 0016). */
 export type RoutePath = `/${string}`
@@ -56,7 +66,7 @@ export interface Api {
    * Registers a queueable write. The schema must carry an idempotency key,
    * which is what `queueable` is for.
    */
-  mutation<TShape extends z.ZodRawShape & { idempotencyKey: z.ZodType<string> }>(
+  mutation<TShape extends z.ZodRawShape & { idempotencyKey: typeof idempotencyKey }>(
     path: RoutePath,
     auth: Authorization,
     schema: z.ZodObject<TShape>,
@@ -92,28 +102,41 @@ export function createApi(options: ApiOptions = {}): Api {
     return json({ error: 'internal_error' }, 500)
   })
 
+  /**
+   * Registration, for any method. Not exported: a read takes `route`, a write
+   * takes `mutation`, and there is no third door.
+   */
+  function register(
+    method: 'GET' | 'POST',
+    path: RoutePath,
+    auth: Authorization,
+    handler: Handler,
+  ): Api {
+    app.on(method, path, async (c) => {
+      const ctx = contextOf(c.req.raw)
+      const decision = authorize(auth, ctx.actor)
+      if (!decision.allowed) {
+        // A denial is a structured log, not an audit row (ADR 0010).
+        log('warn', 'denied', {
+          route: `${method} ${path}`,
+          wanted: decision.wanted,
+          requestId: ctx.requestId,
+          orgId: ctx.orgId,
+        })
+        return json({ error: 'not_authorized', wanted: decision.wanted }, decision.status)
+      }
+      return handler({ request: c.req.raw, params: c.req.param(), context: ctx })
+    })
+    return api
+  }
+
   const api: Api = {
     route(method, path, auth, handler) {
-      app.on(method, path, async (c) => {
-        const ctx = contextOf(c.req.raw)
-        const decision = authorize(auth, ctx.actor)
-        if (!decision.allowed) {
-          // A denial is a structured log, not an audit row (ADR 0010).
-          log('warn', 'denied', {
-            route: `${method} ${path}`,
-            wanted: decision.wanted,
-            requestId: ctx.requestId,
-            orgId: ctx.orgId,
-          })
-          return json({ error: 'not_authorized', wanted: decision.wanted }, decision.status)
-        }
-        return handler({ request: c.req.raw, params: c.req.param(), context: ctx })
-      })
-      return api
+      return register(method, path, auth, handler)
     },
 
     mutation(path, auth, schema, handler) {
-      return api.route('POST', path, auth, async (ctx) => {
+      return register('POST', path, auth, async (ctx) => {
         const body: unknown = await ctx.request.json().catch(() => undefined)
         const parsed = schema.safeParse(body)
         if (!parsed.success) {
@@ -128,6 +151,10 @@ export function createApi(options: ApiOptions = {}): Api {
 
         // Every mutation logs its key, actor, org and route, so that "did the
         // server ever see key X" is a grep over SSH (ADR 0007).
+        //
+        // The key is required, parsed and logged; nothing dedupes on it yet.
+        // That needs the partial unique index of ADR 0007 and lands with the
+        // first real mutation, which is also the first time it can be tested.
         log('info', 'mutation', {
           route: `POST ${path}`,
           idempotencyKey: key,

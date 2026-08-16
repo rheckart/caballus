@@ -11,7 +11,7 @@ import type { DomainScope } from './api/authorization'
 
 export interface Actor {
   readonly volunteerId: string
-  readonly scopes: readonly DomainScope[]
+  readonly domainScopes: readonly DomainScope[]
 }
 
 export interface RequestContext {

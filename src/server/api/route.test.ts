@@ -2,7 +2,8 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 
 import { requestContext } from '../request-context'
-import { floor, readEverything, scope } from './authorization'
+import { domainScope, floor, readEverything } from './authorization'
+import { API_BASE } from '../../shared/api-client'
 import { createApi, json, queueable } from './route'
 
 /** An api with somebody signed in, until accounts exist (ADR 0006). */
@@ -10,7 +11,7 @@ function apiWithVolunteer() {
   return createApi({
     context: (request) => ({
       ...requestContext(request),
-      actor: { volunteerId: 'v_01J8', scopes: [] },
+      actor: { volunteerId: 'v_01J8', domainScopes: [] },
     }),
   })
 }
@@ -26,7 +27,7 @@ beforeEach(() => {
 })
 
 function request(method: string, path: string, body?: unknown): Request {
-  return new Request(`http://barn.invalid/api/v1${path}`, {
+  return new Request(`http://barn.invalid${API_BASE}${path}`, {
     method,
     ...(body === undefined
       ? {}
@@ -47,7 +48,7 @@ describe('route', () => {
 
   it('denies explicitly, and names the scope it wanted', async () => {
     const api = createApi()
-    api.route('GET', '/volunteers', scope('roster'), () => json({ volunteers: [] }))
+    api.route('GET', '/volunteers', domainScope('roster'), () => json({ volunteers: [] }))
 
     const response = await api.fetch(request('GET', '/volunteers'))
 
@@ -134,5 +135,11 @@ describe('the constraints are types', () => {
   it('will not accept a fourth reason for the floor', () => {
     // @ts-expect-error the three legitimate uses are enumerated in FloorReason
     floor('because-the-endpoint-was-easier-that-way')
+  })
+
+  it('will not register a write through the read door', () => {
+    const api = createApi()
+    // @ts-expect-error a write goes through mutation, which requires a schema
+    api.route('POST', '/observations', floor('record-an-observation'), () => json({}, 201))
   })
 })

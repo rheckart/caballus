@@ -26,6 +26,40 @@ describe('beforeSend', () => {
     expect(sent.message).toBe(`texting the shift lead on ${REDACTED} failed`)
   })
 
+  it('leaves a stack trace readable, because a redacted frame protects nobody', () => {
+    const sent = beforeSend({
+      exception: {
+        values: [
+          {
+            type: 'TypeError',
+            value: 'cannot read properties of undefined',
+            stacktrace: {
+              frames: [
+                {
+                  filename: 'app:///src/server/api/route.ts',
+                  abs_path: '/app/src/server/api/route.ts',
+                  function: 'mutation',
+                  module: 'server.api.route',
+                  lineno: 128,
+                },
+              ],
+            },
+          },
+        ],
+      },
+    })
+
+    // `filename` matches the same substring as `volunteerName`, and blanking
+    // it would lose the frame while `abs_path` beside it kept the string.
+    expect(sent.exception.values[0]?.stacktrace.frames[0]).toEqual({
+      filename: 'app:///src/server/api/route.ts',
+      abs_path: '/app/src/server/api/route.ts',
+      function: 'mutation',
+      module: 'server.api.route',
+      lineno: 128,
+    })
+  })
+
   // The limit, recorded rather than assumed. ADR 0016 is explicit that the
   // lint rule guarantees only that reports pass through here, and this is the
   // half the wrapper cannot guarantee either: a number has a shape and a name

@@ -39,14 +39,24 @@ export const BANS: readonly Ban[] = [
     // Inverted deliberately: lint cannot tell a queueable write from one that
     // can never be queued, so every server function is banned and each legal
     // one is an exemption with a reason.
-    paths: [{ name: '@tanstack/react-start', importNames: ['createServerFn'] }],
+    //
+    // Both specifiers, because an import ban holds only while there is one
+    // import path (ADR 0016) — `@tanstack/react-start` re-exports this from
+    // `@tanstack/start-client-core`, which is hoisted, resolvable, and what an
+    // editor's auto-import will offer.
+    paths: [
+      { name: '@tanstack/react-start', importNames: ['createServerFn'] },
+      { name: '@tanstack/start-client-core', importNames: ['createServerFn'] },
+    ],
   },
   {
     id: 'dbClient',
     invariant: 'No database handle except through forOrg',
     message:
       'Reach the database through forOrg in src/db/for-org.ts; a raw handle runs with no app.org_id and quietly returns nothing (ADR 0007).',
-    patterns: ['**/db/client', './client', '../client'],
+    patterns: ['**/db/client', '**/db/client.*', './client', './client.*', '../client', '../client.*'],
+    // A static import is not the only way through a door.
+    syntax: ['ImportExpression[source.value=/db\\/client(\\.\\w+)?$/]'],
   },
   {
     id: 'dayBoundary',
@@ -54,8 +64,13 @@ export const BANS: readonly Ban[] = [
     message:
       "A day belongs to the organisation's timezone: take the clock from now() in src/shared/time.ts and the calendar from src/server/time.ts (ADR 0007).",
     globals: ['Date', 'Intl'],
+    // The calendar libraries too, and the ones nobody has installed yet: a ban
+    // on `Date` that leaves the library sitting in `package.json` reachable
+    // just moves the wrong answer one import along.
+    patterns: ['luxon', 'luxon/**', 'date-fns', 'date-fns/**', 'dayjs', 'dayjs/**', 'temporal-polyfill', 'temporal-polyfill/**'],
     syntax: [
       'MemberExpression[object.name="Date"][property.name="now"]',
+      'MemberExpression[object.name="globalThis"][property.name=/^(Date|Intl)$/]',
       'CallExpression[callee.property.name="toLocaleDateString"]',
       'CallExpression[callee.property.name="toLocaleTimeString"]',
     ],
@@ -79,7 +94,9 @@ export const BANS: readonly Ban[] = [
     invariant: 'No unversioned API path',
     message:
       'Call the API through src/shared/api-client.ts; the version in the path is what makes a write replayed from a pocket on Thursday safe (ADR 0007).',
-    syntax: ['Literal[value=/^\\/api\\//]'],
+    // The template form as well as the literal: a real path takes parameters,
+    // so backticks are the likelier half of the traffic this guards.
+    syntax: ['Literal[value=/^\\/api\\//]', 'TemplateElement[value.raw=/^\\/api\\//]'],
   },
 ]
 
@@ -97,14 +114,16 @@ interface Exemption {
 export const EXEMPTIONS: readonly Exemption[] = [
   {
     bans: ['serverFn'],
-    // No file yet: identity lands with Better Auth (ADR 0008).
-    files: ['src/server/auth/**/*.ts'],
+    // No file yet: identity lands with Better Auth (ADR 0008). Named rather
+    // than globbed, so that the next file under `src/server/auth/` is a
+    // decision somebody writes down instead of one this line made for them.
+    files: ['src/server/auth/login.ts'],
     reason: 'Signing in is a credential exchange that must never be replayed from a queue.',
   },
   {
     bans: ['serverFn'],
     // No file yet: the admin surface lands with the screens that need it.
-    files: ['src/routes/admin/**/*.ts', 'src/routes/admin/**/*.tsx'],
+    files: ['src/routes/admin/**/*.{ts,tsx}'],
     reason: 'Desktop admin forms are posted from a desk on real connectivity and never queue.',
   },
   {

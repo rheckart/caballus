@@ -82,16 +82,29 @@ describe.skipIf(!reachable)('forOrg', () => {
   })
 
   it('leaves the scope behind with the transaction', async () => {
-    await forOrg(orgId(FRONT_BARN)).run((db) => db.select().from(orgs))
-
-    const after = postgres(applicationUrl, { max: 1 })
+    // One connection for both halves, deliberately: asking a *fresh* connection
+    // whether it carries a scope proves nothing, since a fresh connection never
+    // does. This is the same connection, before and after, so it fails if
+    // `set_config(..., true)` ever loses its third argument.
+    const client = postgres(applicationUrl, { max: 1 })
     try {
-      // `SET LOCAL` ends with the transaction, so a pooled connection cannot
-      // carry one organisation's scope into another request.
-      const rows = await after`select current_setting('app.org_id', true) as scope`
-      expect(rows[0]?.scope ?? null).toBeNull()
+      const inside = await client.begin(async (tx) => {
+        await tx`select set_config('app.org_id', ${FRONT_BARN}, true)`
+        return tx`select id from orgs`
+      })
+      expect(inside).toHaveLength(1)
+
+      // The setting reverts to its reset value, which is the empty string
+      // rather than null — so what is asserted is what the policy makes of it,
+      // which is the guarantee that actually matters: the next request on this
+      // connection sees nothing until it sets its own scope.
+      const scope = await client`select current_setting('app.org_id', true) as scope`
+      expect(scope[0]?.scope).not.toBe(FRONT_BARN)
+
+      const after = await client`select id from orgs`
+      expect(after).toHaveLength(0)
     } finally {
-      await after.end()
+      await client.end()
     }
   })
 })
