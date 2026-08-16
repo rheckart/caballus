@@ -43,7 +43,7 @@ _Avoid_: login, user account, profile, credentials
 ### Roles and permissions
 
 **Role**:
-A named position in the rescue, held by a Volunteer and carrying Domain Scopes — President, Board Member, Head of Horse Welfare, Head of Maintenance, Volunteer Coordinator, Treasurer, Event Coordinator. A Volunteer holds any number, including none. Roles attach to the Volunteer and never to the Account, because a report routed to a Head must reach them whether or not they have ever signed in. Feed Shift Lead is *not* a Role — see Shift Authority.
+A named position in the rescue, held by a Volunteer and carrying Domain Scopes — President, Board Member, Head of Horse Welfare, Head of Maintenance, Volunteer Coordinator, Barn Manager, Treasurer, Event Coordinator. A Volunteer holds any number, including none. Roles attach to the Volunteer and never to the Account, because a report routed to a Head must reach them whether or not they have ever signed in. Feed Shift Lead is *not* a Role — see Shift Authority.
 _Avoid_: permission, group, title, position
 
 **Domain Scope**:
@@ -243,7 +243,7 @@ _Avoid_: flag, note, warning, caution
 ### Feed and medication
 
 **Product**:
-Something the rescue buys and gives to a horse — a feed, a supplement or a medication. Its kind is a property of the Product, not of where it was written down: whether Bute is a medication is a fact about Bute.
+Something the rescue buys and gives to a horse — a feed, a supplement or a medication. Its kind is a property of the Product, not of where it was written down: whether Bute is a medication is a fact about Bute. It is also the catalogue: a Supplier, whether it needs a prescription, an optional reorder point in days and a free-text ordering note hang off the same record, which is what makes *we're low on Senior* connectable to *these nine horses eat Senior* with no second list to maintain. Edited by holders of `horse_care` or `supplies`, and current state with an audit entry rather than versioned — what a Product used to cost or come from answers no question here. Deliberately does not stretch to what the rescue buys and does not feed a horse: shavings and light bulbs are an Observation, not a catalogue row.
 _Avoid_: item, feed type, med, supply
 
 **Feed Schedule**:
@@ -258,7 +258,19 @@ _Avoid_: method, delivery, administration
 Permission to prepare and administer medication — a qualification granted to a **Volunteer** under `horse_care`, not something conferred by leading a Shift. Someone may medicate on a Shift if they are rostered on it and hold the qualification; that the rescue grants it to Leads and Co-Leads is its policy for handing it out, not the definition. A Shift needs someone holding it only when that Shift's work actually includes medication — which is why Lunch, being grain and water, runs legally with one non-Lead. Preparing food carries no such requirement, despite the feed room sign saying otherwise.
 _Avoid_: lead permission, med rights
 
-### The app
+### Supplies
+
+**Supplier**:
+Where a Product comes from — a name, an optional web address and an optional note, referenced by many Products. Five names carry the whole board, and the reason it is a record rather than a word on the Product is that whoever orders needs to see that three of them are one Chewy cart. The vet is a Supplier like any other, despite being a channel rather than a shop. It never points at a Contact: the app resolves nothing to that screen, by design.
+_Avoid_: vendor, source, shop, merchant
+
+**Days of Supply**:
+How many days of a Product are left, as counted by a person and written down with the date they counted. A measurement series like a weight — appended, never edited, no reason — and the app's only addition is arithmetic: a reading of 14.5 on the 4th reads 9.5 on the 9th, which is the thing the whiteboard could never do. It floors at zero and then says *out, last counted the 4th*, because a negative number is the app claiming to know something it does not. Written by holders of `supplies` or by Shift Authority, since the person looking at the sacks twice a day is the Lead. Nothing derives it from Feed Schedules — the amounts there are written as *2 wells* and *1/2 sc*, and a sack does not divide by those.
+_Avoid_: stock, inventory, on hand, level
+
+**Reorder**:
+One cycle of getting more of a Product: Open until a holder of `supplies` closes it with a note, with an appended thread they write the dates into — ordered, chased, arrived. It borrows the Escalation's shape deliberately rather than growing states of its own, and *notified* is not among them, because the Escalation's email already is the notification. Carries no quantity and names no horse; *Storm's glucosamine* is words in the note. May be created from an Escalation and keeps a link back to it, but never shares its state — the report is answered the day it is answered, and the feed arrives three weeks later.
+_Avoid_: order, purchase order, restock, requisition
 
 **Board**:
 The read-only feed board, shown on a rescue-owned tablet in the barn, doing the whiteboard's glance-at job. It records nothing and therefore credits no actor. Distinct from the shift prep queue, which is the per-horse work list a volunteer actually works from on a phone.
