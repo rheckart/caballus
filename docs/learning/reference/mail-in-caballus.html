@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Reference · Mail in Caballus</title>
+    <link rel="stylesheet" href="../assets/course.css" />
+  </head>
+  <body>
+    <main class="sheet">
+      <span class="eyebrow">Reference sheet</span>
+      <h1>Mail in Caballus</h1>
+      <p class="subtitle">Every knob, every refusal, every connection URL. Designed to print.</p>
+
+      <h2>Environment</h2>
+
+      <div class="scroll-x">
+        <table>
+          <thead>
+            <tr>
+              <th>Variable</th>
+              <th>Unset means</th>
+              <th>Read by</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>SMTP_URL</code></td>
+              <td>No transport. Every send refuses; nobody can sign in.</td>
+              <td><code>src/server/email.ts</code></td>
+            </tr>
+            <tr>
+              <td><code>EMAIL_FROM</code></td>
+              <td>Empty <code>From</code>. Most real servers reject this.</td>
+              <td><code>src/server/email.ts</code></td>
+            </tr>
+            <tr>
+              <td><code>BETTER_AUTH_SECRET</code></td>
+              <td>Throws at startup. Deliberate — a default would sign everyone out later.</td>
+              <td><code>src/server/auth/auth.ts</code></td>
+            </tr>
+            <tr>
+              <td><code>APP_URL</code></td>
+              <td>Falls back to <code>http://localhost:3000</code>.</td>
+              <td><code>src/server/auth/auth.ts</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>Connection URLs</h2>
+
+      <div class="scroll-x">
+        <pre><code># Local (Mailpit). Plaintext on the loopback, no credentials.
+SMTP_URL=smtp://localhost:1025
+
+# Fastmail — the POC sender (ADR 0009).
+# Port 465 is TLS from the first byte, so smtps://.
+# The username is an email address, so its @ must be written %40.
+# The password is an APP PASSWORD; the account password will not authenticate.
+SMTP_URL=smtps://you%40heckart.me:APP-PASSWORD@smtp.fastmail.com:465
+
+# Resend — the go-live exit (ADR 0009).
+# The username is the literal string "resend". The password is an API key.
+# A verified domain is required before anything sends at all.
+SMTP_URL=smtps://resend:re_YOUR_API_KEY@smtp.resend.com:465</code></pre>
+      </div>
+
+      <div class="callout trap">
+        <span class="label">Percent-encoding</span>
+        <p>
+          Anything in the credentials half of the URL that is also URL syntax must be encoded:
+          <code>@</code> → <code>%40</code>, <code>:</code> → <code>%3A</code>, <code>/</code> →
+          <code>%2F</code>, <code>#</code> → <code>%23</code>. A Fastmail app password is generated
+          from a safe alphabet, but the username always contains an <code>@</code>.
+        </p>
+      </div>
+
+      <p class="note">
+        <code>smtps://</code> means TLS from the first byte (port 465). <code>smtp://</code> on port
+        587 starts plaintext and upgrades via STARTTLS.
+        <a href="https://nodemailer.com/smtp/">[Nodemailer]</a>
+      </p>
+
+      <h2>The five refusals</h2>
+
+      <p>
+        <code>requestCode</code> and <code>submitCode</code> return a discriminated result. Every
+        one of these is shown to the volunteer in plain words — ADR 0008 chose that deliberately
+        over the usual "if that address is registered…".
+      </p>
+
+      <div class="scroll-x">
+        <table>
+          <thead>
+            <tr>
+              <th>Refusal</th>
+              <th>Means</th>
+              <th>Fix</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>unrecognised-email</code></td>
+              <td>No live Volunteer at that address in this org</td>
+              <td>Create one, or <code>npm run bootstrap</code></td>
+            </tr>
+            <tr>
+              <td><code>volunteer-removed</code></td>
+              <td>A Volunteer row exists but has <code>removed_at</code> set</td>
+              <td>Re-create them; removal is a date, not a delete</td>
+            </tr>
+            <tr>
+              <td><code>account-revoked</code></td>
+              <td>An officer switched the Account off</td>
+              <td><code>restoreAccount</code></td>
+            </tr>
+            <tr>
+              <td><code>too-many-codes</code></td>
+              <td>Three requests for that address inside an hour</td>
+              <td>Wait, or restart the process — the window is in memory</td>
+            </tr>
+            <tr>
+              <td><code>email-not-sent</code></td>
+              <td>No transport, the cap is spent, or SMTP rejected it</td>
+              <td>Check <code>SMTP_URL</code> first, then the log line</td>
+            </tr>
+            <tr>
+              <td><code>wrong-code</code></td>
+              <td>Wrong, expired, or already spent (5 attempts)</td>
+              <td>Ask for a new one</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>Numbers</h2>
+
+      <div class="scroll-x">
+        <table>
+          <thead>
+            <tr>
+              <th>Thing</th>
+              <th>Value</th>
+              <th>Set in</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Code length</td>
+              <td>6 digits</td>
+              <td><code>CODE_LENGTH</code></td>
+            </tr>
+            <tr>
+              <td>Code lifetime</td>
+              <td>5 minutes</td>
+              <td><code>CODE_EXPIRES_IN_SECONDS</code></td>
+            </tr>
+            <tr>
+              <td>Guesses allowed</td>
+              <td>5</td>
+              <td><code>CODE_ALLOWED_ATTEMPTS</code></td>
+            </tr>
+            <tr>
+              <td>Codes per address</td>
+              <td>3 per hour</td>
+              <td><code>CODES_PER_ADDRESS</code></td>
+            </tr>
+            <tr>
+              <td>Messages per process</td>
+              <td>200 per rolling 24h</td>
+              <td><code>DAILY_CAP</code></td>
+            </tr>
+            <tr>
+              <td>Session lifetime</td>
+              <td>365 days</td>
+              <td><code>A_YEAR_IN_SECONDS</code></td>
+            </tr>
+            <tr>
+              <td>Cookie ceiling</td>
+              <td>400 days (not ours)</td>
+              <td>RFC 6265bis</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>Log lines to grep</h2>
+
+      <div class="scroll-x">
+        <pre><code>email_sent          # subject + redacted address. Never the code.
+sign_in_refused     # carries stage (request_code | submit_code) and because
+signed_in           # volunteerId + orgId
+account_revocation  # outcome + how many sessions were ended
+account_restored</code></pre>
+      </div>
+
+      <p class="note">
+        The address is redacted by <code>src/shared/scrub.ts</code> on the way out, so
+        <em>"did we mail Grace"</em> is not answerable from the log alone — only
+        <em>"how much did this process send, and of what"</em>. That is the trade ADR 0007 chose.
+      </p>
+
+      <h2>Local recipes</h2>
+
+      <div class="scroll-x">
+        <pre><code># Start Postgres and Mailpit
+docker compose up -d
+
+# The web inbox
+xdg-open http://localhost:8025
+
+# Latest subject (the code lives here)
+curl -s 'http://localhost:8025/api/v1/messages?limit=1' \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["messages"][0]["Subject"])'
+
+# Empty the inbox
+curl -s -X DELETE http://localhost:8025/api/v1/messages
+
+# Tests need no SMTP at all — they swap the transport
+npx vitest run src/server/auth/sign-in.test.ts</code></pre>
+      </div>
+
+      <div class="callout">
+        <span class="label">In tests, not in dev</span>
+        <p>
+          <code>setEmailTransport(fn)</code> replaces the transport in-process and
+          <code>setEmailTransport(null)</code> is the kill switch. The integration tests use it to
+          read the code straight out of the message. It is not the dev-box lever —
+          <code>SMTP_URL</code> is.
+        </p>
+      </div>
+
+      <div class="footer">
+        <p>
+          Lesson: <a href="../lessons/0001-see-the-email-you-send.html">See the email you send</a> ·
+          <a href="../MISSION.md">Mission</a> · <a href="../RESOURCES.md">Resources</a>
+        </p>
+      </div>
+    </main>
+  </body>
+</html>

@@ -1,6 +1,11 @@
 # Postgres for development and for the integration tests. ADR 0007 pins
 # Postgres 18 everywhere and notes that the previous compose file said 17 while
 # the running container was 18 — the exact drift the pin exists to prevent.
+#
+# And Mailpit, which is where a development box's outgoing mail goes. ADR 0009
+# makes an emailed code the only credential there is, so a machine that cannot
+# send is a machine nobody can sign in on — and the alternative to a local SMTP
+# server is printing the code to stdout, which is a credential in a log.
 services:
   postgres:
     image: postgres:18-alpine
@@ -19,6 +24,29 @@ services:
       - caballus-postgres:/var/lib/postgresql
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U caballus']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Every message the application sends on this box, caught and shown in a
+  # browser instead of reaching a person. It speaks real SMTP, so the path
+  # under test is the same one Fastmail will be on in production (ADR 0009) —
+  # a console transport would skip the half most likely to be misconfigured.
+  mailpit:
+    image: axllent/mailpit:v1.28
+    ports:
+      # SMTP, which is what SMTP_URL points at.
+      - '1025:1025'
+      # The web inbox: http://localhost:8025
+      - '8025:8025'
+    environment:
+      # Nothing here is a real credential, and a development box should not be
+      # able to fail a sign-in over one.
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+      MP_MAX_MESSAGES: 500
+    healthcheck:
+      test: ['CMD', '/mailpit', 'readyz']
       interval: 5s
       timeout: 5s
       retries: 10

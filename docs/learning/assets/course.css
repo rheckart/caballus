@@ -1,0 +1,374 @@
+/*
+ * The one stylesheet every lesson and reference sheet links, so that the
+ * course reads as one course rather than a pile of one-offs.
+ *
+ * Tufte-ish: a measured column, generous leading, side notes that sit in the
+ * margin on a wide screen and fold inline on a phone. Prints cleanly, because
+ * the reference sheets are meant to end up on a desk.
+ */
+
+:root {
+  --ink: #1a1a1a;
+  --ink-soft: #555;
+  --ink-faint: #767676;
+  --paper: #fffef9;
+  --rule: #dcd8cc;
+  --accent: #7a3e12;
+  --accent-soft: #f3ece2;
+  --danger: #8a2a1a;
+  --good: #1f5c3a;
+  --measure: 38rem;
+  --serif: 'Iowan Old Style', 'Palatino Linotype', Palatino, Charter, Georgia, serif;
+  --mono: 'SF Mono', 'JetBrains Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --ink: #e8e4da;
+    --ink-soft: #b3ad9f;
+    --ink-faint: #8d877a;
+    --paper: #16150f;
+    --rule: #3a382f;
+    --accent: #e0a06a;
+    --accent-soft: #2a241b;
+    --danger: #e08a76;
+    --good: #7fc49b;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 3rem 1.5rem 6rem;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: 1.0625rem;
+  line-height: 1.65;
+  -webkit-text-size-adjust: 100%;
+}
+
+.sheet {
+  max-width: var(--measure);
+  margin: 0 auto;
+}
+
+/* --- Headings ---------------------------------------------------------- */
+
+h1,
+h2,
+h3 {
+  line-height: 1.2;
+  font-weight: 600;
+}
+
+h1 {
+  font-size: 2.1rem;
+  margin: 0 0 0.3rem;
+  letter-spacing: -0.01em;
+}
+
+h2 {
+  font-size: 1.35rem;
+  margin: 3rem 0 0.75rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--rule);
+}
+
+h3 {
+  font-size: 1.1rem;
+  margin: 2rem 0 0.5rem;
+}
+
+.subtitle {
+  margin: 0 0 2.5rem;
+  color: var(--ink-faint);
+  font-size: 1.05rem;
+  font-style: italic;
+}
+
+.eyebrow {
+  display: block;
+  margin-bottom: 0.6rem;
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  font-style: normal;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* --- Text -------------------------------------------------------------- */
+
+p,
+li {
+  max-width: var(--measure);
+}
+
+a {
+  color: var(--accent);
+  text-underline-offset: 2px;
+}
+
+code {
+  font-family: var(--mono);
+  font-size: 0.88em;
+  background: var(--accent-soft);
+  padding: 0.1em 0.32em;
+  border-radius: 3px;
+  overflow-wrap: break-word;
+}
+
+pre {
+  background: var(--accent-soft);
+  border-left: 3px solid var(--accent);
+  padding: 0.9rem 1.1rem;
+  overflow-x: auto;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  border-radius: 0 4px 4px 0;
+}
+
+pre code {
+  background: none;
+  padding: 0;
+  font-size: inherit;
+}
+
+/* --- Side notes -------------------------------------------------------- */
+
+.note {
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+  border-left: 2px solid var(--rule);
+  padding-left: 1rem;
+  margin: 1.5rem 0;
+}
+
+@media (min-width: 1180px) {
+  .note.aside {
+    float: right;
+    clear: right;
+    width: 15rem;
+    margin: 0.3rem -17rem 1.2rem 0;
+    border-left: none;
+    padding-left: 0;
+  }
+}
+
+/* --- Callouts ---------------------------------------------------------- */
+
+.callout {
+  margin: 1.75rem 0;
+  padding: 1rem 1.25rem;
+  border-radius: 4px;
+  border: 1px solid var(--rule);
+  background: var(--accent-soft);
+}
+
+.callout > :first-child {
+  margin-top: 0;
+}
+.callout > :last-child {
+  margin-bottom: 0;
+}
+
+.callout .label {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.callout.trap {
+  border-color: var(--danger);
+}
+.callout.trap .label {
+  color: var(--danger);
+}
+
+/* --- Tables ------------------------------------------------------------ */
+
+.scroll-x {
+  overflow-x: auto;
+  margin: 1.5rem 0;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.92rem;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.5rem 0.75rem 0.5rem 0;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: top;
+}
+
+th {
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  font-weight: 600;
+}
+
+/* --- Steps ------------------------------------------------------------- */
+
+ol.steps {
+  counter-reset: step;
+  list-style: none;
+  padding: 0;
+}
+
+ol.steps > li {
+  counter-increment: step;
+  position: relative;
+  padding-left: 2.6rem;
+  margin-bottom: 2rem;
+}
+
+ol.steps > li::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: 0.05rem;
+  width: 1.7rem;
+  height: 1.7rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--paper);
+  font-family: var(--mono);
+  font-size: 0.8rem;
+}
+
+ol.steps > li > h3 {
+  margin-top: 0;
+}
+
+/* --- Quiz -------------------------------------------------------------- */
+
+.quiz {
+  margin: 1.5rem 0;
+  padding: 1.25rem;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+}
+
+.quiz p.q {
+  margin-top: 0;
+  font-weight: 600;
+}
+
+.quiz button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin: 0.4rem 0;
+  padding: 0.6rem 0.85rem;
+  font: inherit;
+  font-size: 0.95rem;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.quiz button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.quiz button:disabled {
+  cursor: default;
+}
+
+.quiz button.right {
+  border-color: var(--good);
+  box-shadow: inset 3px 0 0 var(--good);
+}
+
+.quiz button.wrong {
+  border-color: var(--danger);
+  box-shadow: inset 3px 0 0 var(--danger);
+  opacity: 0.75;
+}
+
+.quiz .why {
+  display: none;
+  margin: 0.8rem 0 0;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+}
+
+.quiz.answered .why {
+  display: block;
+}
+
+/* --- Footer ------------------------------------------------------------ */
+
+.footer {
+  margin-top: 4rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--rule);
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+}
+
+.footer h2 {
+  border: none;
+  padding: 0;
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+/* --- Print ------------------------------------------------------------- */
+
+@media print {
+  :root {
+    --paper: #fff;
+    --ink: #000;
+    --accent-soft: #f4f4f4;
+  }
+  body {
+    padding: 0;
+    font-size: 10.5pt;
+  }
+  .quiz button,
+  .no-print {
+    display: none;
+  }
+  .quiz .why {
+    display: block;
+  }
+  h2 {
+    break-after: avoid;
+  }
+  pre,
+  table,
+  .callout {
+    break-inside: avoid;
+  }
+  a::after {
+    content: ' (' attr(href) ')';
+    font-size: 8pt;
+    color: #555;
+  }
+  a[href^='#']::after,
+  a[href^='./']::after {
+    content: '';
+  }
+}

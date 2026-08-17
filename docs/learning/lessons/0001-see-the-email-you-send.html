@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lesson 1 · See the email you send</title>
+    <link rel="stylesheet" href="../assets/course.css" />
+  </head>
+  <body>
+    <main class="sheet">
+      <span class="eyebrow">Lesson 1 · Email as Caballus' credential channel</span>
+      <h1>See the email you send</h1>
+      <p class="subtitle">
+        Signing in on your own machine, start to finish, without a single message leaving it.
+      </p>
+
+      <p>
+        Caballus has one credential and it arrives by email (<strong>ADR&nbsp;0009</strong>). That
+        makes your dev box unusual: until mail works locally, you cannot sign in, and you cannot
+        exercise a single line of the app that sits behind a session. The fix is a real SMTP server
+        that catches everything instead of delivering it.
+      </p>
+
+      <p class="note aside">
+        Why not just print the code to the console? Because a six-digit credential in a log is a
+        credential in a log — and because a console transport skips SMTP entirely, which is the half
+        most likely to be misconfigured when you point this at Fastmail.
+      </p>
+
+      <h2>What you already have</h2>
+
+      <p>
+        <code>docker-compose.yml</code> now runs <strong>Mailpit</strong> beside Postgres. It speaks
+        real SMTP on <code>1025</code> and shows what it caught at
+        <a href="http://localhost:8025">localhost:8025</a>. Nothing it receives is ever delivered.
+      </p>
+
+      <div class="scroll-x">
+        <pre><code>mailpit:
+  image: axllent/mailpit:v1.28
+  ports:
+    - '1025:1025'   # SMTP — what SMTP_URL points at
+    - '8025:8025'   # the web inbox
+  environment:
+    MP_SMTP_AUTH_ACCEPT_ANY: 1
+    MP_SMTP_AUTH_ALLOW_INSECURE: 1</code></pre>
+      </div>
+
+      <p>
+        Those two variables matter more than they look. Without them Mailpit refuses unauthenticated
+        plaintext connections, and you get a sign-in that fails for a reason that has nothing to do
+        with your code.
+        <a href="https://mailpit.axllent.org/docs/install/docker/">[Mailpit docs]</a>
+      </p>
+
+      <h2>Do it</h2>
+
+      <ol class="steps">
+        <li>
+          <h3>Start both containers</h3>
+          <pre><code>docker compose up -d</code></pre>
+          <p>
+            Postgres was already there; Mailpit is the new one. Check it is healthy with
+            <code>docker compose ps</code>.
+          </p>
+        </li>
+
+        <li>
+          <h3>Point the app at it</h3>
+          <p>In <code>.env</code>:</p>
+          <pre><code>SMTP_URL=smtp://localhost:1025</code></pre>
+          <p>
+            <code>smtp://</code>, not <code>smtps://</code> — Mailpit is plaintext on the loopback.
+            Leaving <code>SMTP_URL</code> empty is the state you were in before this lesson: there
+            is no transport at all, and <code>requestCode</code> answers
+            <code>{ sent: false, because: 'email-not-sent' }</code> rather than pretending.
+          </p>
+        </li>
+
+        <li>
+          <h3>Make sure you exist</h3>
+          <pre><code>npm run bootstrap -- "Front Barn Horse Rescue" \
+  America/New_York "Rob Heckart" rob@heckart.me</code></pre>
+          <p>
+            A code is only ever sent to an address that already has a Volunteer
+            (<strong>ADR&nbsp;0008</strong>). No row, no code — you will get
+            <code>unrecognised-email</code>, which is the app working correctly.
+          </p>
+        </li>
+
+        <li>
+          <h3>Sign in</h3>
+          <pre><code>npm run dev</code></pre>
+          <p>
+            Open <code>/login</code>, enter your address, then read the code off
+            <a href="http://localhost:8025">localhost:8025</a>. It is in the <em>subject line</em>,
+            so you do not have to open the message.
+          </p>
+        </li>
+      </ol>
+
+      <div class="callout trap">
+        <span class="label">The trap that will cost you an hour</span>
+        <p>
+          You cannot read the code out of the database. Caballus sets
+          <code>storeOTP: 'hashed'</code> in <code>src/server/auth/auth.ts</code>, so the
+          <code>verification</code> table holds a digest and a colon and an attempt count — never
+          the six digits. If Mailpit did not catch it, the code is gone. Look at the <em>inbox</em>,
+          not at Postgres.
+        </p>
+      </div>
+
+      <h2>Who sends what</h2>
+
+      <p>
+        This is the part worth carrying into production, because it is where Caballus deliberately
+        parts company with the library.
+      </p>
+
+      <div class="scroll-x">
+        <table>
+          <thead>
+            <tr>
+              <th>Step</th>
+              <th>Owner</th>
+              <th>Where</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Is this address allowed a code?</td>
+              <td>Caballus</td>
+              <td><code>gate()</code> in <code>sign-in.ts</code></td>
+            </tr>
+            <tr>
+              <td>Mint the code, hash it, store it</td>
+              <td>Better Auth</td>
+              <td><code>api.createVerificationOTP</code></td>
+            </tr>
+            <tr>
+              <td><strong>Send the message</strong></td>
+              <td><strong>Caballus</strong></td>
+              <td><code>sendEmail</code> in <code>email.ts</code></td>
+            </tr>
+            <tr>
+              <td>Check the code, make a session</td>
+              <td>Better Auth</td>
+              <td><code>api.signInEmailOTP</code></td>
+            </tr>
+            <tr>
+              <td>Join the session to a Volunteer</td>
+              <td>Caballus</td>
+              <td><code>claimAccount</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        Row three is the surprising one. The plugin has a <code>sendVerificationOTP</code> callback
+        built for exactly that job, and Caballus does not sign in through it. The Better Auth docs
+        say why, in a line that reads as advice and behaves as a constraint:
+        <em>"It is recommended to not await the email sending to avoid timing attacks."</em>
+        <a href="https://www.better-auth.com/docs/plugins/email-otp">[Better Auth docs]</a>
+      </p>
+
+      <p>
+        A send that is not awaited is a send whose failure nobody hears. The volunteer was told
+        <code>{ sent: true }</code> for a message that never left — and with email the only channel
+        there is, that is somebody standing in a barn waiting for a code that was never coming. So
+        <code>requestCode</code> mints the code through Better Auth and then sends it itself, where
+        a rejection is a value it can return.
+      </p>
+
+      <h2>Check yourself</h2>
+
+      <div class="quiz">
+        <p class="q">
+          Mailpit is running, but a sign-in answers <code>email-not-sent</code>. What do you check
+          first?
+        </p>
+        <button data-correct>Whether <code>SMTP_URL</code> is set in your <code>.env</code></button>
+        <button>Whether the volunteer row exists in the database</button>
+        <button>Whether the code expired before it was typed</button>
+        <button>Whether the address was normalised to lowercase</button>
+        <p class="why">
+          An unset <code>SMTP_URL</code> means no transport at all, and
+          <code>sendEmail</code> refuses rather than pretending. The other three produce different
+          refusals: a missing row is <code>unrecognised-email</code>, and both an expired code and a
+          casing problem would appear later or not at all.
+        </p>
+      </div>
+
+      <div class="quiz">
+        <p class="q">
+          You need the six digits and Mailpit was not running when the code was requested. Where are
+          they?
+        </p>
+        <button data-correct>Nowhere — the code is hashed and unrecoverable</button>
+        <button>In the value column of the verification table</button>
+        <button>In the structured log line for the send</button>
+        <button>In the session row created for the user</button>
+        <p class="why">
+          <code>storeOTP: 'hashed'</code> means the table holds a digest, and
+          <code>sendEmail</code> logs the subject and a redacted address but never the body. Ask for
+          a new code — you get three an hour per address.
+        </p>
+      </div>
+
+      <div class="quiz">
+        <p class="q">Why does Caballus send the code itself instead of letting the plugin do it?</p>
+        <button data-correct>An unawaited send hides its own failure from the caller</button>
+        <button>The plugin cannot reach an SMTP server directly</button>
+        <button>Sending through the plugin would skip the daily cap</button>
+        <button>The plugin sends before the volunteer gate has run</button>
+        <p class="why">
+          The plugin's callback is not awaited in a way the caller can observe, so a rejection
+          becomes <code>sent: true</code>. The cap point is a real consequence but not the reason,
+          and the gate runs first either way.
+        </p>
+      </div>
+
+      <h2>Where this goes next</h2>
+
+      <p>
+        The same <code>SMTP_URL</code> lever points at production. Fastmail for the POC, Resend at
+        go-live (<strong>ADR&nbsp;0009</strong>) — and the connection URL is where the first real
+        trap lives, because a Fastmail username <em>is</em> an email address and an
+        <code>@</code> inside a URL's credentials has to be written <code>%40</code>. That is Lesson
+        2.
+      </p>
+
+      <p>
+        Keep <a href="../reference/mail-in-caballus.html">the mail reference sheet</a> to hand. It
+        has every refusal, every environment variable, and the connection URLs for all three
+        providers on one page.
+      </p>
+
+      <div class="footer">
+        <h2>Read this next</h2>
+        <p>
+          <strong>Primary source:</strong>
+          <a href="https://www.better-auth.com/docs/plugins/email-otp"
+            >Better Auth — Email OTP plugin</a
+          >. Read the options table and the note above <code>sendVerificationOTP</code>. It is
+          short, and it is the document that explains the one design decision in this lesson you
+          would not have guessed.
+        </p>
+        <p>
+          <strong>Stuck, or something here does not match what you see?</strong> Ask me — I am your
+          teacher for this, and a mismatch between the lesson and the repo is worth catching
+          immediately. Good questions to bring: <em>why is the gate checked twice?</em>,
+          <em>what happens if Mailpit fills up?</em>,
+          <em>can I test this without Docker at all?</em>
+        </p>
+      </div>
+    </main>
+    <script src="../assets/quiz.js"></script>
+  </body>
+</html>

@@ -269,6 +269,16 @@ export default [
     },
   },
   {
+    // The teaching workspace's shared components (docs/learning/assets) run in
+    // a browser from a `file://` page, outside the bundle and outside the app.
+    // Linted rather than ignored: they are a component library that will grow,
+    // and a broken quiz is a lesson that silently teaches nothing.
+    files: ['docs/learning/assets/**/*.js'],
+    languageOptions: {
+      globals: { document: 'readonly', window: 'readonly' },
+    },
+  },
+  {
     files: ['**/*.ts', '**/*.tsx'],
     rules: {
       '@typescript-eslint/consistent-type-imports': 'error',
