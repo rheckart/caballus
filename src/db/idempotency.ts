@@ -59,12 +59,28 @@ export interface Attempt {
  * response's route and time so the log says which two requests collided.
  */
 export type Outcome =
-  | { readonly kind: 'performed'; readonly response: Response }
-  | { readonly kind: 'replayed'; readonly response: Response; readonly recordedAt: Instant }
+  | { readonly kind: 'performed'; readonly answered: Answered }
+  | { readonly kind: 'replayed'; readonly answered: Answered; readonly recordedAt: Instant }
   | { readonly kind: 'reused'; readonly firstRoute: string; readonly recordedAt: Instant }
   | { readonly kind: 'unfinished'; readonly recordedAt: Instant }
 
-export type Work = (db: OrgScopedDatabase) => Promise<Response>
+/**
+ * What a write answered, in the two fields this table keeps — and the whole of
+ * what it keeps, deliberately.
+ *
+ * A response is an HTTP object and this module is bookkeeping; it stores a
+ * status and a body and has no opinion about headers. The caller turns these
+ * back into a response, which is where the knowledge of what a header should
+ * say already lives (`src/server/api/answer.ts`), and it does so identically
+ * for a first attempt and a replay because there is one function and one call
+ * site (#30).
+ */
+export interface Answered {
+  readonly status: number
+  readonly body: string
+}
+
+export type Work = (db: OrgScopedDatabase) => Promise<Answered>
 
 export interface Idempotency {
   /** Runs `work` if this key has not been seen, and answers either way. */
@@ -100,14 +116,11 @@ export function postgresIdempotency(): Idempotency {
           return recall(db, attempt)
         }
 
-        const response = await work(db)
-        // Read once, here, and rebuilt below — a body can only be consumed
-        // once, and what is stored has to be what the caller is handed.
-        const body = await response.text()
+        const answered = await work(db)
 
         await db
           .update(idempotencyKeys)
-          .set({ status: response.status, response: body })
+          .set({ status: answered.status, response: answered.body })
           .where(
             and(
               eq(idempotencyKeys.orgId, attempt.orgId),
@@ -115,26 +128,12 @@ export function postgresIdempotency(): Idempotency {
             ),
           )
 
-        return {
-          kind: 'performed',
-          response: rebuild(body, response.status, response.headers),
-        }
+        // What is handed back is what was stored, so a first attempt and a
+        // replay are the same two fields going the same way out.
+        return { kind: 'performed', answered }
       })
     },
   }
-}
-
-/**
- * A response, again, from the body that was read out of it.
- *
- * The empty string rather than `null` is a `TypeError` on 204 and its three
- * siblings, and a handler answering 204 is an ordinary thing to write — so the
- * distinction is made here once rather than crashing the first write that
- * takes it. Exported so the in-memory double answers identically; two copies
- * of this that agree today are two that can disagree later.
- */
-export function rebuild(body: string, status: number, headers: HeadersInit): Response {
-  return new Response(body === '' ? null : body, { status, headers })
 }
 
 /** What the server already answered for a key it has seen before. */
@@ -165,9 +164,7 @@ async function recall(db: OrgScopedDatabase, attempt: Attempt): Promise<Outcome>
   return {
     kind: 'replayed',
     recordedAt,
-    // Every response here was built by `json`, which is the only builder the
-    // API layer exports, so the type is known without storing it.
-    response: rebuild(first.response, first.status, { 'content-type': 'application/json' }),
+    answered: { status: first.status, body: first.response },
   }
 }
 

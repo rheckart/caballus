@@ -1,11 +1,13 @@
 ---
 status: accepted
 amends: 0007 (the day-boundary ban is repo-wide rather than client-side; the idempotency key and the authorization declaration move from lint to types)
-amended-by: the skeleton (#22), on what each rule actually has to ban and which files each exemption covers
+amended-by: the skeleton (#22), on what each rule actually has to ban and which files each exemption covers; #30, which adds a fifth invariant to *What becomes a type* — a write answers with a response this layer built
 ---
 
 # An unenforced invariant is a type where it can be, a lint rule where it cannot, and never prose
 
+> **Amended by a fifth type invariant (#30).** *What becomes a type* has a new entry: a mutation answers with an `ApiResponse`, and `json` and `noContent` are the only two builders a handler has. ADR 0020 hands a retry the status and body it stored, and that is the *first answer* only if the rest of the response follows from those two — which was a comment claiming `json` was the only builder while `new Response(...)` was both allowed and shorter to write. The count in `src/server/api/route.ts` and in `CLAUDE.md` moves from two to three.
+>
 > **Amended when the rules landed (#22).** Six rules, six exemptions, the counts below unchanged — but writing them out found four bans that named one door each when the door had two, and two exemptions that need a second file. The table and the exemption list are updated in place; what follows is what changed and why, because this file going stale is the tripwire it names for itself.
 >
 > - **`createServerFn` has two import paths.** `@tanstack/react-start` re-exports it from `@tanstack/start-client-core`, which is hoisted and is what auto-import offers. Both are banned. This is the re-export leak the last section predicted, found on day one.
@@ -35,6 +37,8 @@ That test excludes things it is tempting to include. ADR 0007's 48px touch targe
 `floor()` has **three** legitimate uses today: recording work on a Shift you are rostered on, recording an Observation (ADR 0010), and recording your own presence (ADR 0012). That count is stated where the helper is defined, so a fourth is a deliberate act rather than a quiet one.
 
 **Every queueable mutation carries an idempotency key.** ADR 0005 requires it and ADR 0007 states it, and it has the same shape: mutation registration takes a Zod schema that must extend an idempotency-key base, so a keyless mutation does not compile. This is the half of ADR 0007's API rule that lint was never going to hold — lint can see which door a write goes through, not what it carries.
+
+**A write answers with a response this layer built** (added by #30). ADR 0020 stores a mutation's status and body and hands them to a retry days later, which is only the first answer if everything else about the response follows from those two. That was a comment claiming `json` was the only builder, and a handler could return any `Response` at all — so the claim became a type: `MutationHandler` returns an `ApiResponse`, and `json` and `noContent` are the only two functions that make one. It is the pattern this ADR is about, applied to a promise a comment was holding: the wrong option, `new Response(...)`, was the shorter one to write.
 
 **`forOrg` takes a branded `OrgId`, mintable only from request context.** The lint rule below guarantees that every handle came from `forOrg`; it says nothing at all about the argument. `forOrg(someRow.orgId)` type-checks, lints clean, and hands RLS a faithful scope to the wrong organisation. These are two different invariants — *which handle* and *which org* — and they get one mechanism each.
 

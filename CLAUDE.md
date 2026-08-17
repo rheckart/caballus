@@ -8,7 +8,7 @@ The skeleton exists; the domain does not. There are two tables (`orgs`, and `ide
 
 The stack is decided and is not open by default: TypeScript end to end, TanStack Start on Postgres 18 through Drizzle, deployed as one container (ADR 0007). Read `docs/adr/` before designing anything; the ADRs are decisions, not notes.
 
-**The guardrails are armed, and they are not negotiable.** ADR 0016 puts six invariants in `eslint.config.ts` and two more in the types of `src/server/api/route.ts`. A `PostToolUse` hook runs the six on every file write and blocks on a violation. There are no `eslint-disable` comments — `noInlineConfig` is on — and the only way to exempt code is a path override in `eslint.config.ts` with a reason. If a rule fires, the fix is the alternative its message names, never a way around it.
+**The guardrails are armed, and they are not negotiable.** ADR 0016 puts six invariants in `eslint.config.ts` and three more in the types of `src/server/api/route.ts` — a handler declares its authorization, a mutation's schema carries an idempotency key, and a mutation answers with an `ApiResponse`, which only `src/server/api/answer.ts` builds — `json` and `noContent` for a handler, `rebuild` for the replay, so a stored answer comes back exactly rather than approximately. A `PostToolUse` hook runs the six on every file write and blocks on a violation. There are no `eslint-disable` comments — `noInlineConfig` is on — and the only way to exempt code is a path override in `eslint.config.ts` with a reason. If a rule fires, the fix is the alternative its message names, never a way around it.
 
 ## Commands
 

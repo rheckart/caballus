@@ -1,11 +1,13 @@
 ---
 status: accepted
 extends: 0005 (what a repeat is answered with, and what a *different* request under the same key is answered with), 0007 (the index is total rather than partial, and where the record lives)
-amended-by: #28, on what "route" means in the digest — the path that was sent, decoded, with its query, and never the pattern that matched it
+amended-by: #28, on what "route" means in the digest — the path that was sent, decoded, with its query, and never the pattern that matched it; #30, on what a write may answer with, so that a replay is the first answer rather than its shape
 ---
 
 # A key is recorded with its answer, kept for thirty days, and a changed request under it is refused
 
+> **Amended on what a write may answer with (#30).** Only a stored answer's status and body are kept, and the rest of it was rebuilt as `application/json` on the strength of a comment saying `json` is the only builder — which the 204 in the wrapper's own tests already disproved. A replay was therefore a JSON-shaped approximation of the first answer rather than the first answer. The claim is a type now: a mutation handler returns an `ApiResponse`, and only `src/server/api/answer.ts` makes one — `json` and `noContent` for a handler, `rebuild` for a stored answer, which is the same function answering the first attempt and the replay. See *A repeat gets the first response* below.
+>
 > **Amended on what the digest's "route" is (#28).** It was built from the *registered pattern*, which is one string for every horse in the barn — so a key spent on `/horses/alfie/observations` and then on `/horses/bramble/observations` digested identically, and the second was answered 201 with alfie's response while nothing recorded it. Latent only because `/day` takes no parameters, and every mutation this domain needs is parameterised. The concrete path is what is digested, stored and logged now; the section below says so and says what became of the query string.
 
 ADR 0005 says the server "records that identifier with the effect and treats a repeat as success rather than as a new event". The skeleton (#22) built the half a type can hold — `mutation` does not compile without a key, parses it and logs it — and left the recording out, so a retry ran the handler twice. This decides the parts ADR 0005 and ADR 0007 leave open, all of which had to be settled before the first real mutation and none of which are cheap to settle after it.
@@ -25,6 +27,18 @@ Neither ADR settled this, and the two cases are not the same fact. A repeat is A
 The same key carrying a **different** request is a client bug or a collision, and the one answer it must not get is the first response: that would report success for a write nothing recorded, which is the same confident lie as the double-log, told in the other direction. So the key is stored beside a **digest of the request it first arrived with** — route and parsed body, canonicalised so that key order and reserialisation do not read as a change — and a mismatch is refused with **409**, which every client already reads as *stop retrying, this will not become true*.
 
 A digest rather than the payload, because a queued write carries volunteer names and observations and this table's only job is bookkeeping — the same argument ADR 0007 makes about what reaches Sentry.
+
+### The first answer, and not something the same shape (#30)
+
+*The first response* has to mean the response, headers included. Only the status and the body are stored, so the rest of it must be a **function of those two** — and that was asserted in a comment rather than held anywhere, so a handler returning a bare 204 got its replay back announcing `application/json`. A `Location`, an `ETag`, a `Retry-After` would have been dropped outright. The first attempt gets the truth and the retry gets something else, and the retry is the attempt that happens from a pocket on Thursday.
+
+**A mutation handler may only answer with what this layer builds** — `json` for an answer with a body, `noContent` for one without — and that is a type, in ADR 0016's sense: `MutationHandler` returns an `ApiResponse`, which only `src/server/api/answer.ts` produces. The content type is then genuinely derivable (a body is JSON; an empty answer claims no type at all), and the store keeps a **status and a body** rather than a response, so `mutation` builds the first attempt's answer and the replay through one call to `rebuild` and the two cannot disagree.
+
+`rebuild` is the third thing in that module and is not a handler's door: it takes what was stored, and a handler importing it to answer with something that is not JSON would be labelling it `application/json` deliberately. That is a person's decision to make badly, not a hole the type leaves open.
+
+A read is left unconstrained. It is answered once and never replayed, and nothing about it is claiming to be reproducible.
+
+The cost is named rather than smoothed over: **an endpoint that needs another header has to add a builder**, and adding one means deciding how it replays — which is the question that went unasked here. Storing the headers instead was the alternative, and it buys freedom this application has no use for at the price of a wider bookkeeping table and a handler's stray header outliving the request.
 
 ### The route in the digest is the path that was sent, and it includes the query
 

@@ -5,7 +5,7 @@ import { memoryIdempotency } from '../../db/idempotency.memory'
 import { requestContext } from '../request-context'
 import { domainScope, floor, readEverything } from './authorization'
 import { API_BASE, API_ROOT } from '../../shared/api-client'
-import { createApi, json, queueable } from './route'
+import { createApi, json, noContent, queueable } from './route'
 
 /** The one write these tests register, wherever they register it. */
 const observed = queueable({ note: z.string() })
@@ -297,18 +297,49 @@ describe('a key the wrapper has already answered', () => {
     expect(lines[1]).toMatchObject({ level: 'warn', outcome: 'key_reused', status: 409 })
   })
 
-  it('replays an answer that had no body at all', async () => {
+  it('replays an answer that had no body at all, header and all', async () => {
     const api = apiWithVolunteer()
-    api.mutation('/observations', floor('record-an-observation'), observed, () => new Response(null, { status: 204 }))
+    api.mutation('/observations', floor('record-an-observation'), observed, () => noContent())
 
     const write = () =>
       api.fetch(request('POST', '/observations', { note: 'gate latch', idempotencyKey: KEY }))
 
-    // 204 and its three siblings may not carry a body, and a response
-    // reconstructed from the empty string does — which is a TypeError on the
-    // first write that answers this way rather than on a later one.
-    expect((await write()).status).toBe(204)
-    expect((await write()).status).toBe(204)
+    const first = await write()
+    const retry = await write()
+
+    // ADR 0020 promises the client the *first answer*, not something the same
+    // shape. Status and body already matched here, which is exactly what hid a
+    // replay that announced `application/json` over a 204 that had said
+    // nothing — and the retry is the attempt that happens from a pocket on
+    // Thursday, the hardest path in this system to reproduce.
+    //
+    // 204 also may not carry a body at all, and a response reconstructed from
+    // the empty string does — a TypeError on the first write that answers this
+    // way rather than on some later one.
+    expect(first.status).toBe(204)
+    expect(retry.status).toBe(204)
+    expect([...retry.headers]).toEqual([...first.headers])
+    expect(retry.headers.get('content-type')).toBeNull()
+    await expect(retry.text()).resolves.toBe('')
+  })
+
+  it('replays a json answer as the json answer it was', async () => {
+    const api = apiWithVolunteer()
+    api.mutation('/observations', floor('record-an-observation'), observed, () =>
+      json({ recorded: true }, 201),
+    )
+
+    const write = () =>
+      api.fetch(request('POST', '/observations', { note: 'gate latch', idempotencyKey: KEY }))
+
+    const first = await write()
+    const retry = await write()
+
+    // The other half of the same claim: the builder that answers the first
+    // attempt is the builder that answers the retry, so they cannot differ.
+    expect(retry.status).toBe(first.status)
+    expect([...retry.headers]).toEqual([...first.headers])
+    await expect(retry.text()).resolves.toEqual(await first.text())
   })
 
   it('leaves nothing behind when the handler throws', async () => {
@@ -485,6 +516,18 @@ describe('the constraints are types', () => {
   it('will not accept a fourth reason for the floor', () => {
     // @ts-expect-error the three legitimate uses are enumerated in FloorReason
     floor('because-the-endpoint-was-easier-that-way')
+  })
+
+  it('will not let a write answer with a response this layer did not build', () => {
+    const api = createApi()
+    api.mutation(
+      '/observations',
+      floor('record-an-observation'),
+      observed,
+      // @ts-expect-error a stored answer is one `json` or `noContent` built,
+      // which is what makes rebuilding it faithfully possible
+      () => new Response(null, { status: 204 }),
+    )
   })
 
   it('will not register a write through the read door', () => {

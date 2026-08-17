@@ -1,5 +1,5 @@
 /**
- * Registration for the `/api/v1` layer, and the place two of ADR 0016's
+ * Registration for the `/api/v1` layer, and the place three of ADR 0016's
  * invariants are types rather than lint rules — because the type checker runs
  * on every keystroke and lint runs when something invokes it.
  *
@@ -9,6 +9,9 @@
  * 2. Every queueable mutation carries an idempotency key. `mutation` takes a
  *    schema whose shape must contain one, so a keyless mutation does not
  *    compile (ADR 0005).
+ * 3. Every mutation answers with an `ApiResponse`, which only `answer.ts`
+ *    builds — so a stored answer can be replayed exactly rather than
+ *    approximately (ADR 0020).
  *
  * The key is also *acted on* here rather than in handlers. `mutation` opens
  * the transaction, records the key inside it and hands the handler the scoped
@@ -28,6 +31,7 @@ import {
 } from '../../shared/api-client'
 import { log, report } from '../observability'
 import { requestContext, type RequestContext } from '../request-context'
+import { json, rebuild, type ApiResponse } from './answer'
 import { authorize, describeAuthorization, type Authorization } from './authorization'
 import { fingerprint } from './fingerprint'
 
@@ -64,10 +68,19 @@ export interface MutationContext extends HandlerContext {
   readonly db: OrgScopedDatabase
 }
 
+/**
+ * A write answers with something this layer built, and a read may answer with
+ * anything.
+ *
+ * Not symmetry for its own sake: a write's answer is stored and handed to a
+ * retry days later (ADR 0020), and only what `answer.ts` builds can be put back
+ * together from the status and body that were stored. A read is answered once
+ * and never replayed, so nothing there is claiming to reproduce it.
+ */
 export type MutationHandler<TInput> = (
   input: TInput,
   ctx: MutationContext,
-) => Response | Promise<Response>
+) => ApiResponse | Promise<ApiResponse>
 
 /**
  * Minted on the phone before the first attempt, and the same on every retry
@@ -175,10 +188,10 @@ async function boundedBody(request: Request): Promise<string | null> {
  * server did with it, so that ADR 0007's question — *did the server see key X,
  * and what did it answer* — is one grep and not a reconstruction.
  */
-function answer(
+function respond(
   outcome: Outcome,
   about: { route: string; key: string; requestId: string },
-): Response {
+): ApiResponse {
   const line = { route: about.route, idempotencyKey: about.key, requestId: about.requestId }
 
   switch (outcome.kind) {
@@ -186,9 +199,13 @@ function answer(
       log('info', 'mutation_answered', {
         ...line,
         outcome: 'performed',
-        status: outcome.response.status,
+        status: outcome.answered.status,
       })
-      return outcome.response
+      // Built here rather than passed through from the handler, which is what
+      // makes the two branches below provably the same answer: one function,
+      // one call site, and the store keeps a status and a body rather than a
+      // response it would have to reproduce (#30).
+      return rebuild(outcome.answered.body, outcome.answered.status)
 
     case 'replayed':
       // Not a warning. A replay is the retry queue working exactly as ADR 0005
@@ -196,10 +213,10 @@ function answer(
       log('info', 'mutation_answered', {
         ...line,
         outcome: 'replayed',
-        status: outcome.response.status,
+        status: outcome.answered.status,
         firstRecordedAt: outcome.recordedAt,
       })
-      return outcome.response
+      return rebuild(outcome.answered.body, outcome.answered.status)
 
     case 'reused':
       // One key, two different requests. Answering with the first response
@@ -288,12 +305,12 @@ function decodeSegment(segment: string): string {
   }
 }
 
-export function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'content-type': 'application/json' },
-  })
-}
+/**
+ * Re-exported so a handler has one import and one door. What an answer may be
+ * is decided in `answer.ts`, because a stored one has to be rebuildable from
+ * what was stored (ADR 0020, #30).
+ */
+export { json, noContent, type ApiResponse } from './answer'
 
 export interface ApiOptions {
   /**
@@ -448,10 +465,16 @@ export function createApi(options: ApiOptions = {}): Api {
             route,
             fingerprint: fingerprint(identity, parsed.data),
           },
-          async (db) => handler(parsed.data, { ...ctx, db }),
+          // The store is handed the two fields it keeps, not a response: a body
+          // can be read only once, and the thing that gets stored has to be the
+          // thing the caller is handed back (#30).
+          async (db) => {
+            const answered = await handler(parsed.data, { ...ctx, db })
+            return { status: answered.status, body: await answered.text() }
+          },
         )
 
-        return answer(outcome, { route, key, requestId: ctx.context.requestId })
+        return respond(outcome, { route, key, requestId: ctx.context.requestId })
       })
     },
 

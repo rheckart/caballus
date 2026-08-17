@@ -27,7 +27,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { z } from 'zod'
 
 import { floor } from '../server/api/authorization'
-import { createApi, json, queueable, type Api } from '../server/api/route'
+import { createApi, json, noContent, queueable, type Api } from '../server/api/route'
 import { currentOrgId } from '../server/request-context'
 import { API_BASE } from '../shared/api-client'
 import { closeDb, forOrg, type OrgId } from './for-org'
@@ -261,6 +261,36 @@ describe.skipIf(!reachable)('idempotency, against the database', () => {
     await expect(different?.json()).resolves.toEqual({ error: 'idempotency_key_reused' })
     expect(await ticks()).toEqual([{ id: write.tickId, item: 'sweep the barn' }])
     expect(ran()).toBe(1)
+  })
+
+  it('replays an answer that had no body as the answer it was', async () => {
+    let ran = 0
+    const api = createApi({
+      idempotency: postgresIdempotency(),
+      context: (request) => ({
+        orgId: orgId(),
+        requestId: request.headers.get('x-request-id') ?? randomUUID(),
+        actor: { volunteerId: 'v_01J8', domainScopes: [] },
+      }),
+    })
+    api.mutation('/ticks', floor('work-on-a-shift-you-are-rostered-on'), ticked, () => {
+      ran += 1
+      return noContent()
+    })
+
+    const write = queued('sweep the barn')
+    const first = await send(api, write)
+    const replay = await send(api, write)
+
+    // Through the table this time, not the double: only the status and the
+    // body are stored, and a 204 has neither a body nor a content type. What
+    // comes back out has to be the same answer, header for header, or ADR
+    // 0020's promise is a JSON-shaped approximation of it (#30).
+    expect(first?.status).toBe(204)
+    expect(replay?.status).toBe(204)
+    expect([...(replay?.headers ?? [])]).toEqual([...(first?.headers ?? [])])
+    expect(replay?.headers.get('content-type')).toBeNull()
+    expect(ran).toBe(1)
   })
 
   it('will not let one organisation replay another organisation’s key', async () => {
