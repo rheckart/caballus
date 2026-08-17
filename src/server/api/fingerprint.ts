@@ -17,16 +17,24 @@
 import { createHash } from 'node:crypto'
 
 /**
- * The digest of one request: the route it was sent to and the body the schema
- * parsed out of it.
+ * The digest of one request: where it was sent and the body the schema parsed
+ * out of it.
+ *
+ * `target` is where the request was actually sent — the concrete path, decoded,
+ * with its query — and never the pattern that matched it. Two horses under one
+ * pattern are two requests, and a digest that cannot tell them apart answers
+ * the second with the first one's response. `target` in
+ * `src/server/api/route.ts` builds it, and ADR 0020 says why it is shaped the
+ * way it is.
  *
  * The parsed body rather than the raw text, so that whitespace, key order and
  * fields Zod strips do not make one request look like two — those are the same
  * request as far as any handler is concerned, and a client that reserialises
- * its queue must not be told its retry is a conflict.
+ * its queue must not be told its retry is a conflict. The same standard is
+ * held on the path, which is why `target` is a value here and not a string.
  */
-export function fingerprint(route: string, input: unknown): string {
-  return createHash('sha256').update(canonical([route, input])).digest('hex')
+export function fingerprint(target: unknown, input: unknown): string {
+  return createHash('sha256').update(canonical([target, input])).digest('hex')
 }
 
 /**

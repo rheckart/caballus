@@ -226,6 +226,68 @@ function answer(
   }
 }
 
+/**
+ * Where a request was actually sent, in the two forms this module needs it.
+ *
+ * The pattern is the same string for every horse in the barn, so a digest built
+ * from it reads one key spent on `/horses/alfie/observations` and then on
+ * `/horses/bramble/observations` as one request twice — and answers bramble
+ * with alfie's response while nothing records it. ADR 0020 settles the rest:
+ * `identity` carries the query and `route` does not, and the reasons are there
+ * rather than restated here.
+ */
+interface Target {
+  /** For the table and the log: the path as sent, without its query. */
+  readonly route: string
+  /** For the digest: the same path, decoded, with its query beside it. */
+  readonly identity: Identity
+}
+
+/**
+ * A request's *where*, canonicalised the way `fingerprint` canonicalises its
+ * *what* — because the two halves of one digest cannot hold each other to
+ * different standards. Key order in a body does not make a retry a conflict,
+ * and neither may the spelling of a path: `/horses/al%66ie` and
+ * `/horses/alfie` reach the same handler with the same `horseId`, so a client
+ * that re-encodes its queue between attempts must not be handed a 409 its
+ * write can never drain past (ADR 0005).
+ *
+ * The path is its decoded segments rather than a joined string, so that a
+ * segment containing a slash cannot spell itself as two.
+ */
+interface Identity {
+  readonly method: string
+  readonly path: readonly string[]
+  /** Sorted, for the same reason object keys are: order is not a difference. */
+  readonly query: readonly (readonly [string, string])[]
+}
+
+function target(request: Request): Target {
+  const url = new URL(request.url)
+  const path = url.pathname.split('/').map(decodeSegment)
+  const query = [...url.searchParams]
+    .map(([name, value]): readonly [string, string] => [name, value])
+    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+
+  return {
+    route: `${request.method} ${url.pathname}`,
+    identity: { method: request.method, path, query },
+  }
+}
+
+/**
+ * A path segment as the router will read it. A stray `%` is not an escape and
+ * throws here rather than in the digest, so the segment stands as it arrived —
+ * which is what the router matched on anyway.
+ */
+function decodeSegment(segment: string): string {
+  try {
+    return decodeURIComponent(segment)
+  } catch {
+    return segment
+  }
+}
+
 export function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -323,6 +385,12 @@ export function createApi(options: ApiOptions = {}): Api {
       const decision = authorize(auth, ctx.actor)
       if (!decision.allowed) {
         // A denial is a structured log, not an audit row (ADR 0010).
+        //
+        // The pattern here, where `mutation` writes the path that was sent: a
+        // denial is decided before anything authenticated the caller, and the
+        // segments of a matched path are still a stranger's string. What joins
+        // this line to the rest of its request is `requestId`, which every line
+        // carries, and not the route.
         log('warn', 'denied', {
           route: `${method} ${path}`,
           wanted: decision.wanted,
@@ -354,7 +422,10 @@ export function createApi(options: ApiOptions = {}): Api {
         // The shape constraint guarantees the key at the call site; inside the
         // generic it has to be named.
         const { idempotencyKey: key } = parsed.data as { idempotencyKey: string }
-        const route = `POST ${path}`
+        // The path that was sent, not the pattern registered above — two
+        // horses are two requests, and a digest that cannot tell them apart
+        // answers the second with the first one's response.
+        const { route, identity } = target(ctx.request)
 
         // Every mutation logs its key, actor, org and route, so that "did the
         // server ever see key X" is a grep over SSH (ADR 0007). This line is
@@ -375,7 +446,7 @@ export function createApi(options: ApiOptions = {}): Api {
             orgId: ctx.context.orgId,
             key,
             route,
-            fingerprint: fingerprint(route, parsed.data),
+            fingerprint: fingerprint(identity, parsed.data),
           },
           async (db) => handler(parsed.data, { ...ctx, db }),
         )

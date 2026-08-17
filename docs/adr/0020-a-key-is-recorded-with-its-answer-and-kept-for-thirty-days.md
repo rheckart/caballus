@@ -1,9 +1,12 @@
 ---
 status: accepted
 extends: 0005 (what a repeat is answered with, and what a *different* request under the same key is answered with), 0007 (the index is total rather than partial, and where the record lives)
+amended-by: #28, on what "route" means in the digest — the path that was sent, decoded, with its query, and never the pattern that matched it
 ---
 
 # A key is recorded with its answer, kept for thirty days, and a changed request under it is refused
+
+> **Amended on what the digest's "route" is (#28).** It was built from the *registered pattern*, which is one string for every horse in the barn — so a key spent on `/horses/alfie/observations` and then on `/horses/bramble/observations` digested identically, and the second was answered 201 with alfie's response while nothing recorded it. Latent only because `/day` takes no parameters, and every mutation this domain needs is parameterised. The concrete path is what is digested, stored and logged now; the section below says so and says what became of the query string.
 
 ADR 0005 says the server "records that identifier with the effect and treats a repeat as success rather than as a new event". The skeleton (#22) built the half a type can hold — `mutation` does not compile without a key, parses it and logs it — and left the recording out, so a retry ran the handler twice. This decides the parts ADR 0005 and ADR 0007 leave open, all of which had to be settled before the first real mutation and none of which are cheap to settle after it.
 
@@ -23,6 +26,18 @@ The same key carrying a **different** request is a client bug or a collision, an
 
 A digest rather than the payload, because a queued write carries volunteer names and observations and this table's only job is bookkeeping — the same argument ADR 0007 makes about what reaches Sentry.
 
+### The route in the digest is the path that was sent, and it includes the query
+
+"Route" was first read as the registered pattern, which is the same string for every horse in the barn (#28). One key spent on `/horses/alfie/observations` and then on `/horses/bramble/observations` digested identically, so the second was answered **201 with alfie's response** and nothing recorded bramble's observation — the confident lie this digest exists to prevent, told by the mechanism meant to prevent it. It was latent only because `/day` takes no parameters, and every mutation this domain needs is parameterised: a tick belongs to a shift, an observation belongs to a horse.
+
+So the **concrete path** goes into the digest, and is what is stored and logged as `route`. A collision that names `:horseId` cannot tell a person which horse it was about, and which horse is the reason they are reading the line.
+
+**The path is canonicalised the way the body is.** The body half of this digest is the *parsed* body precisely so that reserialisation is not read as a change, and the path half may not be held to a looser standard: `/horses/al%66ie` and `/horses/alfie` reach one handler with one `horseId`, so they are one request. The path is digested as its **decoded segments** — a list rather than a joined string, so a segment containing a slash cannot spell itself as two — and the query as its **sorted pairs**. A retry that re-encodes on its way out of the queue must drain, not collect a permanent 409 (ADR 0005).
+
+**The query string is part of the request for digest purposes.** No mutation carries one — the typed client puts a write's arguments in the body — and the decision is made here rather than left to the endpoint that first does. Ignoring it would rebuild the same collision one layer down; counting it means a client that genuinely varies a query between attempts is refused with a 409, which is loud, honest, and not a shape this API has.
+
+**It is dropped again on the way to the table and the log.** A path segment is an id this application minted; a query is free text somebody else wrote, and this table holds digests rather than payloads for exactly that reason. The query reaches the digest, which is one-way, and stops there.
+
 **A 4xx answer from a handler is recorded like any other.** It is a deliberate answer, and replaying it is correct: the retry gets the same rejection instead of a second attempt at something the server already refused. A handler that wants nothing recorded **throws**, and the transaction takes the key with it — which is also the only way a handler should produce a 5xx, since `onError` is the 500 path in this application. A handler that *returns* a 5xx instead of throwing would have it recorded, and every retry would replay it forever. The wrapper does not second-guess that: a rule that quietly discards a handler's own response is worse than a convention the one door already follows.
 
 ## Keys are kept for thirty days
@@ -36,6 +51,8 @@ ADR 0005 notes that iOS has no Background Sync API, so a queue drains only when 
 ## What would make this wrong
 
 **The digest is computed over the parsed body, not the bytes.** Fields the schema strips do not change it. That is the behaviour a retrying client needs, and it means a client sending a genuinely different *unknown* field under a repeated key gets the first response. When a schema change makes an ignored field meaningful, it becomes part of the digest by becoming part of the schema — which is the right coupling, but it is a coupling.
+
+**A collision that differs only in the query says nothing on the log.** `route` and `firstRoute` are the same string, and what actually differed lives only in a digest nobody can read backwards — the shape of complaint #28 made about the pattern, one level down. It is accepted because no mutation carries a query today; the endpoint that first does should expect to put what it needs on the line itself.
 
 **Nothing yet bounds the size of a stored response.** Every mutation today answers with small JSON and ADR 0007 keeps blobs out of this path entirely, so the column is text and unbounded. A future endpoint answering with something large would put it in this table twice over — once in the answer and once in every replay's memory.
 

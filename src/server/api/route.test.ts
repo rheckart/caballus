@@ -274,7 +274,7 @@ describe('a key the wrapper has already answered', () => {
       outcome: 'replayed',
       status: 201,
       idempotencyKey: KEY,
-      route: 'POST /observations',
+      route: `POST ${API_BASE}/observations`,
     })
   })
 
@@ -331,6 +331,133 @@ describe('a key the wrapper has already answered', () => {
     // it did.
     expect(retry.status).toBe(201)
     expect(attempts).toBe(2)
+  })
+})
+
+describe('a key sent to two paths of one pattern', () => {
+  /** One parameterised write, and which horse each run was for. */
+  function apiPerHorse(): { api: ReturnType<typeof apiWithVolunteer>; ran: string[] } {
+    const api = apiWithVolunteer()
+    const ran: string[] = []
+    // The shape every mutation this domain needs has: an observation belongs
+    // to a horse, a tick belongs to a shift.
+    const perHorse = '/horses/:horseId/observations'
+    api.mutation(perHorse, floor('record-an-observation'), observed, (input, ctx) => {
+      ran.push(`${ctx.params.horseId}: ${input.note}`)
+      return json({ horse: ctx.params.horseId }, 201)
+    })
+    return { api, ran }
+  }
+
+  it('refuses the second, rather than answering it with the first horse', async () => {
+    const { api, ran } = apiPerHorse()
+    const body = { note: 'gate latch', idempotencyKey: KEY }
+
+    const first = await api.fetch(request('POST', '/horses/alfie/observations', body))
+    const second = await api.fetch(request('POST', '/horses/bramble/observations', body))
+
+    // The digest is over the path that was sent, not the pattern that matched
+    // it — otherwise bramble's observation is answered 201 with alfie's
+    // response and nothing at all records it.
+    await expect(first.json()).resolves.toEqual({ horse: 'alfie' })
+    expect(second.status).toBe(409)
+    await expect(second.json()).resolves.toEqual({ error: 'idempotency_key_reused' })
+    expect(ran).toEqual(['alfie: gate latch'])
+  })
+
+  it('still replays a retry of the same path', async () => {
+    const { api, ran } = apiPerHorse()
+    const write = () =>
+      api.fetch(
+        request('POST', '/horses/alfie/observations', { note: 'gate latch', idempotencyKey: KEY }),
+      )
+
+    await write()
+    const retry = await write()
+
+    // The other half: a parameterised path must not become a path that never
+    // dedupes, which would double-log every queued write (ADR 0005).
+    expect(retry.status).toBe(201)
+    await expect(retry.json()).resolves.toEqual({ horse: 'alfie' })
+    expect(ran).toEqual(['alfie: gate latch'])
+  })
+
+  it('names the horse on the log, not the pattern', async () => {
+    const { api } = apiPerHorse()
+    const lines = await linesWhile(() =>
+      api.fetch(
+        request('POST', '/horses/alfie/observations', { note: 'gate latch', idempotencyKey: KEY }),
+      ),
+    )
+
+    // A collision that names `:horseId` cannot tell you which horse, which is
+    // the whole reason a person greps this line (ADR 0007).
+    const route = `POST ${API_BASE}/horses/alfie/observations`
+    expect(lines.map((line) => line.event)).toEqual(['mutation', 'mutation_answered'])
+    expect(lines[0]).toMatchObject({ route, idempotencyKey: KEY })
+    expect(lines[1]).toMatchObject({ route, outcome: 'performed' })
+  })
+
+  it('says which request the key was first spent on', async () => {
+    const { api } = apiPerHorse()
+    const body = { note: 'gate latch', idempotencyKey: KEY }
+
+    await api.fetch(request('POST', '/horses/alfie/observations', body))
+    const lines = await linesWhile(() =>
+      api.fetch(request('POST', '/horses/bramble/observations', body)),
+    )
+
+    expect(lines[1]).toMatchObject({
+      outcome: 'key_reused',
+      route: `POST ${API_BASE}/horses/bramble/observations`,
+      firstRoute: `POST ${API_BASE}/horses/alfie/observations`,
+    })
+  })
+
+  it('counts a query string as part of the request', async () => {
+    const { api, ran } = apiPerHorse()
+    const body = { note: 'gate latch', idempotencyKey: KEY }
+
+    await api.fetch(request('POST', '/horses/alfie/observations?at=07:15', body))
+    const changed = await api.fetch(request('POST', '/horses/alfie/observations?at=17:15', body))
+    const same = await api.fetch(request('POST', '/horses/alfie/observations?at=07:15', body))
+
+    // No mutation carries one yet, and the answer is decided here rather than
+    // left to the endpoint that first does: a query that says something else
+    // is a different request, and gets a 409 rather than the first answer.
+    expect(changed.status).toBe(409)
+    await expect(changed.json()).resolves.toEqual({ error: 'idempotency_key_reused' })
+    expect(same.status).toBe(201)
+    expect(ran).toEqual(['alfie: gate latch'])
+  })
+
+  it('reads a re-encoded path as the same path', async () => {
+    const { api, ran } = apiPerHorse()
+    const body = { note: 'gate latch', idempotencyKey: KEY }
+
+    await api.fetch(request('POST', '/horses/alfie/observations', body))
+    const retry = await api.fetch(request('POST', '/horses/al%66ie/observations', body))
+
+    // Both spell one horse and reach one handler, so this is the retry ADR 0005
+    // is written for. A 409 here is a queued write that can never drain — the
+    // same standard the body half of the digest already holds.
+    expect(retry.status).toBe(201)
+    await expect(retry.json()).resolves.toEqual({ horse: 'alfie' })
+    expect(ran).toEqual(['alfie: gate latch'])
+  })
+
+  it('does not read the order of a query as a change to it', async () => {
+    const { api } = apiPerHorse()
+    const body = { note: 'gate latch', idempotencyKey: KEY }
+
+    await api.fetch(request('POST', '/horses/alfie/observations?at=07:15&by=v_01J8', body))
+    const retry = await api.fetch(
+      request('POST', '/horses/alfie/observations?by=v_01J8&at=07:15', body),
+    )
+
+    // Key order in a body is not a difference, and the path may not be held to
+    // a different standard than the body it arrived with.
+    expect(retry.status).toBe(201)
   })
 })
 

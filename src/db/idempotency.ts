@@ -39,7 +39,11 @@ export interface Attempt {
   readonly orgId: OrgId
   /** The key the phone minted before its first attempt. */
   readonly key: string
-  /** `POST /observations`. */
+  /**
+   * The path the write was sent to, not the pattern that matched it —
+   * `POST /api/v1/horses/alfie/observations`. A collision that names
+   * `:horseId` cannot tell a person which horse it was about.
+   */
   readonly route: string
   /** A digest of the request — `src/server/api/fingerprint.ts`. */
   readonly fingerprint: string
