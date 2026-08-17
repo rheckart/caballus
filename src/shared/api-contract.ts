@@ -19,6 +19,7 @@
  */
 import { z } from 'zod'
 
+import { DOMAIN_SCOPES } from './domain-scopes'
 import { isDayString, type DayString } from './time'
 
 /**
@@ -85,9 +86,28 @@ export const day = z.object({
   organisation: z.string(),
 })
 
+/**
+ * Who the session says is asking.
+ *
+ * A Volunteer and their Domain Scopes, never an Account: ADR 0010 hangs
+ * authorization off the person the barn knows, and the Better Auth user in the
+ * middle is not a thing the phone has any use for.
+ *
+ * There is no signed-out shape here on purpose. A signed-out request gets the
+ * explicit denial every other read gets — `401 not_authorized` — because a
+ * body saying `{ signedIn: false }` would be a second way of expressing the
+ * same fact, and the client would then have two of them to keep in step.
+ */
+export const me = z.object({
+  volunteerId: z.string(),
+  name: z.string(),
+  domainScopes: z.array(z.enum(DOMAIN_SCOPES)),
+})
+
 export const contract = {
   reads: {
     '/day': { answers: day },
+    '/me': { answers: me },
   },
   // Empty, and it stays empty until a write exists. A contract entry for an
   // endpoint no handler serves would be the drift this module was built to

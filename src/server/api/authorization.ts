@@ -7,20 +7,75 @@
  * required argument to `route` — so omission is a type error rather than a
  * quietly unauthorized endpoint (ADR 0016).
  */
+import { DOMAIN_SCOPES, type DomainScope } from '../../shared/domain-scopes'
 import type { Actor } from '../request-context'
 
-/** ADR 0010's five live scopes, plus the two declared but dormant. */
-export const DOMAIN_SCOPES = [
-  'horse_care',
-  'maintenance',
-  'roster',
-  'supplies',
-  'grants',
-  'financial',
-  'events',
-] as const
+/**
+ * The vocabulary is `src/shared/domain-scopes.ts` and re-exported here, so
+ * that a check and the `/me` the phone parses cannot name different scopes
+ * (ADR 0021). The *checks* stay on this side; only the names are shared.
+ */
+export { DOMAIN_SCOPES, type DomainScope }
 
-export type DomainScope = (typeof DOMAIN_SCOPES)[number]
+/**
+ * ADR 0010's roles, carrying the barn's own words. Stored as rows on the
+ * Volunteer; **the mapping below is a constant in code**, because nobody at
+ * this rescue will ever redefine what Head of Maintenance means and the price
+ * of letting them would be a permissions screen with its own audit problem.
+ *
+ * Three roles the brief lists are deliberately absent. Feed Shift Lead and
+ * Co-Lead dissolve into roster positions — being Lead of *this* Shift is not
+ * something anyone holds between Shifts — and Feed Shift Volunteer *is* the
+ * floor, so a role granting it would mean nothing. Keeping any of the three
+ * would be worse than absent: they would look like the thing that authorizes,
+ * and something would eventually check them instead of checking the roster.
+ */
+export const ROLE_SCOPES = {
+  // Enumerated rather than a wildcard. ADR 0010 rejects a short-circuit as a
+  // second code path through authorization, reliably the one nobody tests —
+  // and enumeration buys deliberateness: when `medical` arrives, somebody has
+  // to decide whether the President reads diagnoses.
+  president: DOMAIN_SCOPES,
+  board_member: DOMAIN_SCOPES,
+  head_of_horse_welfare: ['horse_care'],
+  head_of_maintenance: ['maintenance'],
+  volunteer_coordinator: ['roster'],
+  treasurer: ['financial'],
+  event_coordinator: ['events'],
+} as const satisfies Readonly<Record<string, readonly DomainScope[]>>
+
+export type Role = keyof typeof ROLE_SCOPES
+
+export const ROLES = Object.keys(ROLE_SCOPES) as readonly Role[]
+
+/**
+ * Whether a stored string is a role this build knows.
+ *
+ * The column is text and a deploy can be older than a row, so the question is
+ * real. `supplies` is the standing example pointing the other way: it has no
+ * dedicated role and is the President's until the rescue names the position,
+ * at which point the name is one line here and one grant.
+ */
+export function isRole(stored: string): stored is Role {
+  return Object.hasOwn(ROLE_SCOPES, stored)
+}
+
+/**
+ * The Domain Scopes a set of roles confers, in `DOMAIN_SCOPES` order and
+ * without repeats.
+ *
+ * A role this build does not know confers nothing, which is the direction that
+ * fails closed — the alternative is a row nobody can read granting something
+ * nobody decided.
+ */
+export function scopesOf(roles: readonly string[]): readonly DomainScope[] {
+  const held = new Set<DomainScope>()
+  for (const role of roles) {
+    if (!isRole(role)) continue
+    for (const scope of ROLE_SCOPES[role]) held.add(scope)
+  }
+  return DOMAIN_SCOPES.filter((scope) => held.has(scope))
+}
 
 /**
  * The three legitimate uses of `floor` today. Stated as a type so that a
@@ -79,9 +134,15 @@ export type Decision =
 export function authorize(required: Authorization, actor: Actor | null): Decision {
   switch (required.kind) {
     case 'read-everything':
-      // Anonymous while the POC has no accounts (ADR 0006). Reads are the
-      // whiteboard, and the whiteboard is already in the barn.
-      return { allowed: true }
+      // *Every Volunteer* reads everything (ADR 0010) — a person the
+      // organisation knows, not anybody who asks. The whiteboard is in a barn
+      // that every volunteer walks into, and the barn has a gate.
+      //
+      // The refusal is explicit and names what it wanted, like every other
+      // one: a silent empty answer is indistinguishable from success to a
+      // retry queue, and a phone that cannot tell *you are signed out* from
+      // *there is nothing today* shows a volunteer an empty barn.
+      return actor === null ? { allowed: false, status: 401, wanted: 'read' } : { allowed: true }
 
     case 'floor':
       // A write with no actor cannot be attributed, and an unattributed tick

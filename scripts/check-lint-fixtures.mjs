@@ -26,10 +26,10 @@ const EXPECTED_VIOLATIONS = {
   apiPath: 3,
 }
 
-/** ADR 0016: "Today: two, one, one, zero, one, one." */
+/** ADR 0016: "Today: two, two, one, zero, one, one." */
 const EXPECTED_EXEMPTIONS = {
   serverFn: 2,
-  dbClient: 1,
+  dbClient: 2,
   dayBoundary: 1,
   drizzleZod: 0,
   sentry: 1,
@@ -43,7 +43,7 @@ const EXPECTED_EXEMPTIONS = {
  * existing override's file list from one path to ten changes no number and
  * breaks no check, which is not what ADR 0016 promises.
  */
-const EXPECTED_EXEMPT_PATHS = 9
+const EXPECTED_EXEMPT_PATHS = 10
 
 const failures = []
 

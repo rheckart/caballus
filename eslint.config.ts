@@ -125,7 +125,7 @@ interface Exemption {
 }
 
 /**
- * Today: two, one, one, zero, one, one — the counts ADR 0016 states. One entry
+ * Today: two, two, one, zero, one, one — the counts ADR 0016 states. One entry
  * is one exemption with one reason, and an entry may cover the pair of modules
  * that share a reason.
  */
@@ -148,6 +148,15 @@ export const EXEMPTIONS: readonly Exemption[] = [
     bans: ['dbClient'],
     files: ['src/db/for-org.ts'],
     reason: 'forOrg is the sanctioned handle, so it is the one module that may hold the raw one.',
+  },
+  {
+    bans: ['dbClient'],
+    // Named rather than globbed, like the login exemption below it: the rest
+    // of `src/server/auth/` reaches identity through `forOrg` like everything
+    // else, and only the module that hands Better Auth its adapter may not.
+    files: ['src/server/auth/auth.ts'],
+    reason:
+      "Better Auth's three tables carry no org_id and no policy (ADR 0008), and it issues its own queries outside a transaction — a scoped handle would fail closed on every sign-in.",
   },
   {
     bans: ['dayBoundary'],

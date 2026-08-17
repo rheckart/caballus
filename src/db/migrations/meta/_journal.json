@@ -15,6 +15,13 @@
       "when": 1786908803597,
       "tag": "0001_the_key_and_its_answer",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786982481526,
+      "tag": "0002_a_volunteer_before_an_account",
+      "breakpoints": true
     }
   ]
 }

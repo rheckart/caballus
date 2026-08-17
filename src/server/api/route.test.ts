@@ -2,7 +2,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 
 import { memoryIdempotency } from '../../db/idempotency.memory'
-import { requestContext } from '../request-context'
+import { anonymousContext } from '../request-context'
 import { domainScope, floor, readEverything } from './authorization'
 import { API_BASE, API_ROOT } from '../../shared/api-client'
 import { createApi, json, noContent } from './route'
@@ -35,8 +35,12 @@ const testContract = {
 const KEY = '019267c0-6f7e-7a3d-9c2f-2f9a1c7e5b10'
 
 /**
- * An api with somebody signed in, until accounts exist (ADR 0006), and with
- * the in-memory store behind it.
+ * An api with somebody signed in, supplied rather than resolved, and with the
+ * in-memory store behind it.
+ *
+ * The context is handed over so that these tests exercise the wrapper rather
+ * than a session: `src/server/auth/sign-in.test.ts` is where an actor comes
+ * from a real cookie and a real row.
  *
  * That store proves nothing about dedupe — dedupe is a primary key in Postgres
  * and ADR 0007 says a fake proves nothing about database behaviour, which is
@@ -49,7 +53,7 @@ function apiWithVolunteer() {
     contract: testContract,
     idempotency: memoryIdempotency(),
     context: (request) => ({
-      ...requestContext(request),
+      ...anonymousContext(request),
       actor: { volunteerId: 'v_01J8', domainScopes: [] },
     }),
   })
@@ -86,18 +90,33 @@ function request(method: string, path: string, body?: unknown): Request {
 }
 
 describe('route', () => {
-  it('serves a read to the floor, which reads everything', async () => {
-    const api = createApi({ contract: testContract })
+  it('serves a read to a signed-in Volunteer, who reads everything', async () => {
+    const api = apiWithVolunteer()
     api.route('GET', '/day', readEverything(), () => json({ day: '2026-08-15' }))
 
     const response = await api.fetch(request('GET', '/day'))
 
+    // The floor is *every Volunteer*, and it needs no scope: all of this is on
+    // a wall in a barn that every volunteer walks into (ADR 0010).
     expect(response.status).toBe(200)
     await expect(response.json()).resolves.toEqual({ day: '2026-08-15' })
   })
 
+  it('refuses the same read to somebody signed out, and says so', async () => {
+    const api = createApi({ contract: testContract, context: anonymousContext })
+    api.route('GET', '/day', readEverything(), () => json({ day: '2026-08-15' }))
+
+    const response = await api.fetch(request('GET', '/day'))
+
+    // The barn has a gate. What matters as much as the refusal is its shape:
+    // an empty answer would be indistinguishable from *there is nothing today*
+    // on a phone, and indistinguishable from success to a retry queue.
+    expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toEqual({ error: 'not_authorized', wanted: 'read' })
+  })
+
   it('denies explicitly, and names the scope it wanted', async () => {
-    const api = createApi({ contract: testContract })
+    const api = createApi({ contract: testContract, context: anonymousContext })
     api.route('GET', '/volunteers', domainScope('roster'), () => json({ volunteers: [] }))
 
     const response = await api.fetch(request('GET', '/volunteers'))
@@ -109,7 +128,7 @@ describe('route', () => {
   })
 
   it('answers a path the version does not claim with a 404', async () => {
-    const api = createApi({ contract: testContract })
+    const api = createApi({ contract: testContract, context: anonymousContext })
     const response = await api.fetch(request('GET', '/nothing-here'))
     expect(response.status).toBe(404)
     await expect(response.json()).resolves.toEqual({ error: 'not_found' })
@@ -118,7 +137,7 @@ describe('route', () => {
 
 describe('a contract nothing serves', () => {
   it('will not seal while a declared path has no handler', () => {
-    const api = createApi({ contract: testContract })
+    const api = createApi({ contract: testContract, context: anonymousContext })
     api.route('GET', '/day', readEverything(), () => json({ day: '2026-08-15' }))
 
     // The other direction of the typed path: registering what nothing declares
@@ -128,7 +147,7 @@ describe('a contract nothing serves', () => {
   })
 
   it('names every path that is missing, not just the first', () => {
-    const api = createApi({ contract: testContract })
+    const api = createApi({ contract: testContract, context: anonymousContext })
 
     const failure = () => api.sealed()
 
@@ -138,7 +157,11 @@ describe('a contract nothing serves', () => {
   })
 
   it('seals once everything declared is served', () => {
-    const api = createApi({ contract: testContract, idempotency: memoryIdempotency() })
+    const api = createApi({
+      contract: testContract,
+      context: anonymousContext,
+      idempotency: memoryIdempotency(),
+    })
     api.route('GET', '/day', readEverything(), () => json({ day: '2026-08-15' }))
     api.route('GET', '/volunteers', readEverything(), () => json({ volunteers: [] }))
     api.mutation('/observations', floor('record-an-observation'), () => json({}, 201))
@@ -167,7 +190,7 @@ describe('the version in the path', () => {
   }
 
   it('rejects a version it does not recognise, and says which one it serves', async () => {
-    const api = createApi({ contract: testContract })
+    const api = createApi({ contract: testContract, context: anonymousContext })
     const response = await api.fetch(toVersion('GET', 'v2', '/day'))
 
     // Not the 404 a mistyped path gets: *you may not do this*, *there is no
@@ -204,7 +227,7 @@ describe('the version in the path', () => {
   })
 
   it('writes down the key of the write it turned away', async () => {
-    const api = createApi({ contract: testContract })
+    const api = createApi({ contract: testContract, context: anonymousContext })
     const key = '019267c0-6f7e-7a3d-9c2f-2f9a1c7e5b10'
 
     const lines = await linesWhile(() =>
@@ -229,7 +252,7 @@ describe('the version in the path', () => {
   })
 
   it('will not let a scanner write the log a line at a time', async () => {
-    const api = createApi({ contract: testContract })
+    const api = createApi({ contract: testContract, context: anonymousContext })
 
     const lines = await linesWhile(() => api.fetch(toVersion('GET', '.env', '')))
 
@@ -240,7 +263,7 @@ describe('the version in the path', () => {
   })
 
   it('rejects the versionless root, which is a client that has forgotten the path', async () => {
-    const api = createApi({ contract: testContract })
+    const api = createApi({ contract: testContract, context: anonymousContext })
     const response = await api.fetch(toVersion('GET', 'day', ''))
 
     expect(response.status).toBe(400)
@@ -280,7 +303,11 @@ describe('mutation', () => {
   })
 
   it('refuses a write from nobody, because a tick is a claim by an actor', async () => {
-    const api = createApi({ contract: testContract, idempotency: memoryIdempotency() })
+    const api = createApi({
+      contract: testContract,
+      context: anonymousContext,
+      idempotency: memoryIdempotency(),
+    })
     api.mutation('/observations', floor('record-an-observation'), () => json({}, 201))
 
     const response = await api.fetch(
@@ -557,19 +584,19 @@ describe('a key sent to two paths of one pattern', () => {
 // because an unused `@ts-expect-error` is itself an error.
 describe('the constraints are types', () => {
   it('will not register a handler with no authorization declared', () => {
-    const api = createApi({ contract: testContract })
+    const api = createApi({ contract: testContract, context: anonymousContext })
     // @ts-expect-error the authorization declaration is a required argument
     api.route('GET', '/day', () => json({ day: '2026-08-15' }))
   })
 
   it('will not register a path the contract does not declare', () => {
-    const api = createApi({ contract: testContract })
+    const api = createApi({ contract: testContract, context: anonymousContext })
     // @ts-expect-error nothing declares `/shifts`, so nothing may serve it
     api.route('GET', '/shifts', readEverything(), () => json({ shifts: [] }))
   })
 
   it('will not answer a read with a shape the contract did not promise', () => {
-    const api = createApi({ contract: testContract })
+    const api = createApi({ contract: testContract, context: anonymousContext })
     api.route('GET', '/volunteers', readEverything(), () =>
       // @ts-expect-error `/volunteers` answers `{ volunteers }`, and the phone
       // parses what it was promised (#26)
@@ -578,7 +605,7 @@ describe('the constraints are types', () => {
   })
 
   it('hands a write the payload its contract declared', () => {
-    const api = createApi({ contract: testContract })
+    const api = createApi({ contract: testContract, context: anonymousContext })
     api.mutation('/observations', floor('record-an-observation'), (input) => {
       // The key is added by registration and is not the endpoint's to declare
       // (ADR 0005), and the rest is the contract's `accepts`.
@@ -596,7 +623,7 @@ describe('the constraints are types', () => {
   })
 
   it('will not let a write answer with a response this layer did not build', () => {
-    const api = createApi({ contract: testContract })
+    const api = createApi({ contract: testContract, context: anonymousContext })
     api.mutation(
       '/observations',
       floor('record-an-observation'),
@@ -607,7 +634,7 @@ describe('the constraints are types', () => {
   })
 
   it('will not register a write through the read door', () => {
-    const api = createApi({ contract: testContract })
+    const api = createApi({ contract: testContract, context: anonymousContext })
     // @ts-expect-error a write goes through mutation, which adds the key and
     // parses the contract's payload
     api.route('POST', '/observations', floor('record-an-observation'), () => json({}, 201))

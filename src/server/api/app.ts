@@ -2,12 +2,14 @@
  * The `/api/v1` application. Every queueable write in the system arrives here
  * (ADR 0007), and every handler declares what it requires (ADR 0010).
  *
- * There is one endpoint so far. It is the one the client cannot do without:
- * the day, in the organisation's timezone, since a browser deriving its own
- * would be right for most of the year and wrong at the edges that matter.
+ * Two endpoints so far: the day in the organisation's timezone, since a
+ * browser deriving its own would be right for most of the year and wrong at
+ * the edges that matter, and who the session says is asking.
  */
+import { eq } from 'drizzle-orm'
+
 import { forOrg } from '../../db/for-org'
-import { orgs } from '../../db/schema'
+import { orgs, volunteers } from '../../db/schema'
 import { readEverything } from './authorization'
 import { createApi, json } from './route'
 import { startObservability } from '../observability'
@@ -32,6 +34,42 @@ api.route('GET', '/day', readEverything(), async ({ context }) => {
   }
 
   return json({ day: today(org.timeZone), timeZone: org.timeZone, organisation: org.name })
+})
+
+/**
+ * Who the session says is asking.
+ *
+ * `readEverything()` and not a floor of its own: the question *who am I* is
+ * answerable to a Volunteer and to nobody else, which is exactly what the
+ * floor already says. A signed-out request therefore gets the same explicit
+ * `401 not_authorized` every other read gives it, rather than a body
+ * announcing that nobody is signed in — one fact, one shape (ADR 0010).
+ */
+api.route('GET', '/me', readEverything(), async ({ context }) => {
+  // Sound: `readEverything` refused a null actor before this handler ran.
+  const actor = context.actor
+  if (actor === null) return json({ error: 'not_authorized' }, 401)
+
+  const [volunteer] = await forOrg(context.orgId).run((db) =>
+    db
+      .select({ name: volunteers.name })
+      .from(volunteers)
+      .where(eq(volunteers.id, actor.volunteerId))
+      .limit(1),
+  )
+
+  if (volunteer === undefined) {
+    // The session resolved to a Volunteer that the policies cannot see, which
+    // means the row went while the session stayed. Saying so beats answering
+    // with a nameless person.
+    return json({ error: 'volunteer_not_found' }, 503)
+  }
+
+  return json({
+    volunteerId: actor.volunteerId,
+    name: volunteer.name,
+    domainScopes: [...actor.domainScopes],
+  })
 })
 
 // Every path the contract declares now has a handler, or this throws and the

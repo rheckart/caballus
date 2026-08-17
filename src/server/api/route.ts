@@ -43,7 +43,7 @@ import {
   type WritePath,
 } from '../../shared/api-contract'
 import { log, report } from '../observability'
-import { requestContext, type RequestContext } from '../request-context'
+import { anonymousContext, requestContext, type RequestContext } from '../request-context'
 import { json, rebuild, type ApiResponse } from './answer'
 import { authorize, describeAuthorization, type Authorization } from './authorization'
 import { fingerprint } from './fingerprint'
@@ -363,9 +363,12 @@ export interface ApiOptions<C extends Contract> {
   /**
    * How a request becomes a context. The default reads the organisation from
    * configuration and the actor from the session; a test supplies its own to
-   * put somebody in the barn.
+   * put somebody in the barn without signing them in.
+   *
+   * It may answer asynchronously, because the real one does: resolving the
+   * actor is a session lookup and two indexed reads (ADR 0008).
    */
-  readonly context?: (request: Request) => RequestContext
+  readonly context?: (request: Request) => RequestContext | Promise<RequestContext>
 
   /**
    * Where a key is written down and looked up. The default is the table; a
@@ -447,7 +450,14 @@ export function createApi<C extends Contract>(options: Partial<ApiOptions<C>> = 
    * one request rather than two unrelated lines.
    */
   async function logVersionRejection(c: Context, version: string): Promise<void> {
-    const ctx = contextOf(c.req.raw)
+    // `anonymousContext`, not `contextOf`. Two reasons, and the second is the
+    // one that matters: this request was rejected before anything wanted to
+    // know who sent it, so resolving an actor is a session lookup and two
+    // scoped reads spent on a log line — and if the database is unreachable or
+    // the signing secret is unset, that resolution *throws*, `onError` turns
+    // it into a 500, and a stale client that needed `400 unsupported_api_version`
+    // to know it must reload is handed a retryable error instead.
+    const ctx = anonymousContext(c.req.raw)
     log('warn', 'unsupported_api_version', {
       route: `${c.req.method} ${c.req.path}`,
       received: version,
@@ -473,7 +483,7 @@ export function createApi<C extends Contract>(options: Partial<ApiOptions<C>> = 
     handler: Handler<unknown>,
   ): Api<C> {
     app.on(method, path, async (c) => {
-      const ctx = contextOf(c.req.raw)
+      const ctx = await contextOf(c.req.raw)
       const decision = authorize(auth, ctx.actor)
       if (!decision.allowed) {
         // A denial is a structured log, not an audit row (ADR 0010).
