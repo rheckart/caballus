@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest'
+import { z } from 'zod'
 
-import { fingerprint } from './fingerprint'
+import { fingerprint, UnfingerprintableValueError } from './fingerprint'
+
+/**
+ * A `Date`, the way one actually reaches `fingerprint`: out of `parsed.data`,
+ * which is Zod *output*. `z.coerce.date()` is the real trigger the ticket
+ * describes, and it also means this file never writes the `Date` identifier
+ * ADR 0016 bans repo-wide — the coercion happens inside `zod`, not here.
+ */
+function dateAt(iso: string) {
+  return z.coerce.date().parse(iso)
+}
 
 const KEY = '019267c0-6f7e-7a3d-9c2f-2f9a1c7e5b10'
 
@@ -58,5 +69,104 @@ describe('fingerprint', () => {
     const nulled = fingerprint('POST /observations', { note: 'gate latch', horse: null })
 
     expect(absent).not.toEqual(nulled)
+  })
+
+  describe('a Date, which has no own enumerable properties', () => {
+    // Object.entries(new Date()) is [] — every Date used to canonicalise to
+    // the same `{}` as every other one, and two medication entries differing
+    // only in `administeredAt` digested identically (#31).
+    it('digests differently for two different dates', () => {
+      const first = fingerprint('POST /observations', {
+        administeredAt: dateAt('2026-08-16T07:00:00.000Z'),
+      })
+      const second = fingerprint('POST /observations', {
+        administeredAt: dateAt('2026-08-16T09:00:00.000Z'),
+      })
+
+      expect(first).not.toEqual(second)
+    })
+
+    it('digests the same for two Date instances holding the same moment', () => {
+      const first = fingerprint('POST /observations', {
+        administeredAt: dateAt('2026-08-16T07:00:00.000Z'),
+      })
+      const second = fingerprint('POST /observations', {
+        administeredAt: dateAt('2026-08-16T07:00:00.000Z'),
+      })
+
+      expect(first).toEqual(second)
+    })
+
+    it('does not collide with a string field holding the same ISO text', () => {
+      // Encoding as the ISO string alone would make a `Date` and a plain
+      // string field indistinguishable, which is a quieter version of the
+      // same bug: two different shapes reported as one request.
+      const asDate = fingerprint('POST /observations', {
+        at: dateAt('2026-08-16T07:00:00.000Z'),
+      })
+      const asString = fingerprint('POST /observations', {
+        at: '2026-08-16T07:00:00.000Z',
+      })
+
+      expect(asDate).not.toEqual(asString)
+    })
+  })
+
+  describe('a bigint, which JSON.stringify refuses outright', () => {
+    // TypeError: Do not know how to serialize a BigInt — thrown before the
+    // key is claimed, so the phone gets a 500 and retries a write that can
+    // never succeed (#31).
+    it('digests differently for two different values', () => {
+      const first = fingerprint('POST /ticks', { count: 3n })
+      const second = fingerprint('POST /ticks', { count: 4n })
+
+      expect(first).not.toEqual(second)
+    })
+
+    it('digests the same for the same value', () => {
+      const first = fingerprint('POST /ticks', { count: 3n })
+      const second = fingerprint('POST /ticks', { count: 3n })
+
+      expect(first).toEqual(second)
+    })
+
+    it('does not throw', () => {
+      expect(() => fingerprint('POST /ticks', { count: 3n })).not.toThrow()
+    })
+  })
+
+  describe('a shape with no canonical wire meaning', () => {
+    // Refusing is the acceptable answer here (#31): a Map or a class instance
+    // is not a shape a hand-written Zod schema should be producing, and a
+    // loud failure at the schema that first does is cheaper than a silent
+    // collision at 6am (ADR 0020).
+    it('refuses a Map rather than silently reading its own properties', () => {
+      expect(() => fingerprint('POST /observations', { seen: new Map([[1, 2]]) })).toThrow(
+        UnfingerprintableValueError,
+      )
+    })
+
+    it('refuses a class instance the same way', () => {
+      class Horse {
+        name = 'Alfie'
+      }
+      expect(() => fingerprint('POST /observations', { horse: new Horse() })).toThrow(
+        UnfingerprintableValueError,
+      )
+    })
+
+    it('names the shape it could not canonicalise', () => {
+      const thrown: unknown = (() => {
+        try {
+          fingerprint('POST /observations', { seen: new Set([1]) })
+          return null
+        } catch (error) {
+          return error
+        }
+      })()
+
+      expect(thrown).toBeInstanceOf(UnfingerprintableValueError)
+      expect((thrown as Error).message).toContain('Set')
+    })
   })
 })
