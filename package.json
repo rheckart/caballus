@@ -16,11 +16,12 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "lint:fixtures": "node scripts/check-lint-fixtures.mjs",
+    "check:control-bytes": "node scripts/check-control-bytes.mjs",
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:check": "drizzle-kit check",
     "db:migrate": "drizzle-kit migrate",
-    "verify": "npm run typecheck && npm run lint && npm run lint:fixtures && npm run test && npm run db:check"
+    "verify": "npm run typecheck && npm run lint && npm run lint:fixtures && npm run check:control-bytes && npm run test && npm run db:check"
   },
   "lint-staged": {
     "*": "prettier --write --ignore-unknown"
