@@ -10,6 +10,18 @@
  * never accepted and misinterpreted (ADR 0007).
  */
 import { v7 as uuidv7 } from 'uuid'
+import { z } from 'zod'
+
+import {
+  contract,
+  type Accepts,
+  type Answers,
+  type AnswersWrite,
+  type Contract,
+  type ReadPath,
+  type RoutePath,
+  type WritePath,
+} from './api-contract'
 
 /** The version this build speaks. The server serves it; the phone calls it. */
 export const API_VERSION = 'v1'
@@ -103,39 +115,121 @@ export class OutdatedServerError extends ApiError {
   }
 }
 
-/** A path below the version, as `route` registers it. */
-export type ApiPath = `/${string}`
-
-export async function apiGet<T>(path: ApiPath, init: RequestInit = {}): Promise<T> {
-  return send<T>(path, { ...init, method: 'GET' })
+/**
+ * The server answered, and what it said is not what this version's contract
+ * says that endpoint answers.
+ *
+ * Its own class for the same reason the two above are: the queue has to know
+ * what to do with it, and the answer is *drop it and report it*. Retrying
+ * cannot make a mismatched shape match, and rendering it would be the client
+ * guessing at what the server meant — which is the accepted-and-misinterpreted
+ * outcome ADR 0007 puts the version in the path to prevent.
+ */
+export class UnreadableAnswerError extends ApiError {
+  constructor(
+    status: number,
+    body: unknown,
+    readonly because: string,
+  ) {
+    super(status, body)
+    this.name = 'UnreadableAnswerError'
+    this.message = `the server's answer is not the shape this client was promised: ${because}`
+  }
 }
 
 /**
- * Sends a queueable write. The idempotency key is minted here, once, before
- * the first attempt — mint it per attempt and every retry looks like a new
- * event, which is the bug ADR 0005 exists to prevent. The caller passes one in
- * when the write is being replayed from the queue.
+ * A client bound to one contract.
+ *
+ * Generic over it rather than reading the module's own, so that the tests of
+ * this module's decisions can bind a contract of their own — the alternative
+ * is endpoints in the real contract that exist for the tests, which is the
+ * drift the contract was built to remove.
  */
-export async function apiPost<T>(
-  path: ApiPath,
-  body: Record<string, unknown>,
-  options: { idempotencyKey?: string } = {},
-): Promise<T> {
-  return send<T>(path, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    // The key is written last so that a field in `body` cannot shadow it: a
-    // write whose key came from its own payload is a write with no key.
-    body: JSON.stringify({ ...body, idempotencyKey: options.idempotencyKey ?? uuidv7() }),
-  })
+export interface ApiClient<C extends Contract> {
+  /** A read. The path must be one the contract declares, and the answer is its shape. */
+  get<P extends ReadPath<C>>(path: P, init?: RequestInit): Promise<Answers<C, P>>
+
+  /**
+   * A queueable write. The idempotency key is minted here, once, before the
+   * first attempt — mint it per attempt and every retry looks like a new event,
+   * which is the bug ADR 0005 exists to prevent. **The queue replays through
+   * this same call**, passing the key it kept, so a replay cannot drift from
+   * the write it is replaying: there is one place that builds the body, and it
+   * is this one.
+   */
+  post<P extends WritePath<C>>(
+    path: P,
+    body: Accepts<C, P>,
+    options?: { idempotencyKey?: string },
+  ): Promise<AnswersWrite<C, P>>
 }
 
-/** A fresh idempotency key, for a write on its way into the queue. */
+export function createClient<C extends Contract>(against: C): ApiClient<C> {
+  async function get<P extends ReadPath<C>>(
+    path: P,
+    init: RequestInit = {},
+  ): Promise<Answers<C, P>> {
+    const read = declared(against.reads[path], path)
+    return (await send(path, { ...init, method: 'GET' }, read.answers)) as Answers<C, P>
+  }
+
+  async function post<P extends WritePath<C>>(
+    path: P,
+    body: Accepts<C, P>,
+    options: { idempotencyKey?: string } = {},
+  ): Promise<AnswersWrite<C, P>> {
+    const write = declared(against.writes[path], path)
+    const answered = await send(
+      path,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        // The key is written last so that a field in `body` cannot shadow it:
+        // a write whose key came from its own payload is a write with no key.
+        body: JSON.stringify({
+          ...(body as Record<string, unknown>),
+          idempotencyKey: options.idempotencyKey ?? newIdempotencyKey(),
+        }),
+      },
+      write.answers,
+    )
+    return answered as AnswersWrite<C, P>
+  }
+
+  return { get, post }
+}
+
+/**
+ * The endpoint, or a refusal to guess.
+ *
+ * Unreachable through the types, and reachable from JavaScript and from a
+ * contract annotated `Contract` rather than `satisfies Contract` — whose index
+ * signature says every path exists. Saying so is better than a `TypeError`
+ * about `undefined` three frames down.
+ */
+function declared<T>(endpoint: T | undefined, path: RoutePath): T {
+  if (endpoint === undefined) {
+    throw new Error(`No endpoint is declared at ${path}. Add it to the API contract.`)
+  }
+  return endpoint
+}
+
+/** The client this build talks to its own server with. */
+export const client = createClient(contract)
+
+/**
+ * A fresh idempotency key, for a write on its way into the queue — minted once,
+ * before the first attempt, and kept for every replay (ADR 0005).
+ *
+ * The one place a key is made: `post` calls this rather than minting its own,
+ * so the queue that hands one in and the write that had one made for it get
+ * the same thing.
+ */
 export function newIdempotencyKey(): string {
   return uuidv7()
 }
 
-async function send<T>(path: ApiPath, init: RequestInit): Promise<T> {
+async function send(path: RoutePath, init: RequestInit, answers: z.ZodType): Promise<unknown> {
   const response = await fetch(`${API_BASE}${path}`, init)
   const body: unknown = await response.json().catch(() => undefined)
   if (!response.ok) {
@@ -144,7 +238,15 @@ async function send<T>(path: ApiPath, init: RequestInit): Promise<T> {
       ? new ApiError(response.status, body)
       : versionError(response.status, body, rejected)
   }
-  return body as T
+
+  // Parsed, not asserted. `as T` is a promise about the wire made by whoever
+  // was writing the call site, and the wire is the one place in this system
+  // where both ends were built at different times (ADR 0007).
+  const read = answers.safeParse(body)
+  if (!read.success) {
+    throw new UnreadableAnswerError(response.status, body, z.prettifyError(read.error))
+  }
+  return read.data
 }
 
 /** The version the server serves, if that is what it just said it rejected us for. */

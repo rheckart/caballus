@@ -27,7 +27,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { z } from 'zod'
 
 import { floor } from '../server/api/authorization'
-import { createApi, json, noContent, queueable, type Api } from '../server/api/route'
+import { createApi, json, noContent, type Api } from '../server/api/route'
+import { type Contract } from '../shared/api-contract'
 import { currentOrgId } from '../server/request-context'
 import { API_BASE } from '../shared/api-client'
 import { closeDb, forOrg, type OrgId } from './for-org'
@@ -47,7 +48,21 @@ const checklistTicks = pgTable('checklist_ticks', {
   item: text('item').notNull(),
 })
 
-const ticked = queueable({ tickId: z.uuid(), item: z.string() })
+/**
+ * The endpoints this file registers. Its own, not the application's: what is
+ * exercised here is the table under a write, and the write it uses stands in
+ * for a Shift's checklist rather than being one (#26).
+ */
+const testContract = {
+  reads: {},
+  writes: {
+    '/ticks': {
+      accepts: z.object({ tickId: z.uuid(), item: z.string() }),
+      answers: z.looseObject({}),
+    },
+    '/quiet': { accepts: z.object({ tickId: z.uuid(), item: z.string() }), answers: z.void() },
+  },
+} as const satisfies Contract
 
 describe.skipIf(!reachable)('idempotency, against the database', () => {
   const owner = postgres(ownerUrl, { max: 1 })
@@ -108,9 +123,10 @@ describe.skipIf(!reachable)('idempotency, against the database', () => {
    * The application, with one write on it and a count of how often the handler
    * actually ran — the number the whole of ADR 0005 is about.
    */
-  function barn(): { api: Api; ran: () => number } {
+  function barn(): { api: Api<typeof testContract>; ran: () => number } {
     let ran = 0
     const api = createApi({
+      contract: testContract,
       idempotency: postgresIdempotency(),
       context: (request) => ({
         orgId: orgId(),
@@ -122,7 +138,6 @@ describe.skipIf(!reachable)('idempotency, against the database', () => {
     api.mutation(
       '/ticks',
       floor('work-on-a-shift-you-are-rostered-on'),
-      ticked,
       async (input, { db, context }) => {
         ran += 1
         await db
@@ -150,13 +165,13 @@ describe.skipIf(!reachable)('idempotency, against the database', () => {
    * never hears about it.
    */
   async function send(
-    api: Api,
+    api: Api<typeof testContract>,
     write: Record<string, unknown>,
-    { online = true }: { online?: boolean } = {},
+    { online = true, to = '/ticks' }: { online?: boolean; to?: string } = {},
   ): Promise<Response | null> {
     if (!online) return null
     return api.fetch(
-      new Request(`http://barn.invalid${API_BASE}/ticks`, {
+      new Request(`http://barn.invalid${API_BASE}${to}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(write),
@@ -198,6 +213,7 @@ describe.skipIf(!reachable)('idempotency, against the database', () => {
   it('records the key in the same transaction as the tick, so a rollback takes both', async () => {
     let attempts = 0
     const api = createApi({
+      contract: testContract,
       idempotency: postgresIdempotency(),
       context: () => ({
         orgId: orgId(),
@@ -208,7 +224,6 @@ describe.skipIf(!reachable)('idempotency, against the database', () => {
     api.mutation(
       '/ticks',
       floor('work-on-a-shift-you-are-rostered-on'),
-      ticked,
       async (input, { db, context }) => {
         attempts += 1
         await db
@@ -266,6 +281,7 @@ describe.skipIf(!reachable)('idempotency, against the database', () => {
   it('replays an answer that had no body as the answer it was', async () => {
     let ran = 0
     const api = createApi({
+      contract: testContract,
       idempotency: postgresIdempotency(),
       context: (request) => ({
         orgId: orgId(),
@@ -273,14 +289,14 @@ describe.skipIf(!reachable)('idempotency, against the database', () => {
         actor: { volunteerId: 'v_01J8', domainScopes: [] },
       }),
     })
-    api.mutation('/ticks', floor('work-on-a-shift-you-are-rostered-on'), ticked, () => {
+    api.mutation('/quiet', floor('work-on-a-shift-you-are-rostered-on'), () => {
       ran += 1
       return noContent()
     })
 
     const write = queued('sweep the barn')
-    const first = await send(api, write)
-    const replay = await send(api, write)
+    const first = await send(api, write, { to: '/quiet' })
+    const replay = await send(api, write, { to: '/quiet' })
 
     // Through the table this time, not the double: only the status and the
     // body are stored, and a 204 has neither a body nor a content type. What

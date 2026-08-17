@@ -25,8 +25,15 @@
  */
 declare const built: unique symbol
 
-/** A response this layer built, and can therefore build again. */
-export type ApiResponse = Response & { readonly [built]: 'by src/server/api/answer.ts' }
+/**
+ * A response this layer built, and can therefore build again.
+ *
+ * The parameter is the shape of what is in it. Nothing reads it at runtime —
+ * the body is already a string by then — but it is what lets registration hold
+ * a handler to the shape the contract promised the phone (#26), so that the
+ * answer and the client's parse of it are one decision rather than two.
+ */
+export type ApiResponse<T = unknown> = Response & { readonly [built]: T }
 
 const JSON_TYPE = 'application/json'
 
@@ -39,7 +46,7 @@ const JSON_TYPE = 'application/json'
  * string that was stored, would carry neither. It is JSON's `null` here, the
  * same way `fingerprint` treats it.
  */
-export function json(body: unknown, status = 200): ApiResponse {
+export function json<T>(body: T, status = 200): ApiResponse<T> {
   if (BODILESS.has(status)) {
     // The message names the alternative rather than describing the problem,
     // which is the one thing ADR 0016 asks of every rule that fires.
@@ -57,7 +64,7 @@ const BODILESS = new Set([101, 103, 204, 205, 304])
  * so it is written this way rather than by reaching for `Response` and taking
  * the replay with it.
  */
-export function noContent(): ApiResponse {
+export function noContent(): ApiResponse<void> {
   return answer('', 204)
 }
 
@@ -72,12 +79,12 @@ export function noContent(): ApiResponse {
  * JSON, and would be labelling that answer `application/json` on purpose —
  * which is a thing a person can do here and not a thing the type prevents.
  */
-export function rebuild(body: string, status: number): ApiResponse {
+export function rebuild(body: string, status: number): ApiResponse<unknown> {
   return answer(body, status)
 }
 
 /** The only place any of this becomes a `Response`. */
-function answer(body: string, status: number): ApiResponse {
+function answer<T>(body: string, status: number): ApiResponse<T> {
   const response = new Response(body === '' ? null : body, {
     status,
     // A body is JSON and nothing else is; an empty answer says nothing about a
@@ -85,5 +92,5 @@ function answer(body: string, status: number): ApiResponse {
     // differently.
     headers: body === '' ? {} : { 'content-type': JSON_TYPE },
   })
-  return response as ApiResponse
+  return response as ApiResponse<T>
 }

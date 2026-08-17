@@ -1,17 +1,20 @@
 /**
- * Registration for the `/api/v1` layer, and the place three of ADR 0016's
+ * Registration for the `/api/v1` layer, and the place four of ADR 0016's
  * invariants are types rather than lint rules — because the type checker runs
  * on every keystroke and lint runs when something invokes it.
  *
  * 1. Every handler declares the authorization it requires. `route` takes it as
  *    a required argument and there is no overload without one, so omission
  *    does not compile.
- * 2. Every queueable mutation carries an idempotency key. `mutation` takes a
- *    schema whose shape must contain one, so a keyless mutation does not
- *    compile (ADR 0005).
+ * 2. Every queueable mutation carries an idempotency key. `mutation` takes no
+ *    schema at all — the payload is the contract's, and the key is added to it
+ *    here — so a keyless mutation is not a thing anybody can write (ADR 0005).
  * 3. Every mutation answers with an `ApiResponse`, which only `answer.ts`
  *    builds — so a stored answer can be replayed exactly rather than
  *    approximately (ADR 0020).
+ * 4. Every path is one the contract declares, and every handler answers the
+ *    shape it promised. A path nothing serves is a type error rather than a
+ *    404 at 6am, on this side and on the phone's (#26).
  *
  * The key is also *acted on* here rather than in handlers. `mutation` opens
  * the transaction, records the key inside it and hands the handler the scoped
@@ -29,6 +32,16 @@ import {
   UNSUPPORTED_API_VERSION,
   apiVersionOf,
 } from '../../shared/api-client'
+import {
+  contract,
+  type Contract,
+  type ReadPath,
+  type Received,
+  type RoutePath,
+  type Sends,
+  type SendsWrite,
+  type WritePath,
+} from '../../shared/api-contract'
 import { log, report } from '../observability'
 import { requestContext, type RequestContext } from '../request-context'
 import { json, rebuild, type ApiResponse } from './answer'
@@ -47,16 +60,20 @@ import { fingerprint } from './fingerprint'
  */
 export type Method = 'GET'
 
-/** A path below `/api/v1`. The version lives in one place (ADR 0016). */
-export type RoutePath = `/${string}`
-
 export interface HandlerContext {
   readonly request: Request
   readonly params: Record<string, string>
   readonly context: RequestContext
 }
 
-export type Handler = (ctx: HandlerContext) => Response | Promise<Response>
+/**
+ * A read's handler. It answers the shape the contract promised for that path,
+ * or a refusal — and it is the contract's schema on both ends of the wire, so
+ * the client parses what this returns rather than asserting it (#26).
+ */
+export type Handler<TAnswer> = (
+  ctx: HandlerContext,
+) => ApiResponse<TAnswer> | Promise<ApiResponse<TAnswer>>
 
 /**
  * What a write gets that a read does not: the transaction its effect belongs
@@ -77,38 +94,68 @@ export interface MutationContext extends HandlerContext {
  * together from the status and body that were stored. A read is answered once
  * and never replayed, so nothing there is claiming to reproduce it.
  */
-export type MutationHandler<TInput> = (
+export type MutationHandler<TInput, TAnswer> = (
   input: TInput,
   ctx: MutationContext,
-) => ApiResponse | Promise<ApiResponse>
+) => ApiResponse<TAnswer> | Promise<ApiResponse<TAnswer>>
 
 /**
  * Minted on the phone before the first attempt, and the same on every retry
  * (ADR 0005). It is not an entity id, even where the two would coincide.
+ *
+ * Not exported: since #26 no endpoint declares its own payload schema, so
+ * nothing outside this module has a use for the key's — which is the point.
  */
-export const idempotencyKey = z.uuid()
+const idempotencyKey = z.uuid()
 
-/** Builds the request schema for a queueable write. */
-export function queueable<TShape extends z.ZodRawShape>(
+/** The request schema for a write: what its contract accepts, and the key. */
+function queueable<TShape extends z.ZodRawShape>(
   shape: TShape,
 ): z.ZodObject<TShape & { idempotencyKey: typeof idempotencyKey }> {
   return z.object({ ...shape, idempotencyKey })
 }
 
-export interface Api {
-  /** Registers a handler. The authorization argument is not optional. */
-  route(method: Method, path: RoutePath, auth: Authorization, handler: Handler): Api
+/**
+ * The API of one contract.
+ *
+ * Generic over it so that the tests of this module's own decisions bind a
+ * contract of their own; the application binds the real one, which is the
+ * default. A path the contract does not declare does not compile, on this side
+ * as on the client's — that is the whole of #26's *a wrong path is a type
+ * error, not a 404 at 6am*.
+ */
+export interface Api<C extends Contract> {
+  /** Registers a read. The authorization argument is not optional. */
+  route<P extends ReadPath<C>>(
+    method: Method,
+    path: P,
+    auth: Authorization,
+    handler: Handler<Sends<C, P>>,
+  ): Api<C>
 
   /**
-   * Registers a queueable write. The schema must carry an idempotency key,
-   * which is what `queueable` is for.
+   * Registers a queueable write.
+   *
+   * There is no schema argument: the payload is the contract's `accepts`, and
+   * the idempotency key is added to it here (ADR 0005). A write that forgot its
+   * key is not something to catch — it is not something anybody can write.
    */
-  mutation<TShape extends z.ZodRawShape & { idempotencyKey: typeof idempotencyKey }>(
-    path: RoutePath,
+  mutation<P extends WritePath<C>>(
+    path: P,
     auth: Authorization,
-    schema: z.ZodObject<TShape>,
-    handler: MutationHandler<z.output<z.ZodObject<TShape>>>,
-  ): Api
+    handler: MutationHandler<Received<C, P>, SendsWrite<C, P>>,
+  ): Api<C>
+
+  /**
+   * Every path the contract declares has a handler, or this throws.
+   *
+   * The other direction of #26's *a wrong path is a type error, not a 404 at
+   * 6am*: registering a path nothing declares does not compile, and declaring
+   * one nothing registers would otherwise be a 404 the phone meets first. The
+   * application calls this once, after registration, so the failure is a
+   * container that will not start rather than a volunteer's tick going nowhere.
+   */
+  sealed(): Api<C>
 
   fetch(request: Request): Response | Promise<Response>
 }
@@ -312,7 +359,7 @@ function decodeSegment(segment: string): string {
  */
 export { json, noContent, type ApiResponse } from './answer'
 
-export interface ApiOptions {
+export interface ApiOptions<C extends Contract> {
   /**
    * How a request becomes a context. The default reads the organisation from
    * configuration and the actor from the session; a test supplies its own to
@@ -326,11 +373,39 @@ export interface ApiOptions {
    * the same contract and proves nothing about the index (ADR 0007).
    */
   readonly idempotency?: Idempotency
+
+  /**
+   * The endpoints this API serves, which the client reads to know their shapes
+   * (#26). The default is the application's; a test of this module's decisions
+   * binds one of its own rather than putting its fixtures in the real one.
+   */
+  readonly contract?: C
 }
 
-export function createApi(options: ApiOptions = {}): Api {
+/**
+ * The application's API, against the contract it serves.
+ *
+ * Two signatures rather than a default type parameter: `createApi<Whatever>()`
+ * with a default would compile and quietly serve the *real* contract, so a
+ * handler could register a path the running server does not have — the type
+ * saying yes while the runtime says something else, which is the shape of
+ * failure ADR 0016 exists to make unrepresentable.
+ */
+export function createApi(
+  options?: Omit<ApiOptions<typeof contract>, 'contract'>,
+): Api<typeof contract>
+
+/** The same, against a contract of the caller's — which it has to hand over. */
+export function createApi<C extends Contract>(
+  options: ApiOptions<C> & { readonly contract: C },
+): Api<C>
+
+export function createApi<C extends Contract>(options: Partial<ApiOptions<C>> = {}): Api<C> {
   const contextOf = options.context ?? requestContext
   const idempotency = options.idempotency ?? postgresIdempotency()
+  // Sound because of the overloads above: without a contract argument the only
+  // callable signature is the one that returns the real contract's API.
+  const against = options.contract ?? (contract as unknown as C)
   const app = new Hono().basePath(API_BASE)
 
   /**
@@ -395,8 +470,8 @@ export function createApi(options: ApiOptions = {}): Api {
     method: 'GET' | 'POST',
     path: RoutePath,
     auth: Authorization,
-    handler: Handler,
-  ): Api {
+    handler: Handler<unknown>,
+  ): Api<C> {
     app.on(method, path, async (c) => {
       const ctx = contextOf(c.req.raw)
       const decision = authorize(auth, ctx.actor)
@@ -421,12 +496,31 @@ export function createApi(options: ApiOptions = {}): Api {
     return api
   }
 
-  const api: Api = {
-    route(method, path, auth, handler) {
-      return register(method, path, auth, handler)
-    },
+  /** The paths that have a handler, for `sealed` to check the contract against. */
+  const served = new Set<string>()
 
-    mutation(path, auth, schema, handler) {
+  function route<P extends ReadPath<C>>(
+    method: Method,
+    path: P,
+    auth: Authorization,
+    handler: Handler<Sends<C, P>>,
+  ): Api<C> {
+    served.add(path)
+    return register(method, path, auth, handler as Handler<unknown>)
+  }
+
+  function mutation<P extends WritePath<C>>(
+    path: P,
+    auth: Authorization,
+    handler: MutationHandler<Received<C, P>, SendsWrite<C, P>>,
+  ): Api<C> {
+      served.add(path)
+      // The payload the contract declares, plus the key ADR 0005 puts on every
+      // write. Built here rather than passed in, so there is one statement of
+      // what this endpoint accepts and the phone is parsed against the same one
+      // it was typed against (#26).
+      const schema = queueable(against.writes[path].accepts.shape)
+
       return register('POST', path, auth, async (ctx) => {
         const body: unknown = await ctx.request.json().catch(() => undefined)
         const parsed = schema.safeParse(body)
@@ -469,15 +563,37 @@ export function createApi(options: ApiOptions = {}): Api {
           // can be read only once, and the thing that gets stored has to be the
           // thing the caller is handed back (#30).
           async (db) => {
-            const answered = await handler(parsed.data, { ...ctx, db })
+            // `schema` is this path's `accepts` with the key added, so what it
+            // parsed *is* `Received`. Inside the generic that is a fact about
+            // `queueable` that the checker cannot follow, so it is said here
+            // once rather than being unsaid at every call site.
+            const answered = await handler(parsed.data as Received<C, P>, { ...ctx, db })
             return { status: answered.status, body: await answered.text() }
           },
         )
 
         return respond(outcome, { route, key, requestId: ctx.context.requestId })
       })
-    },
+  }
 
+  /** Every declared path has a handler, or the application does not start. */
+  function sealed(): Api<C> {
+    const declared = [...Object.keys(against.reads), ...Object.keys(against.writes)]
+    const unserved = declared.filter((path) => !served.has(path))
+    if (unserved.length > 0) {
+      throw new Error(
+        `The contract declares ${unserved.join(', ')}, and nothing serves ${
+          unserved.length === 1 ? 'it' : 'them'
+        }. Register a handler, or take the endpoint out of the contract.`,
+      )
+    }
+    return api
+  }
+
+  const api: Api<C> = {
+    route,
+    mutation,
+    sealed,
     fetch(request) {
       return app.fetch(request)
     },

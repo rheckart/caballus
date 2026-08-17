@@ -5,10 +5,32 @@ import { memoryIdempotency } from '../../db/idempotency.memory'
 import { requestContext } from '../request-context'
 import { domainScope, floor, readEverything } from './authorization'
 import { API_BASE, API_ROOT } from '../../shared/api-client'
-import { createApi, json, noContent, queueable } from './route'
+import { createApi, json, noContent } from './route'
+import { type Contract } from '../../shared/api-contract'
 
-/** The one write these tests register, wherever they register it. */
-const observed = queueable({ note: z.string() })
+/**
+ * The endpoints these tests register, which are this file's and not the barn's.
+ * The real contract declares what the application serves; a fixture in it would
+ * be an endpoint nothing implements, which is the drift #26 removed.
+ */
+const testContract = {
+  reads: {
+    '/day': { answers: z.object({ day: z.string() }) },
+    '/volunteers': { answers: z.object({ volunteers: z.array(z.string()) }) },
+  },
+  writes: {
+    // Loose on purpose: what these tests are about is the wrapper — which
+    // outcome gets which status, and what reaches the log — and pinning each
+    // one's answer would be a second test of the contract in every case.
+    '/observations': { accepts: z.object({ note: z.string() }), answers: z.looseObject({}) },
+    '/horses/:horseId/observations': {
+      accepts: z.object({ note: z.string() }),
+      answers: z.object({ horse: z.string() }),
+    },
+    /** A write that answers nothing at all, which is `noContent`'s shape. */
+    '/quiet': { accepts: z.object({ note: z.string() }), answers: z.void() },
+  },
+} as const satisfies Contract
 
 const KEY = '019267c0-6f7e-7a3d-9c2f-2f9a1c7e5b10'
 
@@ -24,6 +46,7 @@ const KEY = '019267c0-6f7e-7a3d-9c2f-2f9a1c7e5b10'
  */
 function apiWithVolunteer() {
   return createApi({
+    contract: testContract,
     idempotency: memoryIdempotency(),
     context: (request) => ({
       ...requestContext(request),
@@ -64,7 +87,7 @@ function request(method: string, path: string, body?: unknown): Request {
 
 describe('route', () => {
   it('serves a read to the floor, which reads everything', async () => {
-    const api = createApi()
+    const api = createApi({ contract: testContract })
     api.route('GET', '/day', readEverything(), () => json({ day: '2026-08-15' }))
 
     const response = await api.fetch(request('GET', '/day'))
@@ -74,7 +97,7 @@ describe('route', () => {
   })
 
   it('denies explicitly, and names the scope it wanted', async () => {
-    const api = createApi()
+    const api = createApi({ contract: testContract })
     api.route('GET', '/volunteers', domainScope('roster'), () => json({ volunteers: [] }))
 
     const response = await api.fetch(request('GET', '/volunteers'))
@@ -86,10 +109,45 @@ describe('route', () => {
   })
 
   it('answers a path the version does not claim with a 404', async () => {
-    const api = createApi()
+    const api = createApi({ contract: testContract })
     const response = await api.fetch(request('GET', '/nothing-here'))
     expect(response.status).toBe(404)
     await expect(response.json()).resolves.toEqual({ error: 'not_found' })
+  })
+})
+
+describe('a contract nothing serves', () => {
+  it('will not seal while a declared path has no handler', () => {
+    const api = createApi({ contract: testContract })
+    api.route('GET', '/day', readEverything(), () => json({ day: '2026-08-15' }))
+
+    // The other direction of the typed path: registering what nothing declares
+    // does not compile, and declaring what nothing registers would be a 404 the
+    // phone finds first. Here it is a container that does not start.
+    expect(() => api.sealed()).toThrow(/\/volunteers/)
+  })
+
+  it('names every path that is missing, not just the first', () => {
+    const api = createApi({ contract: testContract })
+
+    const failure = () => api.sealed()
+
+    expect(failure).toThrow(/\/day/)
+    expect(failure).toThrow(/\/observations/)
+    expect(failure).toThrow(/\/quiet/)
+  })
+
+  it('seals once everything declared is served', () => {
+    const api = createApi({ contract: testContract, idempotency: memoryIdempotency() })
+    api.route('GET', '/day', readEverything(), () => json({ day: '2026-08-15' }))
+    api.route('GET', '/volunteers', readEverything(), () => json({ volunteers: [] }))
+    api.mutation('/observations', floor('record-an-observation'), () => json({}, 201))
+    api.mutation('/horses/:horseId/observations', floor('record-an-observation'), (_input, ctx) =>
+      json({ horse: ctx.params.horseId ?? '' }, 201),
+    )
+    api.mutation('/quiet', floor('record-an-observation'), () => noContent())
+
+    expect(() => api.sealed()).not.toThrow()
   })
 })
 
@@ -109,7 +167,7 @@ describe('the version in the path', () => {
   }
 
   it('rejects a version it does not recognise, and says which one it serves', async () => {
-    const api = createApi()
+    const api = createApi({ contract: testContract })
     const response = await api.fetch(toVersion('GET', 'v2', '/day'))
 
     // Not the 404 a mistyped path gets: *you may not do this*, *there is no
@@ -126,7 +184,7 @@ describe('the version in the path', () => {
   it('rejects a queued write from an old client rather than reading it', async () => {
     const api = apiWithVolunteer()
     const seen: string[] = []
-    api.mutation('/observations', floor('record-an-observation'), observed, (input) => {
+    api.mutation('/observations', floor('record-an-observation'), (input) => {
       seen.push(input.note)
       return json({}, 201)
     })
@@ -146,7 +204,7 @@ describe('the version in the path', () => {
   })
 
   it('writes down the key of the write it turned away', async () => {
-    const api = createApi()
+    const api = createApi({ contract: testContract })
     const key = '019267c0-6f7e-7a3d-9c2f-2f9a1c7e5b10'
 
     const lines = await linesWhile(() =>
@@ -169,7 +227,7 @@ describe('the version in the path', () => {
   })
 
   it('will not let a scanner write the log a line at a time', async () => {
-    const api = createApi()
+    const api = createApi({ contract: testContract })
 
     const lines = await linesWhile(() => api.fetch(toVersion('GET', '.env', '')))
 
@@ -180,7 +238,7 @@ describe('the version in the path', () => {
   })
 
   it('rejects the versionless root, which is a client that has forgotten the path', async () => {
-    const api = createApi()
+    const api = createApi({ contract: testContract })
     const response = await api.fetch(toVersion('GET', 'day', ''))
 
     expect(response.status).toBe(400)
@@ -194,7 +252,7 @@ describe('the version in the path', () => {
 describe('mutation', () => {
   it('rejects a write with no idempotency key rather than accepting it', async () => {
     const api = apiWithVolunteer()
-    api.mutation('/observations', floor('record-an-observation'), observed, () => json({}, 201))
+    api.mutation('/observations', floor('record-an-observation'), () => json({}, 201))
 
     const response = await api.fetch(request('POST', '/observations', { note: 'gate latch' }))
 
@@ -205,7 +263,7 @@ describe('mutation', () => {
   it('hands the handler a parsed body once the key is there', async () => {
     const api = apiWithVolunteer()
     const seen: string[] = []
-    api.mutation('/observations', floor('record-an-observation'), observed, (input) => {
+    api.mutation('/observations', floor('record-an-observation'), (input) => {
       seen.push(input.note)
       return json({ idempotencyKey: input.idempotencyKey }, 201)
     })
@@ -220,8 +278,8 @@ describe('mutation', () => {
   })
 
   it('refuses a write from nobody, because a tick is a claim by an actor', async () => {
-    const api = createApi({ idempotency: memoryIdempotency() })
-    api.mutation('/observations', floor('record-an-observation'), observed, () => json({}, 201))
+    const api = createApi({ contract: testContract, idempotency: memoryIdempotency() })
+    api.mutation('/observations', floor('record-an-observation'), () => json({}, 201))
 
     const response = await api.fetch(
       request('POST', '/observations', { note: 'gate latch', idempotencyKey: KEY }),
@@ -236,7 +294,7 @@ describe('a key the wrapper has already answered', () => {
   function apiRecording(): { api: ReturnType<typeof apiWithVolunteer>; ran: string[] } {
     const api = apiWithVolunteer()
     const ran: string[] = []
-    api.mutation('/observations', floor('record-an-observation'), observed, (input) => {
+    api.mutation('/observations', floor('record-an-observation'), (input) => {
       ran.push(input.note)
       return json({ recorded: ran.length }, 201)
     })
@@ -299,10 +357,10 @@ describe('a key the wrapper has already answered', () => {
 
   it('replays an answer that had no body at all, header and all', async () => {
     const api = apiWithVolunteer()
-    api.mutation('/observations', floor('record-an-observation'), observed, () => noContent())
+    api.mutation('/quiet', floor('record-an-observation'), () => noContent())
 
     const write = () =>
-      api.fetch(request('POST', '/observations', { note: 'gate latch', idempotencyKey: KEY }))
+      api.fetch(request('POST', '/quiet', { note: 'gate latch', idempotencyKey: KEY }))
 
     const first = await write()
     const retry = await write()
@@ -325,7 +383,7 @@ describe('a key the wrapper has already answered', () => {
 
   it('replays a json answer as the json answer it was', async () => {
     const api = apiWithVolunteer()
-    api.mutation('/observations', floor('record-an-observation'), observed, () =>
+    api.mutation('/observations', floor('record-an-observation'), () =>
       json({ recorded: true }, 201),
     )
 
@@ -345,7 +403,7 @@ describe('a key the wrapper has already answered', () => {
   it('leaves nothing behind when the handler throws', async () => {
     const api = apiWithVolunteer()
     let attempts = 0
-    api.mutation('/observations', floor('record-an-observation'), observed, () => {
+    api.mutation('/observations', floor('record-an-observation'), () => {
       attempts += 1
       if (attempts === 1) throw new Error('the barn lost power')
       return json({ recorded: true }, 201)
@@ -373,9 +431,9 @@ describe('a key sent to two paths of one pattern', () => {
     // The shape every mutation this domain needs has: an observation belongs
     // to a horse, a tick belongs to a shift.
     const perHorse = '/horses/:horseId/observations'
-    api.mutation(perHorse, floor('record-an-observation'), observed, (input, ctx) => {
+    api.mutation(perHorse, floor('record-an-observation'), (input, ctx) => {
       ran.push(`${ctx.params.horseId}: ${input.note}`)
-      return json({ horse: ctx.params.horseId }, 201)
+      return json({ horse: ctx.params.horseId ?? '' }, 201)
     })
     return { api, ran }
   }
@@ -492,25 +550,42 @@ describe('a key sent to two paths of one pattern', () => {
   })
 })
 
-// The two invariants ADR 0016 moved out of lint and into the type checker.
-// These do not run; they fail the build if the constraint ever loosens,
+// The invariants ADR 0016 moved out of lint and into the type checker.
+// These do not run; they fail the build if a constraint ever loosens,
 // because an unused `@ts-expect-error` is itself an error.
 describe('the constraints are types', () => {
   it('will not register a handler with no authorization declared', () => {
-    const api = createApi()
+    const api = createApi({ contract: testContract })
     // @ts-expect-error the authorization declaration is a required argument
-    api.route('GET', '/day', () => json({}))
+    api.route('GET', '/day', () => json({ day: '2026-08-15' }))
   })
 
-  it('will not register a mutation whose schema carries no idempotency key', () => {
-    const api = createApi()
-    api.mutation(
-      '/observations',
-      floor('record-an-observation'),
-      // @ts-expect-error a queueable write carries an idempotency key
-      z.object({ note: z.string() }),
-      () => json({}, 201),
+  it('will not register a path the contract does not declare', () => {
+    const api = createApi({ contract: testContract })
+    // @ts-expect-error nothing declares `/shifts`, so nothing may serve it
+    api.route('GET', '/shifts', readEverything(), () => json({ shifts: [] }))
+  })
+
+  it('will not answer a read with a shape the contract did not promise', () => {
+    const api = createApi({ contract: testContract })
+    api.route('GET', '/volunteers', readEverything(), () =>
+      // @ts-expect-error `/volunteers` answers `{ volunteers }`, and the phone
+      // parses what it was promised (#26)
+      json({ people: [] }),
     )
+  })
+
+  it('hands a write the payload its contract declared', () => {
+    const api = createApi({ contract: testContract })
+    api.mutation('/observations', floor('record-an-observation'), (input) => {
+      // The key is added by registration and is not the endpoint's to declare
+      // (ADR 0005), and the rest is the contract's `accepts`.
+      const note: string = input.note
+      const key: string = input.idempotencyKey
+      // @ts-expect-error nothing in this write's payload is called `horse`
+      const absent = input.horse
+      return json({ noted: note, key, absent }, 201)
+    })
   })
 
   it('will not accept a fourth reason for the floor', () => {
@@ -519,11 +594,10 @@ describe('the constraints are types', () => {
   })
 
   it('will not let a write answer with a response this layer did not build', () => {
-    const api = createApi()
+    const api = createApi({ contract: testContract })
     api.mutation(
       '/observations',
       floor('record-an-observation'),
-      observed,
       // @ts-expect-error a stored answer is one `json` or `noContent` built,
       // which is what makes rebuilding it faithfully possible
       () => new Response(null, { status: 204 }),
@@ -531,8 +605,9 @@ describe('the constraints are types', () => {
   })
 
   it('will not register a write through the read door', () => {
-    const api = createApi()
-    // @ts-expect-error a write goes through mutation, which requires a schema
+    const api = createApi({ contract: testContract })
+    // @ts-expect-error a write goes through mutation, which adds the key and
+    // parses the contract's payload
     api.route('POST', '/observations', floor('record-an-observation'), () => json({}, 201))
   })
 })

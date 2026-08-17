@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { z } from 'zod'
 
 import {
   ApiError,
@@ -7,10 +8,39 @@ import {
   API_VERSION,
   OutdatedClientError,
   OutdatedServerError,
-  apiGet,
-  apiPost,
+  UnreadableAnswerError,
   apiVersionOf,
+  client as realClient,
+  createClient,
 } from './api-client'
+import { day, type Contract } from './api-contract'
+
+/**
+ * A contract of this file's own, because the real one declares the endpoints
+ * that exist and these tests are about the client rather than about the barn.
+ * Endpoints invented for the tests do not belong in the thing the server is
+ * held to (#26).
+ */
+const testContract = {
+  reads: {
+    '/day': { answers: day },
+    '/volunteers': { answers: z.object({ volunteers: z.array(z.string()) }) },
+  },
+  writes: {
+    '/observations': {
+      accepts: z.object({ note: z.string() }),
+      answers: z.object({ recorded: z.boolean() }),
+    },
+    // A write whose payload names the field the key goes in. Contrived, and
+    // the reason it exists is below: the key must survive it.
+    '/pretenders': {
+      accepts: z.object({ idempotencyKey: z.string() }),
+      answers: z.object({ recorded: z.boolean() }),
+    },
+  },
+} as const satisfies Contract
+
+const client = createClient(testContract)
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -58,7 +88,7 @@ describe('the client reading a version rejection', () => {
   it('raises its own error, distinguishable from a denial', async () => {
     serverAnswering(400, { error: 'unsupported_api_version', supported: 'v2', received: 'v1' })
 
-    const failure = await apiGet('/day').catch((error: unknown) => error)
+    const failure = await client.get('/day').catch((error: unknown) => error)
 
     // A queue that cannot tell these apart retries the one it should surface
     // and surfaces the one it should retry (ADR 0010).
@@ -71,7 +101,7 @@ describe('the client reading a version rejection', () => {
   it('still reads as a sentence when the server names no version it serves', async () => {
     serverAnswering(400, { error: 'unsupported_api_version' })
 
-    const failure = await apiGet('/day').catch((error: unknown) => error)
+    const failure = await client.get('/day').catch((error: unknown) => error)
 
     expect(failure).toBeInstanceOf(OutdatedClientError)
     // The rejection is the load-bearing part and it arrived; a body missing
@@ -88,7 +118,7 @@ describe('the client reading a version rejection', () => {
     // deploy, where a queued write meets a container nobody has replaced yet.
     serverAnswering(400, { error: 'unsupported_api_version', supported: 'v0', received: 'v1' })
 
-    const failure = await apiPost('/observations', { note: 'gate latch' }).catch(
+    const failure = await client.post('/observations', { note: 'gate latch' }).catch(
       (error: unknown) => error,
     )
 
@@ -109,7 +139,7 @@ describe('the client reading a version rejection', () => {
       received: '',
     })
 
-    const failure = await apiGet('/day').catch((error: unknown) => error)
+    const failure = await client.get('/day').catch((error: unknown) => error)
 
     // The path is malformed; the bundle is fine. Telling a volunteer to reload
     // would be advice that cannot work.
@@ -121,7 +151,7 @@ describe('the client reading a version rejection', () => {
   it('leaves an ordinary denial an ordinary ApiError', async () => {
     serverAnswering(403, { error: 'not_authorized', wanted: 'horse_care' })
 
-    const failure = await apiGet('/volunteers').catch((error: unknown) => error)
+    const failure = await client.get('/volunteers').catch((error: unknown) => error)
 
     expect(failure).toBeInstanceOf(ApiError)
     expect(failure).not.toBeInstanceOf(OutdatedClientError)
@@ -131,7 +161,7 @@ describe('the client reading a version rejection', () => {
   it('raises it for a queued write too, which is the case that matters', async () => {
     serverAnswering(400, { error: 'unsupported_api_version', supported: 'v2', received: 'v1' })
 
-    const failure = await apiPost('/observations', { note: 'gate latch' }).catch(
+    const failure = await client.post('/observations', { note: 'gate latch' }).catch(
       (error: unknown) => error,
     )
 
@@ -139,12 +169,12 @@ describe('the client reading a version rejection', () => {
   })
 })
 
-describe('apiPost', () => {
+describe('a write, and the replay of one', () => {
   it('mints one key when the write is new and keeps the one being replayed', async () => {
-    const calls = serverAnswering(201, {})
+    const calls = serverAnswering(201, { recorded: true })
 
-    await apiPost('/observations', { note: 'gate latch' })
-    await apiPost('/observations', { note: 'gate latch' }, { idempotencyKey: 'k_replayed' })
+    await client.post('/observations', { note: 'gate latch' })
+    await client.post('/observations', { note: 'gate latch' }, { idempotencyKey: 'k_replayed' })
 
     const sent = calls.map(({ init }) => JSON.parse(String(init.body)) as { idempotencyKey: string })
     expect(sent[0]?.idempotencyKey).toMatch(/^[0-9a-f-]{36}$/)
@@ -152,13 +182,102 @@ describe('apiPost', () => {
     expect(calls[0]?.url).toBe(`${API_BASE}/observations`)
   })
 
-  it('will not let the payload shadow the key', async () => {
-    const calls = serverAnswering(201, {})
+  it('sends a replay byte for byte as the attempt it is replaying', async () => {
+    const calls = serverAnswering(201, { recorded: true })
+    const queued = { note: 'gate latch' }
+    const key = 'k_thursday'
 
-    await apiPost('/observations', { idempotencyKey: 'from-the-body' }, { idempotencyKey: 'k_real' })
+    // What the queue does when the barn comes back: the same call, with the
+    // key it kept. One door, so a replay cannot drift from the write it is
+    // replaying — a second builder is how the digest on the server stops
+    // matching and a queued write starts collecting 409s (ADR 0005, ADR 0020).
+    await client.post('/observations', queued, { idempotencyKey: key })
+    await client.post('/observations', queued, { idempotencyKey: key })
+
+    expect(calls[1]?.init.body).toEqual(calls[0]?.init.body)
+    expect(calls[1]?.url).toEqual(calls[0]?.url)
+  })
+
+  it('will not let the payload shadow the key', async () => {
+    const calls = serverAnswering(201, { recorded: true })
+
+    await client.post('/pretenders', { idempotencyKey: 'from-the-body' }, { idempotencyKey: 'k_real' })
 
     const sent = JSON.parse(String(calls[0]?.init.body)) as { idempotencyKey: string }
     // A write whose key came from its own payload is a write with no key.
     expect(sent.idempotencyKey).toBe('k_real')
+  })
+})
+
+describe('the answer, against the shape the contract promised', () => {
+  it('reads a good answer through the schema and hands it back', async () => {
+    serverAnswering(200, { day: '2026-08-16', timeZone: 'America/New_York', organisation: 'Front Barn' })
+
+    // The real contract, not this file's: the one endpoint that exists,
+    // through the client the application actually uses.
+    const today = await realClient.get('/day')
+
+    expect(today.day).toBe('2026-08-16')
+    expect(today.organisation).toBe('Front Barn')
+  })
+
+  it('refuses an answer that is not the shape it was promised', async () => {
+    serverAnswering(200, { day: '2026-08-16', timeZone: 'America/New_York' })
+
+    const failure = await realClient.get('/day').catch((error: unknown) => error)
+
+    // A missing field asserted into existence by `as T` is `undefined` on a
+    // screen in a barn, blamed on the data. Parsed, it is a server worth
+    // fixing, said out loud, at the boundary where it happened.
+    expect(failure).toBeInstanceOf(UnreadableAnswerError)
+    expect(failure).toBeInstanceOf(ApiError)
+    expect((failure as UnreadableAnswerError).because).toContain('organisation')
+  })
+
+  it('refuses an answer that is not there at all', async () => {
+    vi.stubGlobal('fetch', () => Promise.resolve(new Response('', { status: 200 })))
+
+    const failure = await realClient.get('/day').catch((error: unknown) => error)
+
+    // A proxy answering 200 with nothing is not the day, and rendering it as
+    // one is the same lie with fewer steps.
+    expect(failure).toBeInstanceOf(UnreadableAnswerError)
+  })
+})
+
+// These do not run. They fail the build if the constraint ever loosens, because
+// an unused `@ts-expect-error` is itself an error — which is the point of #26:
+// a wrong path is a type error, not a 404 at 6am.
+describe('the path is a type', () => {
+  it('will not read a path no route registers', async () => {
+    await expect(
+      // @ts-expect-error `/shifts` is not in the contract, so nothing serves it
+      client.get('/shifts'),
+    ).rejects.toThrow(/No endpoint is declared at \/shifts/)
+  })
+
+  it('will not write to a path no route registers', async () => {
+    await expect(
+      // @ts-expect-error a write goes where a write is declared, or nowhere
+      client.post('/shifts', { note: 'gate latch' }),
+    ).rejects.toThrow(/No endpoint is declared at \/shifts/)
+  })
+
+  it('will not send a body the write does not accept', () => {
+    // The call is never made; the constraint is the whole assertion.
+    const send = () =>
+      // @ts-expect-error the payload is the contract's, not the call site's
+      client.post('/observations', { note: 7 })
+    expect(send).toBeTypeOf('function')
+  })
+
+  it('will not read a write path, or write to a read path', () => {
+    const read = () =>
+      // @ts-expect-error `/observations` is a write
+      client.get('/observations')
+    const write = () =>
+      // @ts-expect-error `/day` is a read
+      client.post('/day', {})
+    expect([read, write]).toHaveLength(2)
   })
 })

@@ -33,3 +33,9 @@ api.route('GET', '/day', readEverything(), async ({ context }) => {
 
   return json({ day: today(org.timeZone), timeZone: org.timeZone, organisation: org.name })
 })
+
+// Every path the contract declares now has a handler, or this throws and the
+// container does not start. Registering a path nothing declares is a type
+// error; this is the other direction, which would otherwise be a 404 that the
+// phone in the barn finds first (ADR 0021).
+api.sealed()

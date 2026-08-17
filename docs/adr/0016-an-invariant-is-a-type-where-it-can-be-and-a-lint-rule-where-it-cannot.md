@@ -1,11 +1,13 @@
 ---
 status: accepted
 amends: 0007 (the day-boundary ban is repo-wide rather than client-side; the idempotency key and the authorization declaration move from lint to types)
-amended-by: the skeleton (#22), on what each rule actually has to ban and which files each exemption covers; #30, which adds a fifth invariant to *What becomes a type* — a write answers with a response this layer built
+amended-by: the skeleton (#22), on what each rule actually has to ban and which files each exemption covers; #30, which adds a fifth invariant to *What becomes a type* — a write answers with a response this layer built; ADR 0021 (#26), which makes the path ban's premise true and replaces the idempotency-key invariant with a stronger one
 ---
 
 # An unenforced invariant is a type where it can be, a lint rule where it cannot, and never prose
 
+> **Amended by ADR 0021, on the premise under the path ban (#26).** *With a typed client nobody has a reason to write the path* was an argument this ADR made and the skeleton did not build: the client took any string and asserted any shape. It is true now — the endpoints are one contract of hand-written Zod that the server registers against and the client calls against, so a path nothing serves does not compile on either side. Two consequences below: **the idempotency-key invariant changes shape** — `mutation` takes no schema at all, so a keyless write is unwritable rather than uncompilable — and *What becomes a type* gains a sixth entry, a handler answering the shape its contract promised. The count in `src/server/api/route.ts` and in `CLAUDE.md` moves from three to four.
+>
 > **Amended by a fifth type invariant (#30).** *What becomes a type* has a new entry: a mutation answers with an `ApiResponse`, and `json` and `noContent` are the only two builders a handler has. ADR 0020 hands a retry the status and body it stored, and that is the *first answer* only if the rest of the response follows from those two — which was a comment claiming `json` was the only builder while `new Response(...)` was both allowed and shorter to write. The count in `src/server/api/route.ts` and in `CLAUDE.md` moves from two to three.
 >
 > **Amended when the rules landed (#22).** Six rules, six exemptions, the counts below unchanged — but writing them out found four bans that named one door each when the door had two, and two exemptions that need a second file. The table and the exemption list are updated in place; what follows is what changed and why, because this file going stale is the tripwire it names for itself.
@@ -36,7 +38,9 @@ That test excludes things it is tempting to include. ADR 0007's 48px touch targe
 
 `floor()` has **three** legitimate uses today: recording work on a Shift you are rostered on, recording an Observation (ADR 0010), and recording your own presence (ADR 0012). That count is stated where the helper is defined, so a fourth is a deliberate act rather than a quiet one.
 
-**Every queueable mutation carries an idempotency key.** ADR 0005 requires it and ADR 0007 states it, and it has the same shape: mutation registration takes a Zod schema that must extend an idempotency-key base, so a keyless mutation does not compile. This is the half of ADR 0007's API rule that lint was never going to hold — lint can see which door a write goes through, not what it carries.
+**Every queueable mutation carries an idempotency key.** ADR 0005 requires it and ADR 0007 states it. It was first built as a constraint on an argument — registration took a Zod schema that had to extend an idempotency-key base — and ADR 0021 (#26) removed the argument instead: `mutation` builds the schema from the contract's `accepts` and adds the key itself. A keyless write stopped being a thing that does not compile and became a thing nobody can write, which is the same move one step further. This is the half of ADR 0007's API rule that lint was never going to hold — lint can see which door a write goes through, not what it carries.
+
+**Every path is one the contract declares, and every handler answers the shape it promised** (added by ADR 0021, #26). The endpoints are one module of hand-written Zod that both sides read, so `route('GET', '/shifts', …)` against a contract without `/shifts` does not compile, and neither does a handler answering something other than that path's `answers`. It is what makes this ADR's own `/api/` path ban honest: the ban rests on *nobody has a reason to write the path*, and until #26 the typed client it named did not exist.
 
 **A write answers with a response this layer built** (added by #30). ADR 0020 stores a mutation's status and body and hands them to a retry days later, which is only the first answer if everything else about the response follows from those two. That was a comment claiming `json` was the only builder, and a handler could return any `Response` at all — so the claim became a type: `MutationHandler` returns an `ApiResponse`, and `json` and `noContent` are the only two functions that make one. It is the pattern this ADR is about, applied to a promise a comment was holding: the wrong option, `new Response(...)`, was the shorter one to write.
 
