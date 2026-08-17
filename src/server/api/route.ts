@@ -514,66 +514,66 @@ export function createApi<C extends Contract>(options: Partial<ApiOptions<C>> = 
     auth: Authorization,
     handler: MutationHandler<Received<C, P>, SendsWrite<C, P>>,
   ): Api<C> {
-      served.add(path)
-      // The payload the contract declares, plus the key ADR 0005 puts on every
-      // write. Built here rather than passed in, so there is one statement of
-      // what this endpoint accepts and the phone is parsed against the same one
-      // it was typed against (#26).
-      const schema = queueable(against.writes[path].accepts.shape)
+    served.add(path)
+    // The payload the contract declares, plus the key ADR 0005 puts on every
+    // write. Built here rather than passed in, so there is one statement of
+    // what this endpoint accepts and the phone is parsed against the same one
+    // it was typed against (#26).
+    const schema = queueable(against.writes[path].accepts.shape)
 
-      return register('POST', path, auth, async (ctx) => {
-        const body: unknown = await ctx.request.json().catch(() => undefined)
-        const parsed = schema.safeParse(body)
-        if (!parsed.success) {
-          // Explicitly rejected and surfaced, never accepted and
-          // misinterpreted (ADR 0007).
-          return json({ error: 'invalid_request', issues: parsed.error.issues }, 400)
-        }
+    return register('POST', path, auth, async (ctx) => {
+      const body: unknown = await ctx.request.json().catch(() => undefined)
+      const parsed = schema.safeParse(body)
+      if (!parsed.success) {
+        // Explicitly rejected and surfaced, never accepted and
+        // misinterpreted (ADR 0007).
+        return json({ error: 'invalid_request', issues: parsed.error.issues }, 400)
+      }
 
-        // The shape constraint guarantees the key at the call site; inside the
-        // generic it has to be named.
-        const { idempotencyKey: key } = parsed.data as { idempotencyKey: string }
-        // The path that was sent, not the pattern registered above — two
-        // horses are two requests, and a digest that cannot tell them apart
-        // answers the second with the first one's response.
-        const { route, identity } = target(ctx.request)
+      // The shape constraint guarantees the key at the call site; inside the
+      // generic it has to be named.
+      const { idempotencyKey: key } = parsed.data as { idempotencyKey: string }
+      // The path that was sent, not the pattern registered above — two
+      // horses are two requests, and a digest that cannot tell them apart
+      // answers the second with the first one's response.
+      const { route, identity } = target(ctx.request)
 
-        // Every mutation logs its key, actor, org and route, so that "did the
-        // server ever see key X" is a grep over SSH (ADR 0007). This line is
-        // written on arrival rather than on the way out, so it survives a
-        // handler that throws — receipt is the half of the question that a
-        // failed write still has to answer.
-        log('info', 'mutation', {
-          route,
-          idempotencyKey: key,
-          requiring: describeAuthorization(auth),
-          actor: ctx.context.actor?.volunteerId ?? null,
-          orgId: ctx.context.orgId,
-          requestId: ctx.context.requestId,
-        })
-
-        const outcome = await idempotency.once(
-          {
-            orgId: ctx.context.orgId,
-            key,
-            route,
-            fingerprint: fingerprint(identity, parsed.data),
-          },
-          // The store is handed the two fields it keeps, not a response: a body
-          // can be read only once, and the thing that gets stored has to be the
-          // thing the caller is handed back (#30).
-          async (db) => {
-            // `schema` is this path's `accepts` with the key added, so what it
-            // parsed *is* `Received`. Inside the generic that is a fact about
-            // `queueable` that the checker cannot follow, so it is said here
-            // once rather than being unsaid at every call site.
-            const answered = await handler(parsed.data as Received<C, P>, { ...ctx, db })
-            return { status: answered.status, body: await answered.text() }
-          },
-        )
-
-        return respond(outcome, { route, key, requestId: ctx.context.requestId })
+      // Every mutation logs its key, actor, org and route, so that "did the
+      // server ever see key X" is a grep over SSH (ADR 0007). This line is
+      // written on arrival rather than on the way out, so it survives a
+      // handler that throws — receipt is the half of the question that a
+      // failed write still has to answer.
+      log('info', 'mutation', {
+        route,
+        idempotencyKey: key,
+        requiring: describeAuthorization(auth),
+        actor: ctx.context.actor?.volunteerId ?? null,
+        orgId: ctx.context.orgId,
+        requestId: ctx.context.requestId,
       })
+
+      const outcome = await idempotency.once(
+        {
+          orgId: ctx.context.orgId,
+          key,
+          route,
+          fingerprint: fingerprint(identity, parsed.data),
+        },
+        // The store is handed the two fields it keeps, not a response: a body
+        // can be read only once, and the thing that gets stored has to be the
+        // thing the caller is handed back (#30).
+        async (db) => {
+          // `schema` is this path's `accepts` with the key added, so what it
+          // parsed *is* `Received`. Inside the generic that is a fact about
+          // `queueable` that the checker cannot follow, so it is said here
+          // once rather than being unsaid at every call site.
+          const answered = await handler(parsed.data as Received<C, P>, { ...ctx, db })
+          return { status: answered.status, body: await answered.text() }
+        },
+      )
+
+      return respond(outcome, { route, key, requestId: ctx.context.requestId })
+    })
   }
 
   /** Every declared path has a handler, or the application does not start. */

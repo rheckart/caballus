@@ -12,7 +12,7 @@
 
 The deciding factor is not price or rate limits — at one location and a handful of calls per day, almost every candidate is free. It is that **Caballus needs a single continuous number that is meaningful at both ends of the scale**, and the candidates differ sharply on that point in ways their marketing copy does not reveal.
 
-> ⚠️ **Read the [equine indices section](#equine-comfort-indices-the-uncomfortable-finding) before building threshold logic.** Human "feels like" is not the metric the equine world uses for heat stress, and there is no equine cold index at all. The API choice below is still correct — Open-Meteo returns every input needed for all the competing conventions — but the *threshold model* should not assume one scalar per horse.
+> ⚠️ **Read the [equine indices section](#equine-comfort-indices-the-uncomfortable-finding) before building threshold logic.** Human "feels like" is not the metric the equine world uses for heat stress, and there is no equine cold index at all. The API choice below is still correct — Open-Meteo returns every input needed for all the competing conventions — but the _threshold model_ should not assume one scalar per horse.
 
 ---
 
@@ -26,7 +26,7 @@ This imposes four requirements that eliminate several candidates:
 
 1. **One numeric field, compared against a per-horse threshold.** Not a pair of fields (heat index / wind chill) that the app must switch between.
 2. **Meaningful year-round.** A field that only "works" in summer is useless for the blanket decision.
-3. **Forecast, not just current.** The morning shift decides the *day's* plan.
+3. **Forecast, not just current.** The morning shift decides the _day's_ plan.
 4. **Cacheable.** Volunteers are in a barn on poor connectivity. The value must be storable locally.
 
 Requirement 4 alone disqualifies one otherwise-capable vendor (see Tomorrow.io below).
@@ -37,16 +37,16 @@ Requirement 4 alone disqualifies one otherwise-capable vendor (see Tomorrow.io b
 
 Four genuinely different computations hide behind similar field names:
 
-| Computation | Inputs | Valid range | Notes |
-|---|---|---|---|
-| **Heat index** (NWS/Rothfusz) | temp, humidity | Hot only — NWS computes it above 80 °F | Undefined in cold |
-| **Wind chill** (NWS 2001) | temp, wind | Cold only — NWS computes it at ≤ 50 °F with wind > 3 mph | Undefined in heat |
-| **Apparent temperature (Steadman / Australian BOM)** | temp, humidity, wind, **solar radiation** | Continuous, all temperatures | One formula, no regime switch |
-| **WBGT** | temp, humidity, wind, solar, radiant heat | Heat stress only | Requires solar/globe input; used in sport |
+| Computation                                          | Inputs                                    | Valid range                                              | Notes                                     |
+| ---------------------------------------------------- | ----------------------------------------- | -------------------------------------------------------- | ----------------------------------------- |
+| **Heat index** (NWS/Rothfusz)                        | temp, humidity                            | Hot only — NWS computes it above 80 °F                   | Undefined in cold                         |
+| **Wind chill** (NWS 2001)                            | temp, wind                                | Cold only — NWS computes it at ≤ 50 °F with wind > 3 mph | Undefined in heat                         |
+| **Apparent temperature (Steadman / Australian BOM)** | temp, humidity, wind, **solar radiation** | Continuous, all temperatures                             | One formula, no regime switch             |
+| **WBGT**                                             | temp, humidity, wind, solar, radiant heat | Heat stress only                                         | Requires solar/globe input; used in sport |
 
 The critical distinction for Caballus is **piecewise vs. continuous**:
 
-- **Piecewise** providers (NWS, Visual Crossing, OpenWeatherMap-style) select heat index *or* wind chill *or* plain air temperature depending on which regime the temperature falls into. There is a **dead band** in the middle where "feels like" is literally just the air temperature.
+- **Piecewise** providers (NWS, Visual Crossing, OpenWeatherMap-style) select heat index _or_ wind chill _or_ plain air temperature depending on which regime the temperature falls into. There is a **dead band** in the middle where "feels like" is literally just the air temperature.
 - **Continuous** providers (Open-Meteo, Pirate Weather, Tomorrow.io) apply a single Steadman-derived formula at every temperature, so humidity and wind always influence the result.
 
 ### The NWS dead band, quantified
@@ -59,15 +59,15 @@ with these thresholds:
 
 - temperature **≤ 50 °F** → wind chill is used
 - temperature **> 80 °F** → heat index is used
-- **between 51 and 80 °F → apparent temperature *is* the ambient air temperature**
+- **between 51 and 80 °F → apparent temperature _is_ the ambient air temperature**
 
 I verified this empirically against the live API and against a year of hourly data for Chester County, PA (typical US horse country, 40.0379, -75.6280):
 
-| Regime | Hours in 2025 | Share of year |
-|---|---|---|
-| air ≤ 50 °F — wind chill applied | 3,615 | 41.3 % |
-| **51–80 °F — apparent == air temp (dead band)** | **4,509** | **51.5 %** |
-| air > 80 °F — heat index applied | 636 | 7.3 % |
+| Regime                                          | Hours in 2025 | Share of year |
+| ----------------------------------------------- | ------------- | ------------- |
+| air ≤ 50 °F — wind chill applied                | 3,615         | 41.3 %        |
+| **51–80 °F — apparent == air temp (dead band)** | **4,509**     | **51.5 %**    |
+| air > 80 °F — heat index applied                | 636           | 7.3 %         |
 
 So for **just over half the year, NWS's `apparentTemperature` carries no feels-like signal at all.** In 31.8 % of those dead-band hours, Open-Meteo's continuous formula differs from plain air temperature by 5 °F or more.
 
@@ -82,7 +82,7 @@ So for **just over half the year, NWS's `apparentTemperature` carries no feels-l
 
 The mean is small; the spread is not. Part of this is genuine model disagreement on air temperature, but much of it is formula difference — Open-Meteo adds a solar-radiation term that NWS's heat index does not have.
 
-> **Implication for the data model:** a per-horse threshold is calibrated *to a specific provider's scale*. Thresholds are **not portable** between providers. Store the provider (and ideally the formula version) alongside the threshold, or a later provider swap will silently re-calibrate every horse in the barn.
+> **Implication for the data model:** a per-horse threshold is calibrated _to a specific provider's scale_. Thresholds are **not portable** between providers. Store the provider (and ideally the formula version) alongside the threshold, or a later provider swap will silently re-calibrate every horse in the barn.
 
 ---
 
@@ -100,8 +100,8 @@ where `e` is vapour pressure (from relative humidity), `ws` is wind speed adjust
 
 Two consequences worth knowing:
 
-- **It is continuous.** The wind term is subtracted at *all* temperatures, so it produces wind-chill-like behaviour in cold without a regime switch. Verified against January 2024 archive data for the PA location: apparent temperature ran **8.5–11.7 °F below air temperature** on cold mornings.
-- **It includes sun.** The `Q` term only engages above 550 W/m² of shortwave radiation, but on a clear summer afternoon it pushes apparent temperature well above what a humidity-only heat index would give. This is arguably *more* correct for horses, which stand in the sun in a paddock — but it means the numbers run hotter than the heat index a volunteer might see on a phone weather app.
+- **It is continuous.** The wind term is subtracted at _all_ temperatures, so it produces wind-chill-like behaviour in cold without a regime switch. Verified against January 2024 archive data for the PA location: apparent temperature ran **8.5–11.7 °F below air temperature** on cold mornings.
+- **It includes sun.** The `Q` term only engages above 550 W/m² of shortwave radiation, but on a clear summer afternoon it pushes apparent temperature well above what a humidity-only heat index would give. This is arguably _more_ correct for horses, which stand in the sun in a paddock — but it means the numbers run hotter than the heat index a volunteer might see on a phone weather app.
 
 The second point is a UX consideration: if the app displays "real-feel 96 °F" while the volunteer's iPhone says 89 °F, that needs explaining. Label the field's source in the UI.
 
@@ -109,15 +109,15 @@ The second point is a UX consideration: if the app displays "real-feel 96 °F" w
 
 ## Candidate comparison
 
-| | Real-feel field | Continuous year-round? | Separate HI/WC? | Forecast | Historical | Free tier | Key required | Card required | Attribution |
-|---|---|---|---|---|---|---|---|---|---|
-| **Open-Meteo** | `apparent_temperature`, `apparent_temperature_max/min` | **Yes** (Steadman + solar) | No | Hourly + daily, 16 d | **Yes, free**, 80+ yrs (ERA5) | 10k calls/day, 5k/hr, 600/min | **No** | No | CC BY 4.0 — "Weather data by Open-Meteo.com" |
-| **NWS api.weather.gov** | `apparentTemperature` (gridpoint only) | **No** — dead band 51–80 °F | **Yes**, plus **WBGT** | Hourly, ~7.5 d | No (NCEI separate) | Undisclosed, "generous" | No (User-Agent) | No | US public domain |
-| **Visual Crossing** | `feelslike`, `feelslikemax/min` | No — HI > 80 °F, WC < 50 °F | Yes | Hourly + daily, 15 d | Yes, 50+ yrs | 1,000 **records**/day | Yes | No | None required |
-| **WeatherAPI.com** | `feelslike_c/_f` (hourly only) | Undocumented (likely) | **Yes** + dewpoint, wetbulb | Hourly, **3 d on free**; no daily feels-like | Past 1 day on free | 100k calls/**month** | Yes | Not stated | Required on free plan |
-| **OpenWeatherMap** | `main.feels_like` / `daily[].feels_like.{morn,day,eve,night}` | Undocumented | **No** | 5 d/3 h free; hourly+daily need One Call | 1979→ via One Call `timemachine` | 1M/mo free plan; One Call **1k/day** separate | Yes | **Yes, for One Call** | ODbL — "Weather data © OpenWeather" |
-| **Tomorrow.io** | `temperatureApparent` | Yes | No (has WBGT) | 14 d (docs) / 5 d (marketing) | 6–24 h on free | 500/day, **25/hr**, 3/s | Yes | Unverified | **"Powered by Tomorrow.io"** required |
-| **Pirate Weather** | `apparentTemperature`, `apparentTemperatureHigh/Low` | Yes (Steadman 1994 + solar) | No | Hourly + daily | Yes | 10k calls/**month** | Yes | No | Sponsor-funded, see risk |
+|                         | Real-feel field                                               | Continuous year-round?      | Separate HI/WC?             | Forecast                                     | Historical                       | Free tier                                     | Key required    | Card required         | Attribution                                  |
+| ----------------------- | ------------------------------------------------------------- | --------------------------- | --------------------------- | -------------------------------------------- | -------------------------------- | --------------------------------------------- | --------------- | --------------------- | -------------------------------------------- |
+| **Open-Meteo**          | `apparent_temperature`, `apparent_temperature_max/min`        | **Yes** (Steadman + solar)  | No                          | Hourly + daily, 16 d                         | **Yes, free**, 80+ yrs (ERA5)    | 10k calls/day, 5k/hr, 600/min                 | **No**          | No                    | CC BY 4.0 — "Weather data by Open-Meteo.com" |
+| **NWS api.weather.gov** | `apparentTemperature` (gridpoint only)                        | **No** — dead band 51–80 °F | **Yes**, plus **WBGT**      | Hourly, ~7.5 d                               | No (NCEI separate)               | Undisclosed, "generous"                       | No (User-Agent) | No                    | US public domain                             |
+| **Visual Crossing**     | `feelslike`, `feelslikemax/min`                               | No — HI > 80 °F, WC < 50 °F | Yes                         | Hourly + daily, 15 d                         | Yes, 50+ yrs                     | 1,000 **records**/day                         | Yes             | No                    | None required                                |
+| **WeatherAPI.com**      | `feelslike_c/_f` (hourly only)                                | Undocumented (likely)       | **Yes** + dewpoint, wetbulb | Hourly, **3 d on free**; no daily feels-like | Past 1 day on free               | 100k calls/**month**                          | Yes             | Not stated            | Required on free plan                        |
+| **OpenWeatherMap**      | `main.feels_like` / `daily[].feels_like.{morn,day,eve,night}` | Undocumented                | **No**                      | 5 d/3 h free; hourly+daily need One Call     | 1979→ via One Call `timemachine` | 1M/mo free plan; One Call **1k/day** separate | Yes             | **Yes, for One Call** | ODbL — "Weather data © OpenWeather"          |
+| **Tomorrow.io**         | `temperatureApparent`                                         | Yes                         | No (has WBGT)               | 14 d (docs) / 5 d (marketing)                | 6–24 h on free                   | 500/day, **25/hr**, 3/s                       | Yes             | Unverified            | **"Powered by Tomorrow.io"** required        |
+| **Pirate Weather**      | `apparentTemperature`, `apparentTemperatureHigh/Low`          | Yes (Steadman 1994 + solar) | No                          | Hourly + daily                               | Yes                              | 10k calls/**month**                           | Yes             | No                    | Sponsor-funded, see risk                     |
 
 ---
 
@@ -182,13 +182,13 @@ I confirmed the piecewise behaviour empirically: in August at the PA location, `
 > Wind Chill: Values are only calculated when the temperature is less than 50F (about 10C) and the wind speed is greater than 3mph (5kph). An empty value is returned outside of these ranges.
 > Temperature, heat index and wind chill are combined into a single "feelslike" element for clarity and ease of use.
 
-So it has the same dead band as NWS, but it *does* correctly give one blended year-round field — which is exactly the shape Caballus wants.
+So it has the same dead band as NWS, but it _does_ correctly give one blended year-round field — which is exactly the shape Caballus wants.
 
 **Free tier — and the accounting is better than it looks.** 1,000 **records**/day. The unit is unusual and it works in our favour ([what is a weather record](https://www.visualcrossing.com/resources/documentation/weather-data/what-exactly-is-a-weather-record/)):
 
 > A full 15-day forecast for one location counts as a single record. **This is true even for an hourly forecast.**
 
-One location, one 15-day hourly forecast = **1 record**. Polling every 15 minutes all day = 96 records, under 10 % of quota. Historical is where it gets expensive: one day of *hourly* history = 24 records, so a year of hourly backfill ≈ 8,760 records ≈ 9 days of quota.
+One location, one 15-day hourly forecast = **1 record**. Polling every 15 minutes all day = 96 records, under 10 % of quota. Historical is where it gets expensive: one day of _hourly_ history = 24 records, so a year of hourly backfill ≈ 8,760 records ≈ 9 days of quota.
 
 **Why it loses to Open-Meteo:** requires an API key and account; the dead band; and an unresolved contradiction in their own terms — the free-plan page says "Developers and businesses can begin building applications using the free plan," while the licence terms tie commercial rights to a **paid** licence. Storage/caching rights are also described as license-level dependent, which is unverified for the free tier and matters for an offline-first app.
 
@@ -204,7 +204,7 @@ Technically capable: `temperatureApparent` is a continuous blended field ([core 
 
 2. Subscribers cannot "store or otherwise collect or copy the unaltered Datafeed" unless expressly permitted. **This directly conflicts with the offline-first caching that a barn-on-poor-connectivity app requires.**
 
-Additionally: mandatory clickable "Powered by Tomorrow.io" attribution near the data *"or any information derived from it"* — arguably covering a derived blanket recommendation, not just a temperature readout. And the free tier's **25 calls/hour** ceiling is the binding constraint, not the 500/day.
+Additionally: mandatory clickable "Powered by Tomorrow.io" attribution near the data _"or any information derived from it"_ — arguably covering a derived blanket recommendation, not just a temperature readout. And the free tier's **25 calls/hour** ceiling is the binding constraint, not the 500/day.
 
 Their own docs and marketing page also disagree on free-tier history (6 h vs 24 h) and forecast horizon (14 d vs 5 d), which is circumstantial evidence of unannounced tier changes.
 
@@ -220,14 +220,14 @@ A Dark Sky-compatible API serving NOAA models (GFS/HRRR/NBM/ECMWF) via AWS Lambd
 
 **Field.** `main.feels_like` on the free Current Weather 2.5 and 5-day/3-hour forecast endpoints. The richer shape — `daily[].feels_like.{morn,day,eve,night}` — exists only in One Call ([One Call 4.0](https://openweathermap.org/api/one-call-4)).
 
-**No published definition.** The only official wording, repeated across every doc page, is one sentence: *"This temperature parameter accounts for the human perception of weather."* There is **no formula, no threshold documentation, and no separate heat-index or wind-chill field anywhere in the API**. Whether `feels_like` behaves correctly at both ends of the scale is **undocumented and unverified** — and unlike WeatherAPI, there is no sibling field to check it against.
+**No published definition.** The only official wording, repeated across every doc page, is one sentence: _"This temperature parameter accounts for the human perception of weather."_ There is **no formula, no threshold documentation, and no separate heat-index or wind-chill field anywhere in the API**. Whether `feels_like` behaves correctly at both ends of the scale is **undocumented and unverified** — and unlike WeatherAPI, there is no sibling field to check it against.
 
 **The free-tier trap.** There are two different free tiers and the useful one costs a credit card:
 
 - **Standard Free plan**: 60 calls/min, 1M calls/month — but **excludes One Call, hourly-4-day, and daily-16-day forecasts** ([pricing](https://openweathermap.org/price)).
-- **One Call by Call**: 1,000 calls/day free, but **requires credit card details on file**. From OWM's own migration doc: *"the One Call API 3.0 subscription requires credit card details. We use your payment card details only for those calls that go beyond the free limit"* ([transfer doc](https://openweathermap.org/api/one-call-transfer)). Overage is **charged by default, not blocked** — *"You will be automatically charged at the end of your subscription months"* ([FAQ](https://openweathermap.org/faq)). You can cap it manually via Billing plans → daily API call limit, but the default limit is reportedly higher than the free allowance, so **an unattended bug in a call loop bills your card.**
+- **One Call by Call**: 1,000 calls/day free, but **requires credit card details on file**. From OWM's own migration doc: _"the One Call API 3.0 subscription requires credit card details. We use your payment card details only for those calls that go beyond the free limit"_ ([transfer doc](https://openweathermap.org/api/one-call-transfer)). Overage is **charged by default, not blocked** — _"You will be automatically charged at the end of your subscription months"_ ([FAQ](https://openweathermap.org/faq)). You can cap it manually via Billing plans → daily API call limit, but the default limit is reportedly higher than the free allowance, so **an unattended bug in a call loop bills your card.**
 
-**Worst stability record of any candidate.** One Call 2.5 was **hard-closed in June 2024**, forcing migration to a card-required 3.0 ([deprecation notice](https://openweathermap.org/api/one-call-api)). Roughly two years later, 3.0 is itself superseded — *"We recommend using One Call API 4.0 for all new integrations"* — with no published sunset date for 3.0. The pattern of forcing paid migrations is the relevant risk signal for a solo-maintained volunteer project.
+**Worst stability record of any candidate.** One Call 2.5 was **hard-closed in June 2024**, forcing migration to a card-required 3.0 ([deprecation notice](https://openweathermap.org/api/one-call-api)). Roughly two years later, 3.0 is itself superseded — _"We recommend using One Call API 4.0 for all new integrations"_ — with no published sunset date for 3.0. The pattern of forcing paid migrations is the relevant risk signal for a solo-maintained volunteer project.
 
 **Licence.** ODbL, with visible attribution "Weather data © OpenWeather" required near the data ([licences](https://openweathermap.org/full-price#licenses)).
 
@@ -235,7 +235,7 @@ For a one-location, few-calls-per-day rescue app, putting a credit card on file 
 
 ### WeatherAPI.com — SOLID, BUT LOSES ON FORECAST DEPTH AND CACHING
 
-**Best field coverage for explaining *why* a threshold fired.** Unlike OWM, it ships `feelslike_c/_f`, `heatindex_c/_f`, `windchill_c/_f`, `dewpoint_c/_f`, `gust_*`, `uv` as **independent side-by-side fields**, and added `wetbulb_c/_f` in July 2026 ([docs](https://www.weatherapi.com/docs/), [changelog](https://www.weatherapi.com/api-changelog.html)). Because heat index and wind chill are exposed separately, `feelslike` is almost certainly the blended year-round value — but this is **inference, not documented**; no formula is published.
+**Best field coverage for explaining _why_ a threshold fired.** Unlike OWM, it ships `feelslike_c/_f`, `heatindex_c/_f`, `windchill_c/_f`, `dewpoint_c/_f`, `gust_*`, `uv` as **independent side-by-side fields**, and added `wetbulb_c/_f` in July 2026 ([docs](https://www.weatherapi.com/docs/), [changelog](https://www.weatherapi.com/api-changelog.html)). Because heat index and wind chill are exposed separately, `feelslike` is almost certainly the blended year-round value — but this is **inference, not documented**; no formula is published.
 
 **Free tier.** 100,000 calls/**month**, commercial use explicitly permitted (the pricing table marks both Commercial and Non-Commercial "Yes" for Free). Exceeding returns a hard 403 block rather than a charge — much safer than OWM's billing model ([pricing](https://www.weatherapi.com/pricing.aspx)).
 
@@ -243,9 +243,9 @@ For a one-location, few-calls-per-day rescue app, putting a credit card on file 
 
 1. **Forecast is only 3 days on the free plan**, versus 16 for Open-Meteo.
 2. **No daily-level feels-like.** The `forecast.forecastday[].day` object has max/min/avg temp but **no `feelslike`** — you must aggregate the hourly array yourself to answer "how hot will today feel."
-3. **Contractual caching limits.** Verbatim from [terms](https://www.weatherapi.com/terms.aspx): *"current conditions data — maximum 60 minutes; forecast data — maximum 24 hours."* For an offline-first barn app this is a real constraint, though far milder than Tomorrow.io's outright prohibition — 24 h of cached forecast covers a shift comfortably.
+3. **Contractual caching limits.** Verbatim from [terms](https://www.weatherapi.com/terms.aspx): _"current conditions data — maximum 60 minutes; forecast data — maximum 24 hours."_ For an offline-first barn app this is a real constraint, though far milder than Tomorrow.io's outright prohibition — 24 h of cached forecast covers a shift comfortably.
 
-Attribution is **mandatory on the free plan**: *"you will credit WeatherAPI.com by name or brand logo as the source of the data."* One API key may be used for **one application only**. Their terms also require a safety disclaimer when displaying data — worth noting given Caballus uses this for animal welfare decisions.
+Attribution is **mandatory on the free plan**: _"you will credit WeatherAPI.com by name or brand logo as the source of the data."_ One API key may be used for **one application only**. Their terms also require a safety disclaimer when displaying data — worth noting given Caballus uses this for animal welfare decisions.
 
 **Stability is clean** — the published changelog 2024→Jul 2026 shows only additive changes, no deprecations or removals. This is the best stability record among the commercial vendors.
 
@@ -259,12 +259,12 @@ Attribution is **mandatory on the free plan**: *"you will credit WeatherAPI.com 
 
 US Equestrian, crediting AAEP, publishes a scale based on **air temperature in °F plus relative humidity in %** ([USEF heat alert](https://www.usef.org/media/press-releases/heat-alert-clarification-recommendations-for)):
 
-| Sum (°F + RH%) | Guidance |
-|---|---|
-| < 130 | Normal; cooling effective |
-| 130–150 | Begin monitoring for heat stress; cooling decreased |
-| 150–180 | Critical to monitor; cooling greatly reduced |
-| > 180 | Alternative competition times encouraged; "potentially fatal under stress" |
+| Sum (°F + RH%) | Guidance                                                                   |
+| -------------- | -------------------------------------------------------------------------- |
+| < 130          | Normal; cooling effective                                                  |
+| 130–150        | Begin monitoring for heat stress; cooling decreased                        |
+| 150–180        | Critical to monitor; cooling greatly reduced                               |
+| > 180          | Alternative competition times encouraged; "potentially fatal under stress" |
 
 The same scale appears at [UMN Extension](https://extension.umn.edu/horse-care-and-management/caring-horses-during-hot-weather) and [Rutgers Equine Science Center](https://esc.rutgers.edu/ru-beating-the-heat-2/). **USEF explicitly warns this is not the National Weather Service heat index**, and states "There is no rule set forth on when to compete."
 
@@ -272,7 +272,7 @@ The same scale appears at [UMN Extension](https://extension.umn.edu/horse-care-a
 
 ### FEI explicitly rejects that sum, and rejects human comfort indices generally
 
-From the FEI's *Preparation for and Management of Horses and Athletes During Equestrian Events Held in Thermally Challenging Environments* (Marlin, Misheff & Whitehead, March 2018):
+From the FEI's _Preparation for and Management of Horses and Athletes During Equestrian Events Held in Thermally Challenging Environments_ (Marlin, Misheff & Whitehead, March 2018):
 
 > This index should never be used for managing horses in hot or hot humid conditions as it has previously been demonstrated to be extremely unreliable and could lead to inappropriate decisions being made and a major risk to horse and athlete welfare.
 
@@ -284,7 +284,7 @@ FEI eventing thresholds (cross-country, acclimatised horses): < 28 °C no change
 
 ### THI is a cattle index — do not use it
 
-Equine papers that report THI use the **unmodified livestock formula**; the citation chain leads to other equine papers that also just borrowed it. The literature review [Kang et al. (2023), *Int. J. Biometeorology* 67:957–973](https://d-nb.info/1303005778/34) concludes: *"there is a lack of any standardized method or validated interpretation of heat stress in horses."* No equine-derived coefficients, no equine thresholds.
+Equine papers that report THI use the **unmodified livestock formula**; the citation chain leads to other equine papers that also just borrowed it. The literature review [Kang et al. (2023), _Int. J. Biometeorology_ 67:957–973](https://d-nb.info/1303005778/34) concludes: _"there is a lack of any standardized method or validated interpretation of heat stress in horses."_ No equine-derived coefficients, no equine thresholds.
 
 ### For cold, there is no index at all
 
@@ -348,7 +348,7 @@ Free, no key, US public domain, and the **only free source of forecast WBGT** �
 
 6. **Label the source in the UI.** Open-Meteo's solar term makes its numbers run hotter than a phone weather app's heat index. A volunteer seeing "real-feel 96 °F" against their iPhone's 89 °F needs an explanation, or they will distrust the app.
 
-7. **Do not present the temp+RH sum as authoritative.** If implemented, note in the UI or docs that the 130/150/180 bands are US convention for *exercise* decisions, lack a published derivation, and are disputed by FEI at moderate-to-high humidity.
+7. **Do not present the temp+RH sum as authoritative.** If implemented, note in the UI or docs that the 130/150/180 bands are US convention for _exercise_ decisions, lack a published derivation, and are disputed by FEI at moderate-to-high humidity.
 
 ---
 

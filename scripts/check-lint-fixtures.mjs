@@ -49,7 +49,8 @@ const failures = []
 
 const banIds = BANS.map((ban) => ban.id)
 for (const id of Object.keys(EXPECTED_VIOLATIONS)) {
-  if (!banIds.includes(id)) failures.push(`${id} is expected here but is not a rule in eslint.config.ts`)
+  if (!banIds.includes(id))
+    failures.push(`${id} is expected here but is not a rule in eslint.config.ts`)
 }
 for (const id of banIds) {
   if (!(id in EXPECTED_VIOLATIONS)) {

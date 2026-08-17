@@ -114,13 +114,11 @@ export type Accepts<C extends Contract, P extends WritePath<C>> = z.input<C['wri
 
 /** What a read's handler must answer with, or a refusal. */
 export type Sends<C extends Contract, P extends ReadPath<C>> =
-  | z.input<C['reads'][P]['answers']>
-  | Failure
+  z.input<C['reads'][P]['answers']> | Failure
 
 /** What a write's handler must answer with, or a refusal. */
 export type SendsWrite<C extends Contract, P extends WritePath<C>> =
-  | z.input<C['writes'][P]['answers']>
-  | Failure
+  z.input<C['writes'][P]['answers']> | Failure
 
 /** What a write's handler receives: the payload it declared, and the key. */
 export type Received<C extends Contract, P extends WritePath<C>> = z.output<

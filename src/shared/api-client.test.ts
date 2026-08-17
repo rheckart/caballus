@@ -118,9 +118,9 @@ describe('the client reading a version rejection', () => {
     // deploy, where a queued write meets a container nobody has replaced yet.
     serverAnswering(400, { error: 'unsupported_api_version', supported: 'v0', received: 'v1' })
 
-    const failure = await client.post('/observations', { note: 'gate latch' }).catch(
-      (error: unknown) => error,
-    )
+    const failure = await client
+      .post('/observations', { note: 'gate latch' })
+      .catch((error: unknown) => error)
 
     // Dropping this one loses a write the next attempt would have delivered,
     // which is the failure ADR 0005 exists to prevent.
@@ -161,9 +161,9 @@ describe('the client reading a version rejection', () => {
   it('raises it for a queued write too, which is the case that matters', async () => {
     serverAnswering(400, { error: 'unsupported_api_version', supported: 'v2', received: 'v1' })
 
-    const failure = await client.post('/observations', { note: 'gate latch' }).catch(
-      (error: unknown) => error,
-    )
+    const failure = await client
+      .post('/observations', { note: 'gate latch' })
+      .catch((error: unknown) => error)
 
     expect(failure).toBeInstanceOf(OutdatedClientError)
   })
@@ -176,7 +176,9 @@ describe('a write, and the replay of one', () => {
     await client.post('/observations', { note: 'gate latch' })
     await client.post('/observations', { note: 'gate latch' }, { idempotencyKey: 'k_replayed' })
 
-    const sent = calls.map(({ init }) => JSON.parse(String(init.body)) as { idempotencyKey: string })
+    const sent = calls.map(
+      ({ init }) => JSON.parse(String(init.body)) as { idempotencyKey: string },
+    )
     expect(sent[0]?.idempotencyKey).toMatch(/^[0-9a-f-]{36}$/)
     expect(sent[1]?.idempotencyKey).toBe('k_replayed')
     expect(calls[0]?.url).toBe(`${API_BASE}/observations`)
@@ -201,7 +203,11 @@ describe('a write, and the replay of one', () => {
   it('will not let the payload shadow the key', async () => {
     const calls = serverAnswering(201, { recorded: true })
 
-    await client.post('/pretenders', { idempotencyKey: 'from-the-body' }, { idempotencyKey: 'k_real' })
+    await client.post(
+      '/pretenders',
+      { idempotencyKey: 'from-the-body' },
+      { idempotencyKey: 'k_real' },
+    )
 
     const sent = JSON.parse(String(calls[0]?.init.body)) as { idempotencyKey: string }
     // A write whose key came from its own payload is a write with no key.
@@ -211,7 +217,11 @@ describe('a write, and the replay of one', () => {
 
 describe('the answer, against the shape the contract promised', () => {
   it('reads a good answer through the schema and hands it back', async () => {
-    serverAnswering(200, { day: '2026-08-16', timeZone: 'America/New_York', organisation: 'Front Barn' })
+    serverAnswering(200, {
+      day: '2026-08-16',
+      timeZone: 'America/New_York',
+      organisation: 'Front Barn',
+    })
 
     // The real contract, not this file's: the one endpoint that exists,
     // through the client the application actually uses.

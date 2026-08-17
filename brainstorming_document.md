@@ -1,6 +1,7 @@
 # Caballus Brainstorming Document
 
 ## Overview
+
 The Caballus application will assist horse rescues in the care and coordination of their animals. The application should eventually cover all aspects of horse rescue functionality, from keeping track of animal information to reports about the animals, volunteers, facilities, etc.
 
 ## Horse Care: Detailed Brainstorming for Mobile-First Rescue App
@@ -51,8 +52,8 @@ The Caballus application will assist horse rescues in the care and coordination 
 - Parasite management: treatments (topical, systemic), assessment results.
 - Grooming schedule: when and how often grooming is performed.
 - Temperature considerations
-   - If the real-feel temperature is too hot, horses often stay inside
-   - If the real-feel temperature is too cold, horses often wear a sheet or a blanket
+  - If the real-feel temperature is too hot, horses often stay inside
+  - If the real-feel temperature is too cold, horses often wear a sheet or a blanket
 
 ### Behavioral & Training
 
@@ -101,6 +102,7 @@ The Caballus application will assist horse rescues in the care and coordination 
 This expanded brainstorming list ensures a robust foundation for the application to support nuanced, real-world needs in equine rescue settings. These details should drive both the user interface and backend data model, allowing rescue organizations to provide high-quality, individualized care with confidence and accountability.
 
 ## Rescue Personnel Roles/Personas
+
 Rules: Volunteer members at the rescue may be included in many roles.
 
 1. **President** - President and head of the horse rescue. Can perform all functions for all roles

@@ -68,7 +68,9 @@ export function scrub<T>(event: T): T {
 
 /** Redacts email addresses and phone numbers written into free text. */
 export function scrubText(text: string): string {
-  return text.replace(EMAIL, REDACTED).replace(PHONE, (_match, before: string) => `${before}${REDACTED}`)
+  return text
+    .replace(EMAIL, REDACTED)
+    .replace(PHONE, (_match, before: string) => `${before}${REDACTED}`)
 }
 
 function scrubValue(value: unknown, seen: WeakSet<object>, depth: number): unknown {

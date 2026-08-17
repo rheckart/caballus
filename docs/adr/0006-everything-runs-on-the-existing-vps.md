@@ -36,7 +36,7 @@ So the argument collapsed on a single observation: **the backup job gets written
 
 **S4 has no US region.** Montreal is chosen for proximity on the one occasion that matters — restoring under the clock. Volunteer names and mobile numbers therefore sit on Canadian infrastructure. A footnote at this scale, but one the rescue's board should hear once rather than discover. Prefer a US region if one appears.
 
-**Monitoring lives off the box it watches** — Uptime Kuma on a home server, on a UPS, texting one person. `/health` opens a real database connection and reports the age of the last successful backup, so the check proves the app *and* its data path *and* that last night's dump happened. It is unauthenticated and says up or down, never why. **A home ISP outage produces silence rather than an alert**, and silence reads identically to everything being fine; a dead-man's-switch heartbeat is the cheap fix, deferred.
+**Monitoring lives off the box it watches** — Uptime Kuma on a home server, on a UPS, texting one person. `/health` opens a real database connection and reports the age of the last successful backup, so the check proves the app _and_ its data path _and_ that last night's dump happened. It is unauthenticated and says up or down, never why. **A home ISP outage produces silence rather than an alert**, and silence reads identically to everything being fine; a dead-man's-switch heartbeat is the cheap fix, deferred.
 
 **Caballus shares a kernel and a disk with the git host.** Accepted at POC stakes and listed for re-decision.
 

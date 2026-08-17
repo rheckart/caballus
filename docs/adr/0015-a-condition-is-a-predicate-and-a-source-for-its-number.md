@@ -5,9 +5,9 @@ amends: 0013 (the Condition snapshot is a set, the window belongs to the Conditi
 
 # A Condition is a predicate and a source for its number
 
-The Sheets and Blankets panel is not "a threshold per horse", and reading it as one is how this ticket would have gone wrong. It is a default with three named overrides, two tiers of garment at two different temperatures, a hedge that is judgement rather than a number, an escalation that requires somebody's say-so, and a heat rule keyed to the *shape* of the forecast rather than to a value. Every decision below is what falls out of taking that panel literally.
+The Sheets and Blankets panel is not "a threshold per horse", and reading it as one is how this ticket would have gone wrong. It is a default with three named overrides, two tiers of garment at two different temperatures, a hedge that is judgement rather than a number, an escalation that requires somebody's say-so, and a heat rule keyed to the _shape_ of the forecast rather than to a value. Every decision below is what falls out of taking that panel literally.
 
-ADR 0013 was formally blocked on this ticket and defined the interface instead of waiting, in one sentence: a Condition is *a named predicate, evaluated per Shift against that Shift's own hours at materialization, and snapshotted onto the Shift*. That sentence survives in its intent and is wrong in two of its particulars, both corrected here.
+ADR 0013 was formally blocked on this ticket and defined the interface instead of waiting, in one sentence: a Condition is _a named predicate, evaluated per Shift against that Shift's own hours at materialization, and snapshotted onto the Shift_. That sentence survives in its intent and is wrong in two of its particulars, both corrected here.
 
 # The predicate resolves per subject when its number comes from the subject
 
@@ -15,21 +15,21 @@ ADR 0013's sentence reads as one boolean per Shift. The board's sheet rule canno
 
 So a Condition is a named predicate **plus a source for its number**. Rescue-wide Conditions take a fixed value; per-horse ones take the subject's own threshold. The snapshot on the Shift is a **set of (Condition, subject) booleans** rather than a scalar.
 
-The alternative — leaving Conditions rescue-wide and giving sheets and blankets their own separate gating mechanism — was rejected because it puts the single largest weather rule on the board outside the concept invented to express it, which is the outcome ADR 0013's contract existed to prevent. Both kinds genuinely occur and the model needs both: *Staying In* is one answer for the whole barn, *Sheet Weather* is twelve answers.
+The alternative — leaving Conditions rescue-wide and giving sheets and blankets their own separate gating mechanism — was rejected because it puts the single largest weather rule on the board outside the concept invented to express it, which is the outcome ADR 0013's contract existed to prevent. Both kinds genuinely occur and the model needs both: _Staying In_ is one answer for the whole barn, _Sheet Weather_ is twelve answers.
 
 # The vocabulary is closed
 
 A Condition's **kind** is code; its numbers are data. Three kinds cover every rule on the whiteboard:
 
 - **threshold crossing** over a window — sheets, blankets, fans
-- **time of crossing** — *85 °F Real Feel starts at noon or before*
+- **time of crossing** — _85 °F Real Feel starts at noon or before_
 - **precipitation presence** over a window — the fly sheet rule, and Cold and Wet
 
 The rescue edits numbers, metrics and which horses. It cannot author a fourth kind; that is a deploy. This is the same fence ADR 0013 put around the Task catalogue and for the same reason: a rule builder in a barn app is a feature nobody will use correctly and everybody can break. Three kinds were enough for a whiteboard the rescue has been refining for years, which is decent evidence the fence sits in the right place.
 
 # Cold is air temperature and heat is apparent temperature
 
-The board writes heat as Real Feel explicitly — *85° Real Feel* — and cold as bare degrees — *Sheets under 50°*. Per the #6 research these are not interchangeable. Open-Meteo's apparent temperature subtracts a wind term at **all** temperatures, running 8.5–11.7 °F below air temperature on cold mornings. Read *under 50* as apparent and the sheet rule starts firing on a breezy 58 °F afternoon, which silently re-calibrates a number the rescue set against something else.
+The board writes heat as Real Feel explicitly — _85° Real Feel_ — and cold as bare degrees — _Sheets under 50°_. Per the #6 research these are not interchangeable. Open-Meteo's apparent temperature subtracts a wind term at **all** temperatures, running 8.5–11.7 °F below air temperature on cold mornings. Read _under 50_ as apparent and the sheet rule starts firing on a breezy 58 °F afternoon, which silently re-calibrates a number the rescue set against something else.
 
 So cold thresholds are **air temperature**, heat thresholds are **apparent temperature**, and every threshold stores its **metric and provider** beside the number. #6's warning is the reason: measured divergence between Open-Meteo and NWS apparent temperature at the same coordinates was mean +1.8 °F with a range of −11.5 to +9.6 °F, so a threshold is calibrated to one provider's scale and is **not portable**. A provider swap without the stamp re-calibrates every horse in the barn and nobody notices.
 
@@ -39,52 +39,52 @@ The metric enum carries `air_temp`, `apparent_temp`, `temp_plus_humidity_sum` an
 
 #6 found that the equine world does not use "feels like" at all, and that its two authorities contradict each other. US Equestrian, crediting AAEP, publishes a scale of air temperature in °F **plus relative humidity in %** — under 130 normal, 130–150 begin monitoring, 150–180 critical, over 180 potentially fatal under stress — and explicitly warns it is not the NWS heat index. The FEI's 2018 guidance says that scale "should never be used… as it has previously been demonstrated to be extremely unreliable" and holds that **the only validated heat index for equestrian sport is WBGT**. THI, which appears in equine papers, is an unmodified cattle index; the 2023 Kang review concludes there is "a lack of any standardized method or validated interpretation of heat stress in horses". For cold there is no index at all, only lower critical temperature, whose published values span thirty degrees — from −15 °C for a cold-adapted Quarter Horse to about **+5 °C** for a horse stabled at night and not winter-acclimatised.
 
-Both authorities are describing *exercising* horses at competition. A rescue paddock is not that, and neither offers a translation for the number this barn actually uses. So the board's numbers stand as written.
+Both authorities are describing _exercising_ horses at competition. A rescue paddock is not that, and neither offers a translation for the number this barn actually uses. So the board's numbers stand as written.
 
-Two things in that literature are worth keeping anyway, because they explain the model rather than contradict it. First, this rescue's thresholds — sheets under 50, blankets under 30 — sit far above every published LCT, and that is not the barn being wrong: LCT describes a healthy acclimated horse, and a rescue blankets the thin, the senior, the unacclimated and the wet. The literature is the explanation for **why thresholds are per-horse in the first place**. Second, the evidence is consistent that wind and wet matter more than air temperature, that there is no equine wind-chill formula, and that the widely repeated *"20 mph lowers effective temperature 15–20 °F for a horse"* traces to magazine content rather than research. Which means the board's throwaway hedge, *especially if windy/Rainy*, is the best-evidenced sentence on the panel — and it stays as advice, for reasons given below.
+Two things in that literature are worth keeping anyway, because they explain the model rather than contradict it. First, this rescue's thresholds — sheets under 50, blankets under 30 — sit far above every published LCT, and that is not the barn being wrong: LCT describes a healthy acclimated horse, and a rescue blankets the thin, the senior, the unacclimated and the wet. The literature is the explanation for **why thresholds are per-horse in the first place**. Second, the evidence is consistent that wind and wet matter more than air temperature, that there is no equine wind-chill formula, and that the widely repeated _"20 mph lowers effective temperature 15–20 °F for a horse"_ traces to magazine content rather than research. Which means the board's throwaway hedge, _especially if windy/Rainy_, is the best-evidenced sentence on the panel — and it stays as advice, for reasons given below.
 
 ## The 85 has no provenance
 
-The rescue's Real Feel number was not read off one app. It varies with whoever is looking and what they have installed, which means two volunteers can stand in the same paddock today and disagree about whether the rule fired. Precision about *which* scale would be false precision.
+The rescue's Real Feel number was not read off one app. It varies with whoever is looking and what they have installed, which means two volunteers can stand in the same paddock today and disagree about whether the rule fired. Precision about _which_ scale would be false precision.
 
-It also means the app becomes the arbiter, which is an improvement on the current state rather than a risk introduced. But Open-Meteo's formula includes a **solar radiation term**, so on a clear afternoon it runs hotter than a heat-index-style "feels like" — and since the rule is *only if 85 starts at noon or before*, a hotter curve crosses earlier and keeps horses in on days the barn would have turned them out. The metric choice moves the answer to a yes/no question about turnout, which is why a calibration comparison is owed before the first summer.
+It also means the app becomes the arbiter, which is an improvement on the current state rather than a risk introduced. But Open-Meteo's formula includes a **solar radiation term**, so on a clear afternoon it runs hotter than a heat-index-style "feels like" — and since the rule is _only if 85 starts at noon or before_, a hotter curve crosses earlier and keeps horses in on days the barn would have turned them out. The metric choice moves the answer to a yes/no question about turnout, which is why a calibration comparison is owed before the first summer.
 
 # The window belongs to the Condition, not the Shift
 
-ADR 0013 said per Shift against *that Shift's own hours*. Both halves need correcting.
+ADR 0013 said per Shift against _that Shift's own hours_. Both halves need correcting.
 
-**Some Conditions are day-shaped.** *Staying In* changes the hay plan, Storm's alfalfa, turnout and fans; if AM and PM evaluated it separately, PM could feed an alternate hay regime to horses that went out this morning. Day-scoped Conditions are evaluated **once when the day materializes** and every Shift that day snapshots the same value. The daily job already runs for all of the day's Shifts, so this costs nothing.
+**Some Conditions are day-shaped.** _Staying In_ changes the hay plan, Storm's alfalfa, turnout and fans; if AM and PM evaluated it separately, PM could feed an alternate hay regime to horses that went out this morning. Day-scoped Conditions are evaluated **once when the day materializes** and every Shift that day snapshots the same value. The daily job already runs for all of the day's Shifts, so this costs nothing.
 
-**And *that Shift's own hours* is the wrong window for the rest.** A blanket put on at PM feed is worn all night; the hours the volunteers are present are not the hours the horse is wearing it. Shift-scoped Conditions read **from this Shift's start until the next Shift begins** — the period the horse spends dressed as this Shift left it.
+**And _that Shift's own hours_ is the wrong window for the rest.** A blanket put on at PM feed is worn all night; the hours the volunteers are present are not the hours the horse is wearing it. Shift-scoped Conditions read **from this Shift's start until the next Shift begins** — the period the horse spends dressed as this Shift left it.
 
 So the window is a property of the **Condition kind**. ADR 0013's underlying point survives intact: a day that starts at 30 ° and reaches 85 ° is one day and two entirely different Shifts, and nothing here evaluates a shift-scoped Condition once for the day.
 
 # A default with named overrides, and a third state that is neither
 
-The board names three horses and puts everyone else under *Rest of Horses*. That default is a **real record** in ADR 0003's versioned tier, not the absence of one, with per-horse override rows existing only for the horses that have them. Copying the default onto twelve horses would give eight rows of identical numbers that drift apart the first time somebody edits one — which is precisely the duplication failure ADR 0003 already caught the whiteboard committing with halter colour.
+The board names three horses and puts everyone else under _Rest of Horses_. That default is a **real record** in ADR 0003's versioned tier, not the absence of one, with per-horse override rows existing only for the horses that have them. Copying the default onto twelve horses would give eight rows of identical numbers that drift apart the first time somebody edits one — which is precisely the duplication failure ADR 0003 already caught the whiteboard committing with halter colour.
 
 The override is **three-valued**, exactly as ADR 0013 kept for Task Assignment: overridden, deliberately the same as the default, or **not yet decided**. The third state is load-bearing for the reason ADR 0010 gave about Mystery and Nora's blank `GROOM` cells — a new intake with no thresholds set is an unanswered question, not a horse that follows the default, and rendering one as the other converts a gap into a rule nobody made.
 
 At materialization a horse with undecided thresholds **gets its item using the rescue default**, with the card stating that its thresholds are not set, and the horse appearing on a `horse_care` list of decisions owed. The app does the safe thing, says visibly that it did, and a person resolves it — the same treatment ADR 0013 gave the horse that departs at noon. The horse gets its sheet either way, which is what matters at 38 °.
 
-Thresholds are edited under `horse_care`, versioned per ADR 0003, and carry the derived **New** marker per ADR 0013. **A change to the default marks New on every horse that follows it.** That is noisy — one edit can light up nine of twelve horses — and it is correct: it is exactly the change everyone needs to notice, and ADR 0013 made New global so that a Lead saying *there is a new instruction* can rely on others seeing it. Marking only the default record and trusting people to read it is what the whiteboard did, and its blue `NEW` underline went stale until somebody rubbed it out.
+Thresholds are edited under `horse_care`, versioned per ADR 0003, and carry the derived **New** marker per ADR 0013. **A change to the default marks New on every horse that follows it.** That is noisy — one edit can light up nine of twelve horses — and it is correct: it is exactly the change everyone needs to notice, and ADR 0013 made New global so that a Lead saying _there is a new instruction_ can rely on others seeing it. Marking only the default record and trusting people to read it is what the whiteboard did, and its blue `NEW` underline went stale until somebody rubbed it out.
 
 # The set, in full
 
 Per-horse, shift-scoped:
 
-| Condition | Predicate |
-|---|---|
-| **Blanket Weather** | air temperature below the horse's blanket threshold |
-| **Sheet Weather** | below the sheet threshold **and at or above the blanket threshold** |
+| Condition           | Predicate                                                           |
+| ------------------- | ------------------------------------------------------------------- |
+| **Blanket Weather** | air temperature below the horse's blanket threshold                 |
+| **Sheet Weather**   | below the sheet threshold **and at or above the blanket threshold** |
 
 Rescue-wide:
 
-| Condition | Predicate | Scope |
-|---|---|---|
-| **Staying In** | apparent temperature reaches 85 °F at or before noon | day |
+| Condition             | Predicate                                                    | Scope |
+| --------------------- | ------------------------------------------------------------ | ----- |
+| **Staying In**        | apparent temperature reaches 85 °F at or before noon         | day   |
 | **Fly Sheet Weather** | no precipitation **and** apparent temperature not over 90 °F | shift |
-| **Cold and Wet** | below a temperature the rescue sets, with precipitation | shift |
+| **Cold and Wet**      | below a temperature the rescue sets, with precipitation      | shift |
 
 Sheet and Blanket are made **mutually exclusive by construction** rather than by convention, so a cold night generates exactly one garment item per horse instead of two items for one horse and a volunteer deciding which the barn meant.
 
@@ -94,31 +94,31 @@ Three things are deliberately **absent**. There is **no fans threshold**: the br
 
 # The hedge stays advice, and River's does not
 
-*Especially if windy/Rainy* and *on cold rainy days* are the same hedge, and they do different jobs.
+_Especially if windy/Rainy_ and _on cold rainy days_ are the same hedge, and they do different jobs.
 
 On the Sheets and Blankets panel the hedge **softens a threshold that already exists**: the sheet item is generated anyway at 38 °, and the sentence tells a volunteer to lean toward yes. Turning it into a predicate would require inventing a wind speed and a rainfall amount the rescue has never stated, which is putting words in the barn's mouth about a judgement the volunteer is already making well. It stays **instruction text on the item**.
 
-On River's cell it is the **entire trigger** — *On cold rainy days, if congested, give 5 mL Ventipulmin. Text Lori — note in log book.* With no predicate, that guidance either appears every single day, where it becomes wallpaper, or never. So **Cold and Wet** is a real Condition with numbers the rescue supplies once and owns.
+On River's cell it is the **entire trigger** — _On cold rainy days, if congested, give 5 mL Ventipulmin. Text Lori — note in log book._ With no predicate, that guidance either appears every single day, where it becomes wallpaper, or never. So **Cold and Wet** is a real Condition with numbers the rescue supplies once and owns.
 
-This is the split ADR 0013 anticipated when it said the engine must surface *arbitrary* per-horse guidance rather than select from a fixed action set. It does, and it needs nothing new: the guidance is instruction text on a Task Assignment, gated on a Condition. The app still cannot judge whether River is congested. It guarantees the question is asked on the right morning, which was always the value.
+This is the split ADR 0013 anticipated when it said the engine must surface _arbitrary_ per-horse guidance rather than select from a fixed action set. It does, and it needs nothing new: the guidance is instruction text on a Task Assignment, gated on a Condition. The app still cannot judge whether River is congested. It guarantees the question is asked on the right morning, which was always the value.
 
 # Two things read yesterday rather than the forecast
 
-Nothing on the board says when a sheet comes **off**, but somebody does it every morning. And the fly sheet rule is *ON AM, OFF PM* — the removal is conditional on the fitting having happened, which is an item-to-item dependency ADR 0013 refused outright.
+Nothing on the board says when a sheet comes **off**, but somebody does it every morning. And the fly sheet rule is _ON AM, OFF PM_ — the removal is conditional on the fitting having happened, which is an item-to-item dependency ADR 0013 refused outright.
 
 Both are solved by reading **the previous Shift's snapshot** instead of the forecast. The booleans are already frozen there and already readable; no edge between items appears.
 
-**Unrug fires only on the break** — the previous Shift's rug condition held and this Shift's does not. Firing whenever the previous condition held would generate twelve *take it off* items every morning and twelve *put it on* items every evening straight through a January cold spell during which the sheets never actually come off.
+**Unrug fires only on the break** — the previous Shift's rug condition held and this Shift's does not. Firing whenever the previous condition held would generate twelve _take it off_ items every morning and twelve _put it on_ items every evening straight through a January cold spell during which the sheets never actually come off.
 
 **Fly Sheet Off is gated on AM's snapshotted Condition**, not on AM's item outcome. The failure mode is a PM volunteer finding a horse with no fly sheet and recording **Not done — "wasn't on"**, which is a true record of a real miss and strictly better than the item silently not existing.
 
 # Authority is not modelled, and the phone call is an Observation
 
-*If horse is soaked or shivering, please dry off best as possible with towels and put sheet on if instructed to do so by Barn Manager / Horse Healthcare Lead.*
+_If horse is soaked or shivering, please dry off best as possible with towels and put sheet on if instructed to do so by Barn Manager / Horse Healthcare Lead._
 
 No weather predicate can fire this: soaked and shivering are observations about a horse, not readings. The towel-off is **generic instruction text on the Sheet and Blanket Tasks**, so it is read on exactly the cold days it applies to.
 
-The *if instructed* half is **not modelled as a permission**. ADR 0010 settled on two authorization axes and warned against smuggling in a third; this would be the only approval mechanism in the entire system, built for one sentence. The volunteer phones whoever the Contacts entry names and records what they were told as an **Observation** with the horse as its subject.
+The _if instructed_ half is **not modelled as a permission**. ADR 0010 settled on two authorization axes and warned against smuggling in a third; this would be the only approval mechanism in the entire system, built for one sentence. The volunteer phones whoever the Contacts entry names and records what they were told as an **Observation** with the horse as its subject.
 
 **Barn Manager** and **Horse Healthcare Lead** are the barn's everyday words for people holding `horse_care`, and no new Role joins ADR 0010. Instruction text names the **Domain Scope's current holders** rather than a person — the same resolve-at-delivery move Escalation already makes, and for the same reason: the sentence should still be right when the person changes.
 
@@ -138,12 +138,12 @@ Three steps, in order:
 
 # What is stored, and what is shown
 
-Per Shift: the **resolved booleans** per subject, the **raw hourly series** the evaluation read for its window, the **provider and metric**, the **fetch time**, and a **stale flag** if the fallback path was used. #6's implementation note is unambiguous — persist the raw fields, not just the derived recommendation — because *why was this horse blanketed* needs the conditions as read at the time, and a re-fetch tomorrow answers a different question.
+Per Shift: the **resolved booleans** per subject, the **raw hourly series** the evaluation read for its window, the **provider and metric**, the **fetch time**, and a **stale flag** if the fallback path was used. #6's implementation note is unambiguous — persist the raw fields, not just the derived recommendation — because _why was this horse blanketed_ needs the conditions as read at the time, and a re-fetch tomorrow answers a different question.
 
 Shown in three places, and the labelling matters more than usual because the rescue has no single authoritative source today:
 
 - the **Board** carries the day's reading and the resolved Conditions, with the provider named
-- each **item card** states the reading and the threshold that produced it — *Sheet — Dawson: 38 °F, sheets under 50°* — so the item explains itself instead of looking arbitrary
+- each **item card** states the reading and the threshold that produced it — _Sheet — Dawson: 38 °F, sheets under 50°_ — so the item explains itself instead of looking arbitrary
 - the **Shift** shows its snapshot time, so a Lead can see the plan was fixed at 4am and that the afternoon has since diverged
 
 A volunteer whose phone says 89 while the Board says 96 will distrust the Board. The label is the mitigation and it is only a partial one.
@@ -164,7 +164,7 @@ The water heaters turn on by themselves below a set temperature, so there is **n
 
 **ADR 0011's evening digest gains a payload** — tomorrow's resolved heat Condition — without gaining a channel.
 
-**`CONTEXT.md`'s Condition entry is rewritten**, since its current wording says *against that Shift's own hours*. **Threshold** and **Reading** are added.
+**`CONTEXT.md`'s Condition entry is rewritten**, since its current wording says _against that Shift's own hours_. **Threshold** and **Reading** are added.
 
 **The catalogue gains Tasks**: Sheet, Blanket, Unrug, Fly Sheet On, Fly Sheet Off, Fans, and the alternate per-horse hay set. **Unrug is our word and not the barn's** — `CONTEXT.md`'s rule is that the barn's word wins, so it is provisional until somebody tells us what they actually say.
 
@@ -174,7 +174,7 @@ The water heaters turn on by themselves below a set temperature, so there is **n
 
 **No equine metric.** Neither the USEF sum nor FEI's WBGT is used, because neither offers a translation for the number this barn actually acts on. The enum makes adding one a data change rather than a migration.
 
-**No approval mechanism.** The *only if instructed* gate is instruction text and an Observation, not authorization.
+**No approval mechanism.** The _only if instructed_ gate is instruction text and an Observation, not authorization.
 
 **No item-to-item dependencies.** Removal items read the previous Shift's snapshot, never its outcomes.
 
@@ -182,7 +182,7 @@ The water heaters turn on by themselves below a set temperature, so there is **n
 
 ## Consequences
 
-**A cold night puts up to twelve garment items on a ninety-item Feed Shift.** ADR 0013 warned that a checklist where a third of the items are conditional has a shape nobody can predict. This survives that warning — the shape is seasonal and entirely expected by anyone who has worked a January morning, and each item is per-horse because each horse's threshold differs and the volunteer needs to know *which* horses. But the winter Feed Shift is materially longer than the summer one, and the subject-first work surface has to hold up under it.
+**A cold night puts up to twelve garment items on a ninety-item Feed Shift.** ADR 0013 warned that a checklist where a third of the items are conditional has a shape nobody can predict. This survives that warning — the shape is seasonal and entirely expected by anyone who has worked a January morning, and each item is per-horse because each horse's threshold differs and the volunteer needs to know _which_ horses. But the winter Feed Shift is materially longer than the summer one, and the subject-first work surface has to hold up under it.
 
 **Materialization now depends on a third party.** ADR 0013 already made the daily job infrastructure the single VPS must run on time; it is now infrastructure with an external dependency and a documented degraded path.
 

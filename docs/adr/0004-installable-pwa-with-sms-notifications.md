@@ -4,7 +4,7 @@ status: accepted, notification channel superseded by 0009
 
 # The client is an installable PWA, and notifications go out over SMS
 
-> **Superseded in part by ADR 0009.** V1 sends no SMS; email carries everything and the rescue keeps its Facebook group for urgent broadcast. The platform decision below is unaffected — its own tripwire fires only as far as reopening the *notification* question, and with v1 doing no push at all, every argument here for the PWA still holds. Read the SMS specifics as the costed plan for when the channel returns.
+> **Superseded in part by ADR 0009.** V1 sends no SMS; email carries everything and the rescue keeps its Facebook group for urgent broadcast. The platform decision below is unaffected — its own tripwire fires only as far as reopening the _notification_ question, and with v1 doing no push at all, every argument here for the PWA still holds. Read the SMS specifics as the costed plan for when the channel returns.
 
 Volunteers open **one responsive web app** in whatever browser they already have. It is installable to the home screen, but installing is optional and buys only an icon and a cached shell — never functionality. Messages that must reach people reach them by **SMS**, not push.
 
@@ -24,7 +24,7 @@ There is **no web push in v1**: no permission prompt, no subscription table, no 
 
 **What we gave up, stated plainly.** No badge counts, no read receipts, no rich notifications, no presence in an app store, and a per-message bill. US A2P SMS also requires 10DLC brand and campaign registration before carriers deliver reliably — days of approval that can ambush a launch date, and unregistered traffic gets silently filtered rather than bounced. If a store listing is ever wanted, a Capacitor or PWABuilder wrap is the exit, and it needs the Apple account and review queue declined here.
 
-**Messages are split by urgency with no overlap.** SMS for anything time-bound to a shift; email for everything else; never both for the same event. That is what keeps an SMS meaning *something needs you now* — the property the Facebook group lost by carrying everything.
+**Messages are split by urgency with no overlap.** SMS for anything time-bound to a shift; email for everything else; never both for the same event. That is what keeps an SMS meaning _something needs you now_ — the property the Facebook group lost by carrying everything.
 
 **A mobile number is load-bearing.** It is mandatory at account creation, and a reachable number is a precondition for holding a Lead or head role, enforced when the role is assigned. Opting out is honoured and legally must be, but it makes a person **visibly** unreachable in the roster rather than silently so.
 

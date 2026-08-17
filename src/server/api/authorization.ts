@@ -28,9 +28,7 @@ export type DomainScope = (typeof DOMAIN_SCOPES)[number]
  * what they decided (ADR 0016).
  */
 export type FloorReason =
-  | 'work-on-a-shift-you-are-rostered-on'
-  | 'record-an-observation'
-  | 'record-your-own-presence'
+  'work-on-a-shift-you-are-rostered-on' | 'record-an-observation' | 'record-your-own-presence'
 
 export type Authorization =
   | { readonly kind: 'scope'; readonly scope: DomainScope }

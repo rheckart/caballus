@@ -29,7 +29,7 @@ A Volunteer's signature against one Release Version, with the date it was given 
 _Avoid_: waiver, liability form, hold harmless, sign-off
 
 **Release Version**:
-One issue of the release text — a valid-from date, the blank document itself, and whether publishing it obsoletes the signatures that came before. Versions are immutable and the current one is the latest, so *which text did she actually sign* stays answerable years later. The rescue's current version is marked *Updated 2020*.
+One issue of the release text — a valid-from date, the blank document itself, and whether publishing it obsoletes the signatures that came before. Versions are immutable and the current one is the latest, so _which text did she actually sign_ stays answerable years later. The rescue's current version is marked _Updated 2020_.
 _Avoid_: template, revision, form version
 
 **Orientation**:
@@ -43,11 +43,11 @@ _Avoid_: login, user account, profile, credentials
 ### Roles and permissions
 
 **Role**:
-A named position in the rescue, held by a Volunteer and carrying Domain Scopes — President, Board Member, Head of Horse Welfare, Head of Maintenance, Volunteer Coordinator, Barn Manager, Treasurer, Event Coordinator. A Volunteer holds any number, including none. Roles attach to the Volunteer and never to the Account, because a report routed to a Head must reach them whether or not they have ever signed in. Feed Shift Lead is *not* a Role — see Shift Authority.
+A named position in the rescue, held by a Volunteer and carrying Domain Scopes — President, Board Member, Head of Horse Welfare, Head of Maintenance, Volunteer Coordinator, Barn Manager, Treasurer, Event Coordinator. A Volunteer holds any number, including none. Roles attach to the Volunteer and never to the Account, because a report routed to a Head must reach them whether or not they have ever signed in. Feed Shift Lead is _not_ a Role — see Shift Authority.
 _Avoid_: permission, group, title, position
 
 **Domain Scope**:
-An area of the rescue's work that a Role grants authority over — `horse_care`, `maintenance`, `roster`, `supplies`, `grants`, and the dormant `financial` and `events`. Holding one means you may act in it; there is no read-only half. It is what a report is addressed to, resolved to its current holders at delivery rather than to a name and a number. Always said in full: *Scope* alone means which horses a piece of work applies to, which is the barn's sense and keeps the word.
+An area of the rescue's work that a Role grants authority over — `horse_care`, `maintenance`, `roster`, `supplies`, `grants`, and the dormant `financial` and `events`. Holding one means you may act in it; there is no read-only half. It is what a report is addressed to, resolved to its current holders at delivery rather than to a name and a number. Always said in full: _Scope_ alone means which horses a piece of work applies to, which is the barn's sense and keeps the word.
 _Avoid_: scope (unqualified), permission, area, department
 
 **Shift Authority**:
@@ -135,7 +135,7 @@ Having fewer people than the Essential Work requires — not merely fewer than t
 _Avoid_: understaffed, low manpower
 
 **Staffing Gap**:
-A shortfall the app can compute — Unstaffed, no Lead, below Target Headcount, or nobody rostered holding Medication Authority on a Shift whose feeding includes it. A fact, shown and never announced, and distinct from Short, which is a person's judgement. **Internal only: the phrase never appears on a screen** — screens show the concrete fact, *no Lead* or *nobody who can give medication*.
+A shortfall the app can compute — Unstaffed, no Lead, below Target Headcount, or nobody rostered holding Medication Authority on a Shift whose feeding includes it. A fact, shown and never announced, and distinct from Short, which is a person's judgement. **Internal only: the phrase never appears on a screen** — screens show the concrete fact, _no Lead_ or _nobody who can give medication_.
 _Avoid_: shortfall, understaffing, alert
 
 **Unstaffed**:
@@ -151,7 +151,7 @@ Work a Lead may drop when short: grooming, mucking paddocks and pasture, sweepin
 _Avoid_: optional tasks, nice-to-haves, low priority
 
 **Shift Notes**:
-What a Shift is handed on with — curated by whoever holds Shift Authority, not written freely by everyone on it. Distinct from an Observation, which is a thing seen and recorded by anyone; Shift Notes are what the Lead decides the next Shift needs to know. Curating an Observation into them is one of its three Dispositions, and the one that says *this is tomorrow's problem, not a Head's*.
+What a Shift is handed on with — curated by whoever holds Shift Authority, not written freely by everyone on it. Distinct from an Observation, which is a thing seen and recorded by anyone; Shift Notes are what the Lead decides the next Shift needs to know. Curating an Observation into them is one of its three Dispositions, and the one that says _this is tomorrow's problem, not a Head's_.
 _Avoid_: handover, comments, log, remarks
 
 ### Checklists
@@ -161,7 +161,7 @@ A kind of work the rescue does — feeding, watering, mucking, grooming, checkin
 _Avoid_: chore, job, activity, checklist type
 
 **Item**:
-One Task applied to one subject — Feed × Apollo, Water × Field D, Sweep × the rescue. It is the thing a volunteer ticks, and the reason completion was never a single box on a Shift. Quantities, exceptions and sub-procedures are what an Item *says*, not more Items: hay in Field C is one Item whose instruction carries every receptacle's target. An Item ends Done, Dropped, Not done, or blank, and blank is always shown as blank.
+One Task applied to one subject — Feed × Apollo, Water × Field D, Sweep × the rescue. It is the thing a volunteer ticks, and the reason completion was never a single box on a Shift. Quantities, exceptions and sub-procedures are what an Item _says_, not more Items: hay in Field C is one Item whose instruction carries every receptacle's target. An Item ends Done, Dropped, Not done, or blank, and blank is always shown as blank.
 _Avoid_: task (for the instance), checkbox, step, todo
 
 **Task Assignment**:
@@ -169,7 +169,7 @@ Which Shift Type normally does a Task for a particular horse or Space — the bo
 _Avoid_: rota, item assignment, ownership
 
 **Condition**:
-A named weather predicate an Item may wait on — a predicate and a **source for its number**, which is a fixed value for the rescue-wide ones and the horse's own Threshold for the per-horse ones, so *Staying In* is one answer for the barn and *Sheet Weather* is twelve. Evaluated at materialization and then fixed, over a window the Condition itself declares: day-scoped ones once for the day and shared by every Shift in it, shift-scoped ones from a Shift's start until the next Shift begins, because a blanket put on at evening feed is worn all night. An alternate plan — the hay regime for a day the horses stay in — is not a mode the app switches to; it is a second set of Items gated the other way, and only one set is ever made. The plan does not change under a volunteer mid-Shift: weather that turns is a Lead deviating, recorded as such.
+A named weather predicate an Item may wait on — a predicate and a **source for its number**, which is a fixed value for the rescue-wide ones and the horse's own Threshold for the per-horse ones, so _Staying In_ is one answer for the barn and _Sheet Weather_ is twelve. Evaluated at materialization and then fixed, over a window the Condition itself declares: day-scoped ones once for the day and shared by every Shift in it, shift-scoped ones from a Shift's start until the next Shift begins, because a blanket put on at evening feed is worn all night. An alternate plan — the hay regime for a day the horses stay in — is not a mode the app switches to; it is a second set of Items gated the other way, and only one set is ever made. The plan does not change under a volunteer mid-Shift: weather that turns is a Lead deviating, recorded as such.
 _Avoid_: weather rule, trigger, mode, override
 
 **Prep**:
@@ -177,17 +177,17 @@ Work done on one Shift for a later one — the soak covered at morning feed for 
 _Avoid_: prepare-ahead, handoff task, dependency
 
 **New**:
-The marker on a record changed recently enough that someone should notice — derived from version history rather than set by hand, and ageing out on its own, which is what the whiteboard's blue underline never did. The same for everyone, so that a Lead saying *there is a new instruction on Storm* means something; *what changed since I was last here* is a filter over it and not a second answer.
+The marker on a record changed recently enough that someone should notice — derived from version history rather than set by hand, and ageing out on its own, which is what the whiteboard's blue underline never did. The same for everyone, so that a Lead saying _there is a new instruction on Storm_ means something; _what changed since I was last here_ is a filter over it and not a second answer.
 _Avoid_: unread, updated flag, badge
 
 ### Weather
 
 **Threshold**:
-A temperature at which a Condition turns, held as a rescue-wide default with named per-horse overrides — the board's three named horses against its *rest of horses*. Carries the **metric** it is measured in and the provider it was calibrated against, because cold is written in air temperature and heat in real feel, and the two are not the same number. Versioned, edited under `horse_care`, and three-valued per horse like a Task Assignment: overridden, deliberately the same as the default, or **not yet decided** — which is an unanswered question rather than agreement with the default, and which still gets the horse its sheet.
+A temperature at which a Condition turns, held as a rescue-wide default with named per-horse overrides — the board's three named horses against its _rest of horses_. Carries the **metric** it is measured in and the provider it was calibrated against, because cold is written in air temperature and heat in real feel, and the two are not the same number. Versioned, edited under `horse_care`, and three-valued per horse like a Task Assignment: overridden, deliberately the same as the default, or **not yet decided** — which is an unanswered question rather than agreement with the default, and which still gets the horse its sheet.
 _Avoid_: limit, cutoff, trigger point, setting
 
 **Reading**:
-The weather as it stood when a Shift's list was fixed, kept on the Shift — the resolved Conditions, the hours the evaluation actually read, the provider and metric, the time it was fetched, and whether it was stale. Kept whole rather than as the decision it produced, because *why was this horse blanketed* is answered by the conditions as read at the time and not by a fresh forecast tomorrow. It is what the Board shows and what each weather-driven Item cites, so a tick never looks arbitrary later.
+The weather as it stood when a Shift's list was fixed, kept on the Shift — the resolved Conditions, the hours the evaluation actually read, the provider and metric, the time it was fetched, and whether it was stale. Kept whole rather than as the decision it produced, because _why was this horse blanketed_ is answered by the conditions as read at the time and not by a fresh forecast tomorrow. It is what the Board shows and what each weather-driven Item cites, so a tick never looks arbitrary later.
 _Avoid_: snapshot, forecast, weather data, conditions
 
 ### Attendance
@@ -219,11 +219,11 @@ A physical area a horse occupies or uses, of one kind — stall, field or barn �
 _Avoid_: location, area, pen, enclosure
 
 **Field**:
-A Space of kind *field* — a turnout area named by letter. Paddock and pasture mean the same thing in the barn; use Field.
+A Space of kind _field_ — a turnout area named by letter. Paddock and pasture mean the same thing in the barn; use Field.
 _Avoid_: paddock, pasture, turnout group
 
 **Stall**:
-A Space of kind *stall* — an indoor space a horse is housed in. A Stall may stand empty and still exist; the feed board keeps a row for stall 7, which is OPEN.
+A Space of kind _stall_ — an indoor space a horse is housed in. A Stall may stand empty and still exist; the feed board keeps a row for stall 7, which is OPEN.
 _Avoid_: box, bay
 
 **Small Barn**:
@@ -243,7 +243,7 @@ _Avoid_: flag, note, warning, caution
 ### Feed and medication
 
 **Product**:
-Something the rescue buys and gives to a horse — a feed, a supplement or a medication. Its kind is a property of the Product, not of where it was written down: whether Bute is a medication is a fact about Bute. It is also the catalogue: a Supplier, whether it needs a prescription, an optional reorder point in days and a free-text ordering note hang off the same record, which is what makes *we're low on Senior* connectable to *these nine horses eat Senior* with no second list to maintain. Edited by holders of `horse_care` or `supplies`, and current state with an audit entry rather than versioned — what a Product used to cost or come from answers no question here. Deliberately does not stretch to what the rescue buys and does not feed a horse: shavings and light bulbs are an Observation, not a catalogue row.
+Something the rescue buys and gives to a horse — a feed, a supplement or a medication. Its kind is a property of the Product, not of where it was written down: whether Bute is a medication is a fact about Bute. It is also the catalogue: a Supplier, whether it needs a prescription, an optional reorder point in days and a free-text ordering note hang off the same record, which is what makes _we're low on Senior_ connectable to _these nine horses eat Senior_ with no second list to maintain. Edited by holders of `horse_care` or `supplies`, and current state with an audit entry rather than versioned — what a Product used to cost or come from answers no question here. Deliberately does not stretch to what the rescue buys and does not feed a horse: shavings and light bulbs are an Observation, not a catalogue row.
 _Avoid_: item, feed type, med, supply
 
 **Feed Schedule**:
@@ -265,11 +265,11 @@ Where a Product comes from — a name, an optional web address and an optional n
 _Avoid_: vendor, source, shop, merchant
 
 **Days of Supply**:
-How many days of a Product are left, as counted by a person and written down with the date they counted. A measurement series like a weight — appended, never edited, no reason — and the app's only addition is arithmetic: a reading of 14.5 on the 4th reads 9.5 on the 9th, which is the thing the whiteboard could never do. It floors at zero and then says *out, last counted the 4th*, because a negative number is the app claiming to know something it does not. Written by holders of `supplies` or by Shift Authority, since the person looking at the sacks twice a day is the Lead. Nothing derives it from Feed Schedules — the amounts there are written as *2 wells* and *1/2 sc*, and a sack does not divide by those.
+How many days of a Product are left, as counted by a person and written down with the date they counted. A measurement series like a weight — appended, never edited, no reason — and the app's only addition is arithmetic: a reading of 14.5 on the 4th reads 9.5 on the 9th, which is the thing the whiteboard could never do. It floors at zero and then says _out, last counted the 4th_, because a negative number is the app claiming to know something it does not. Written by holders of `supplies` or by Shift Authority, since the person looking at the sacks twice a day is the Lead. Nothing derives it from Feed Schedules — the amounts there are written as _2 wells_ and _1/2 sc_, and a sack does not divide by those.
 _Avoid_: stock, inventory, on hand, level
 
 **Reorder**:
-One cycle of getting more of a Product: Open until a holder of `supplies` closes it with a note, with an appended thread they write the dates into — ordered, chased, arrived. It borrows the Escalation's shape deliberately rather than growing states of its own, and *notified* is not among them, because the Escalation's email already is the notification. Carries no quantity and names no horse; *Storm's glucosamine* is words in the note. May be created from an Escalation and keeps a link back to it, but never shares its state — the report is answered the day it is answered, and the feed arrives three weeks later.
+One cycle of getting more of a Product: Open until a holder of `supplies` closes it with a note, with an appended thread they write the dates into — ordered, chased, arrived. It borrows the Escalation's shape deliberately rather than growing states of its own, and _notified_ is not among them, because the Escalation's email already is the notification. Carries no quantity and names no horse; _Storm's glucosamine_ is words in the note. May be created from an Escalation and keeps a link back to it, but never shares its state — the report is answered the day it is answered, and the feed arrives three weeks later.
 _Avoid_: order, purchase order, restock, requisition
 
 **Board**:

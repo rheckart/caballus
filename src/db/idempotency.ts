@@ -122,10 +122,7 @@ export function postgresIdempotency(): Idempotency {
           .update(idempotencyKeys)
           .set({ status: answered.status, response: answered.body })
           .where(
-            and(
-              eq(idempotencyKeys.orgId, attempt.orgId),
-              eq(idempotencyKeys.key, attempt.key),
-            ),
+            and(eq(idempotencyKeys.orgId, attempt.orgId), eq(idempotencyKeys.key, attempt.key)),
           )
 
         // What is handed back is what was stored, so a first attempt and a

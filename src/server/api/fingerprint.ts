@@ -34,7 +34,9 @@ import { createHash } from 'node:crypto'
  * held on the path, which is why `target` is a value here and not a string.
  */
 export function fingerprint(target: unknown, input: unknown): string {
-  return createHash('sha256').update(canonical([target, input])).digest('hex')
+  return createHash('sha256')
+    .update(canonical([target, input]))
+    .digest('hex')
 }
 
 /**

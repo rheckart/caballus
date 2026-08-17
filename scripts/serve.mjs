@@ -14,5 +14,7 @@ import handler from '../dist/server/server.js'
 const port = Number(process.env.PORT ?? 3000)
 
 serve({ fetch: handler.fetch, port }, (info) => {
-  process.stdout.write(`${JSON.stringify({ level: 'info', event: 'listening', port: info.port })}\n`)
+  process.stdout.write(
+    `${JSON.stringify({ level: 'info', event: 'listening', port: info.port })}\n`,
+  )
 })

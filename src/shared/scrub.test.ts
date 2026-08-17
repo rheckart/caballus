@@ -17,21 +17,18 @@ describe('scrub', () => {
     expect(scrubbed.tags).toEqual({ shiftId: 'sh_2026_08_15_am' })
   })
 
-  it.each([
-    '(410) 555-0134',
-    '410-555-0134',
-    '410.555.0134',
-    '+1 410 555 0134',
-    '4105550134',
-  ])('removes a mobile number written as %s', (mobile) => {
-    const scrubbed = scrub({
-      message: `could not text ${mobile} about the 6am shift`,
-      extra: { mobile },
-    })
+  it.each(['(410) 555-0134', '410-555-0134', '410.555.0134', '+1 410 555 0134', '4105550134'])(
+    'removes a mobile number written as %s',
+    (mobile) => {
+      const scrubbed = scrub({
+        message: `could not text ${mobile} about the 6am shift`,
+        extra: { mobile },
+      })
 
-    expect(scrubbed.message).toBe(`could not text ${REDACTED} about the 6am shift`)
-    expect(scrubbed.extra).toEqual({ mobile: REDACTED })
-  })
+      expect(scrubbed.message).toBe(`could not text ${REDACTED} about the 6am shift`)
+      expect(scrubbed.extra).toEqual({ mobile: REDACTED })
+    },
+  )
 
   it('removes an email address in free text', () => {
     const scrubbed = scrub({ message: 'code to cathy@example.org bounced' })

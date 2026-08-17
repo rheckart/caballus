@@ -12,13 +12,13 @@ status: accepted
 
 **Measurement series** — append-only, never edited, each entry carrying its date and the person who took it: **weight** and **body condition score**.
 
-The rule: **versioning is for care instructions** — things a volunteer executes, where *"what were we doing then"* is needed later to explain an outcome.
+The rule: **versioning is for care instructions** — things a volunteer executes, where _"what were we doing then"_ is needed later to explain an outcome.
 
 ## Considered options
 
-**Current state plus audit everywhere** was the recommendation during the #10 grilling, on the grounds that the question the rescue actually asks is *"why did this change"*, which an audit entry answers directly, and that audit logging is already a stated requirement so it costs nothing extra.
+**Current state plus audit everywhere** was the recommendation during the #10 grilling, on the grounds that the question the rescue actually asks is _"why did this change"_, which an audit entry answers directly, and that audit logging is already a stated requirement so it costs nothing extra.
 
-The rescue rejected it. Reconstructing a past schedule in full — *what was she eating the week she lost thirty pounds* — is a real requirement, not a hypothetical, and replaying an audit log to rebuild it is both awkward and unreliable. Versioning was chosen deliberately, with the cheaper option understood and declined.
+The rescue rejected it. Reconstructing a past schedule in full — _what was she eating the week she lost thirty pounds_ — is a real requirement, not a hypothetical, and replaying an audit log to rebuild it is both awkward and unreliable. Versioning was chosen deliberately, with the cheaper option understood and declined.
 
 **Versioning everything** was never seriously on the table. A version history of a horse's height answers no question anyone has.
 

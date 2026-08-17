@@ -16,18 +16,18 @@ Two findings matter more than the provider choice:
 
 > ⚠️ **The account cannot be personal.** Registration requires an EIN and a legal name matching IRS records exactly. This is the first piece of Caballus infrastructure where the ownership question ADR 0006 deliberately left open has no personal option.
 
-> ⚠️ **Real delivery cannot be tested before registration completes, and campaign review currently runs 10–15 days.** Unregistered US A2P traffic is *silently filtered* rather than rejected, so a successful-looking send proves nothing. Development must not depend on real SMS, and registration should start long before it is needed.
+> ⚠️ **Real delivery cannot be tested before registration completes, and campaign review currently runs 10–15 days.** Unregistered US A2P traffic is _silently filtered_ rather than rejected, so a successful-looking send proves nothing. Development must not depend on real SMS, and registration should start long before it is needed.
 
 ---
 
 ## Why this is not a price comparison
 
-| Provider | US outbound, per segment |
-|---|---|
-| Telnyx | ~$0.0040 |
-| AWS End User Messaging | ~$0.0065 |
-| Plivo | ~$0.0077 |
-| Twilio | ~$0.0079–0.0083 |
+| Provider               | US outbound, per segment |
+| ---------------------- | ------------------------ |
+| Telnyx                 | ~$0.0040                 |
+| AWS End User Messaging | ~$0.0065                 |
+| Plivo                  | ~$0.0077                 |
+| Twilio                 | ~$0.0079–0.0083          |
 
 At 400 messages a month the whole range spans about **$1.60/month**. Carrier pass-through fees (~$0.003/message; T-Mobile's 2026 rate is $0.0025) apply on top and are identical across providers because they are the carriers' fees, not the vendor's.
 
@@ -39,34 +39,34 @@ US application-to-person traffic over a 10-digit number requires registration wi
 
 **Brand** — the organisation, registered once.
 
-| Brand type | One-time | Notes |
-|---|---|---|
-| Sole Proprietor | ~$4.50 | For individuals without an EIN; tight throughput; poor fit for auth |
-| Low Volume Standard | ~$4.50 | Needs an EIN |
-| Standard (with secondary vetting) | ~$46 | Needs an EIN; required for the Charity use case |
+| Brand type                        | One-time | Notes                                                               |
+| --------------------------------- | -------- | ------------------------------------------------------------------- |
+| Sole Proprietor                   | ~$4.50   | For individuals without an EIN; tight throughput; poor fit for auth |
+| Low Volume Standard               | ~$4.50   | Needs an EIN                                                        |
+| Standard (with secondary vetting) | ~$46     | Needs an EIN; required for the Charity use case                     |
 
 **Campaign** — what you send and to whom, registered per use case, with a one-time vetting fee around $15 and a monthly fee thereafter.
 
-| Use case | Monthly |
-|---|---|
-| Low Volume Mixed | $1.50 |
-| Charity (501(c)(3)) | $3 |
-| Emergency Services | $5 |
-| Most standard use cases, including 2FA | $10 |
+| Use case                               | Monthly |
+| -------------------------------------- | ------- |
+| Low Volume Mixed                       | $1.50   |
+| Charity (501(c)(3))                    | $3      |
+| Emergency Services                     | $5      |
+| Most standard use cases, including 2FA | $10     |
 
 Registration under the **Charity** use case triggers an automatic check of the submitted name and EIN against IRS tax-exempt records. If the legal name does not match exactly — punctuation and abbreviations included — the brand is rejected.
 
 ## Two paths, and the cheap one is not the obvious one
 
-| | Path A — Low Volume | Path B — Charity |
-|---|---|---|
-| Brand | Low Volume Standard, ~$4.50 | Standard + vetting, ~$46 |
-| Campaigns | 2 × Low Volume Mixed, $1.50/mo each | Charity $3/mo + 2FA $10/mo |
-| Vetting | ~$15 per campaign, one-time | ~$15 per campaign, one-time |
-| Carrier fees | ~$0.003/msg | T-Mobile waives fees on verified 501(c)(3) charity campaigns |
-| Throughput | Capped — irrelevant at 60 volunteers | Higher |
-| Numbers | 2 × ~$1.15/mo | 2 × ~$1.15/mo |
-| **Recurring, ~400 msg/mo** | **~$9/mo** | **~$19/mo** |
+|                            | Path A — Low Volume                  | Path B — Charity                                             |
+| -------------------------- | ------------------------------------ | ------------------------------------------------------------ |
+| Brand                      | Low Volume Standard, ~$4.50          | Standard + vetting, ~$46                                     |
+| Campaigns                  | 2 × Low Volume Mixed, $1.50/mo each  | Charity $3/mo + 2FA $10/mo                                   |
+| Vetting                    | ~$15 per campaign, one-time          | ~$15 per campaign, one-time                                  |
+| Carrier fees               | ~$0.003/msg                          | T-Mobile waives fees on verified 501(c)(3) charity campaigns |
+| Throughput                 | Capped — irrelevant at 60 volunteers | Higher                                                       |
+| Numbers                    | 2 × ~$1.15/mo                        | 2 × ~$1.15/mo                                                |
+| **Recurring, ~400 msg/mo** | **~$9/mo**                           | **~$19/mo**                                                  |
 
 Path B looks like the natural fit for a rescue and costs twice as much, because the **$10/month 2FA campaign** dwarfs the charity discount. T-Mobile's fee waiver is worth roughly $1.20/month at this volume; it does not close the gap until traffic is in the thousands.
 
@@ -97,7 +97,7 @@ Carriers require documented **proof of opt-in** — how recipients consented, pl
 
 ## The blunt constraint
 
-A trial account cannot register for 10DLC, and unregistered US A2P traffic is filtered *silently* — no bounce, no error, just non-delivery. So before registration completes there is no configuration in which a successful send is evidence of anything. **Nothing in development may depend on a real message arriving.**
+A trial account cannot register for 10DLC, and unregistered US A2P traffic is filtered _silently_ — no bounce, no error, just non-delivery. So before registration completes there is no configuration in which a successful send is evidence of anything. **Nothing in development may depend on a real message arriving.**
 
 The corollary is a scheduling one: register early. It costs about $35 and $9/month to have the capability sitting ready, and campaign review is currently **10–15 days**, on top of 1–3 days for brand vetting. With one rejection and resubmission — likely, given the exact-legal-name trap — three to four weeks is the honest planning number.
 
@@ -105,13 +105,13 @@ The corollary is a scheduling one: register early. It costs about $35 and $9/mon
 
 Better Auth's phone-number plugin takes a send function rather than owning delivery, so the seam already exists. Caballus defines one interface with three implementations, selected by environment:
 
-| Implementation | Used by | Behaviour |
-|---|---|---|
-| `LogSender` | local development, staging | Writes the code to the structured log and a dev-only panel. No network, no cost, works offline |
-| `TwilioTestSender` | automated tests | Real Twilio client against **test credentials** and the magic number `+15005550006`. Exercises the SDK and its error paths; never reaches a carrier; never charged |
-| `TwilioSender` | production only | The real thing |
+| Implementation     | Used by                    | Behaviour                                                                                                                                                          |
+| ------------------ | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `LogSender`        | local development, staging | Writes the code to the structured log and a dev-only panel. No network, no cost, works offline                                                                     |
+| `TwilioTestSender` | automated tests            | Real Twilio client against **test credentials** and the magic number `+15005550006`. Exercises the SDK and its error paths; never reaches a carrier; never charged |
+| `TwilioSender`     | production only            | The real thing                                                                                                                                                     |
 
-**No bypass code.** The development sender shows the *real* generated code rather than accepting a fixed one — a fixed code is an extra credential to secure for no benefit. End-to-end tests read the pending code straight from Postgres, which the test suite already talks to per ADR 0007, so no test-only endpoint exists in the application.
+**No bypass code.** The development sender shows the _real_ generated code rather than accepting a fixed one — a fixed code is an extra credential to secure for no benefit. End-to-end tests read the pending code straight from Postgres, which the test suite already talks to per ADR 0007, so no test-only endpoint exists in the application.
 
 **The selection fails closed.** A startup assertion refuses to boot if the environment is production and the sender is anything but `TwilioSender`, in the same posture as the other structural guards in ADR 0007. A dev sender silently active in production would mean every volunteer's login code printed to a log file.
 

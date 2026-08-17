@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest'
 
 import { addDays } from '../server/time'
-import { dayString, daysBetween, elapsed, formatDay, instant, isDayString, now, todayIn } from './time'
+import {
+  dayString,
+  daysBetween,
+  elapsed,
+  formatDay,
+  instant,
+  isDayString,
+  now,
+  todayIn,
+} from './time'
 
 const BALTIMORE = 'America/New_York'
 

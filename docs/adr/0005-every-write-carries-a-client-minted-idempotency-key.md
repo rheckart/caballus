@@ -5,7 +5,7 @@ extended-by: 0020 (what a repeat is answered with, what a changed request under 
 
 # Every write carries a client-minted idempotency key
 
-> **Extended by ADR 0020, which builds the recording half (#24).** This ADR says the server records the identifier with the effect; it does not say what a *different* request under the same key is answered with, or how long a key is remembered. ADR 0020 settles both — a 409, and thirty days — and puts the record in the `mutation` wrapper's own transaction so no handler can forget it.
+> **Extended by ADR 0020, which builds the recording half (#24).** This ADR says the server records the identifier with the effect; it does not say what a _different_ request under the same key is answered with, or how long a key is remembered. ADR 0020 settles both — a 409, and thirty days — and puts the record in the `mutation` wrapper's own transaction so no handler can forget it.
 
 > **One carve-out, in ADR 0011.** Cover and Drop are online-only and never queue. The boundary that ADR draws: **work that happened queues; a promise about work that has not happened yet does not** — an Unsent commitment means two volunteers both believe they have Thursday covered. Everything below still governs every other write, and a second carve-out without an equally sharp argument is this rule dissolving.
 
@@ -13,13 +13,13 @@ Every mutating request generates an identifier **on the phone**, before the requ
 
 ## Why it is not optional
 
-The client queues writes and retries them, because connectivity at the barn is fine until it isn't. A retry is indistinguishable, from the phone's side, between *the request never arrived* and *the request arrived and the response was lost on the way back*. Without a key, the second case double-records — and **"I fed Apollo" logged twice is worse than logged zero times**, because the second is visibly missing and the first is a confident lie. The retry queue is the feature; this is the thing that makes it safe rather than dangerous.
+The client queues writes and retries them, because connectivity at the barn is fine until it isn't. A retry is indistinguishable, from the phone's side, between _the request never arrived_ and _the request arrived and the response was lost on the way back_. Without a key, the second case double-records — and **"I fed Apollo" logged twice is worse than logged zero times**, because the second is visibly missing and the first is a confident lie. The retry queue is the feature; this is the thing that makes it safe rather than dangerous.
 
 ## Consequences
 
 **A tick is a claim by an actor, not a boolean being flipped.** The key makes this fall out naturally: two volunteers ticking the same checklist item is not a write conflict to be resolved, it is either the same claim arriving twice or two people recording that they did something. Nothing needs last-write-wins.
 
-**The client shows per-item pending state, not an aggregate count.** A shift is dozens of small ticks, and "2 unsent" does not tell a Lead *which* two are at risk. Unsent work is visible on the item it belongs to, the volunteer is warned before closing with work outstanding, and **unsent items block shift close** — inventing a clean record is exactly the lie the paper system already tells.
+**The client shows per-item pending state, not an aggregate count.** A shift is dozens of small ticks, and "2 unsent" does not tell a Lead _which_ two are at risk. Unsent work is visible on the item it belongs to, the volunteer is warned before closing with work outstanding, and **unsent items block shift close** — inventing a clean record is exactly the lie the paper system already tells.
 
 **iOS caps how good this can get.** WebKit has no Background Sync API, so a queue drains only while the page is open; nothing flushes after a volunteer walks away. The queue is durable in IndexedDB and drains on next open, and the interface says so rather than implying a delivery guarantee it does not have.
 

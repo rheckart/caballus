@@ -10,11 +10,14 @@ The stack is decided and is not open by default: TypeScript end to end, TanStack
 
 **The guardrails are armed, and they are not negotiable.** ADR 0016 puts six invariants in `eslint.config.ts` and four more in the types of `src/server/api/route.ts` — a handler declares its authorization; a write's payload and key come from the contract rather than from the call site (ADR 0021), so a keyless write is unwritable; a mutation answers with an `ApiResponse`, which only `src/server/api/answer.ts` builds — `json` and `noContent` for a handler, `rebuild` for the replay, so a stored answer comes back exactly rather than approximately; and every path and answer shape is one `src/shared/api-contract.ts` declares, on the server and on the phone alike. A `PostToolUse` hook runs the six on every file write and blocks on a violation. There are no `eslint-disable` comments — `noInlineConfig` is on — and the only way to exempt code is a path override in `eslint.config.ts` with a reason. If a rule fires, the fix is the alternative its message names, never a way around it.
 
+**The local gate matches ADR 0007's description of it, as of its #27 amendment.** Husky's pre-commit runs Prettier on staged files through lint-staged; pre-push runs `npm run verify`. Prettier and ESLint do not fight — `eslint-config-prettier` turns off any stylistic rule that would disagree, though nothing in this config sets one yet. CI still does not exist; that half of the ADR is still aspirational.
+
 ## Commands
 
 ```
 npm run dev                  # the application on :3000
 npm run verify               # typecheck, lint, fixtures, tests, migration check — the one gate
+npm run format               # prettier --write .; pre-commit already runs it on staged files
 npm test                     # vitest
 npx vitest run src/shared/scrub.test.ts   # a single test file
 npx vitest run -t 'day boundary'          # a single test by name

@@ -74,12 +74,8 @@
           "name": "idempotency_keys_org_id_orgs_id_fk",
           "tableFrom": "idempotency_keys",
           "tableTo": "orgs",
-          "columnsFrom": [
-            "org_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["org_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -87,10 +83,7 @@
       "compositePrimaryKeys": {
         "idempotency_keys_org_id_idempotency_key_pk": {
           "name": "idempotency_keys_org_id_idempotency_key_pk",
-          "columns": [
-            "org_id",
-            "idempotency_key"
-          ]
+          "columns": ["org_id", "idempotency_key"]
         }
       },
       "uniqueConstraints": {},
@@ -99,9 +92,7 @@
           "name": "idempotency_keys_in_scope",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "org_id::text = current_setting('app.org_id', true)",
           "withCheck": "org_id::text = current_setting('app.org_id', true)"
         }
@@ -148,9 +139,7 @@
           "name": "orgs_in_scope",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "id::text = current_setting('app.org_id', true)",
           "withCheck": "id::text = current_setting('app.org_id', true)"
         }

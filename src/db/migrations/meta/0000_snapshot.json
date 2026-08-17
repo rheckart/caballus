@@ -43,9 +43,7 @@
           "name": "orgs_in_scope",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "id::text = current_setting('app.org_id', true)",
           "withCheck": "id::text = current_setting('app.org_id', true)"
         }

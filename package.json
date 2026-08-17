@@ -11,6 +11,8 @@
     "dev": "vite dev",
     "build": "vite build",
     "start": "node --env-file-if-exists=.env scripts/serve.mjs",
+    "prepare": "husky",
+    "format": "prettier --write .",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "lint:fixtures": "node scripts/check-lint-fixtures.mjs",
@@ -19,6 +21,9 @@
     "db:check": "drizzle-kit check",
     "db:migrate": "drizzle-kit migrate",
     "verify": "npm run typecheck && npm run lint && npm run lint:fixtures && npm run test && npm run db:check"
+  },
+  "lint-staged": {
+    "*": "prettier --write --ignore-unknown"
   },
   "repository": {
     "type": "git",
@@ -48,7 +53,11 @@
     "@vitejs/plugin-react": "6.0.5",
     "drizzle-kit": "0.31.10",
     "eslint": "10.8.1",
+    "eslint-config-prettier": "10.1.8",
+    "husky": "9.1.7",
     "jiti": "2.7.0",
+    "lint-staged": "17.3.0",
+    "prettier": "3.9.6",
     "typescript": "5.9.3",
     "typescript-eslint": "8.67.0",
     "vite": "8.2.1",

@@ -5,9 +5,9 @@ amends: 0012 (the under-16 flag becomes a date of birth; a third gate on the ros
 
 # The release is a signature against a version, a failing gate never empties a roster, and the Volunteer carries a date of birth
 
-The rescue has a signed equine liability release — a purchased template marked *Updated 2020*, with a Parent/Guardian block for under-18s. Every volunteer signs one and every visitor signs one before they tour. What does not exist anywhere is a record of **who signed which version, when**, and whether it still stands.
+The rescue has a signed equine liability release — a purchased template marked _Updated 2020_, with a Parent/Guardian block for under-18s. Every volunteer signs one and every visitor signs one before they tour. What does not exist anywhere is a record of **who signed which version, when**, and whether it still stands.
 
-Maryland is unusual twice over here, and both ways favour the rescue before one new statute cuts back. **There is no Maryland equine activity liability act at all** — no statutory sign to post, no prescribed language, no safe harbour, and anyone advising otherwise is quoting another state. **Maryland enforces parental pre-injury waivers** — *BJ's Wholesale Club v. Rosen*, 435 Md. 714 (2013), the minority rule nationally — so the parent signature line does real work here that it would not do in most states. Against that, **Md. CJP § 5-401.2** (effective 1 October 2024) voids exculpatory clauses at a *commercial* recreational facility; "commercial" probably excludes a no-fee 501(c)(3), it is untested, UMD's agricultural law programme has flagged equine facilities, and the 2020 release predates it entirely. And if the carrier is **Markel**, its application carries the hardest record obligation found anywhere in this research as an underwriting representation: *is the signed release kept on file for a minimum of 5 years?* The carrier is unconfirmed; this ADR designs as though it is, because under the decisions below that costs nothing.
+Maryland is unusual twice over here, and both ways favour the rescue before one new statute cuts back. **There is no Maryland equine activity liability act at all** — no statutory sign to post, no prescribed language, no safe harbour, and anyone advising otherwise is quoting another state. **Maryland enforces parental pre-injury waivers** — _BJ's Wholesale Club v. Rosen_, 435 Md. 714 (2013), the minority rule nationally — so the parent signature line does real work here that it would not do in most states. Against that, **Md. CJP § 5-401.2** (effective 1 October 2024) voids exculpatory clauses at a _commercial_ recreational facility; "commercial" probably excludes a no-fee 501(c)(3), it is untested, UMD's agricultural law programme has flagged equine facilities, and the 2020 release predates it entirely. And if the carrier is **Markel**, its application carries the hardest record obligation found anywhere in this research as an underwriting representation: _is the signed release kept on file for a minimum of 5 years?_ The carrier is unconfirmed; this ADR designs as though it is, because under the decisions below that costs nothing.
 
 Detail and citations in `docs/research/maryland-volunteer-records.md`. **The § 5-401.2 question is deferred to counsel and nothing here depends on its answer** — the design has to be right under either reading, and it is.
 
@@ -17,27 +17,27 @@ A **Release Version** is an entity on ADR 0003's **versioned** tier: immutable, 
 
 That flag is the whole reason versions are entities rather than a free-text label on the signature. The one foreseeable event in this area is the rescue re-papering after § 5-401.2, and that day needs to sweep sixty people back through a signature — answerable as a query if versions are real, and a spreadsheet if they are a string. The flag is what makes it livable the rest of the time: a typo fix publishes without invalidating anyone.
 
-This is ADR 0003's rule applied slightly outside its stated domain. That ADR said versioning is for *care instructions* — things a volunteer executes, where *what were we doing then* explains an outcome later. A release is not a care instruction, but it has the identical property: *what did she actually agree to* is a question asked years later by someone defending the answer, and an audit log replayed to reconstruct it would be exactly the awkward, unreliable reconstruction the rescue rejected in #10.
+This is ADR 0003's rule applied slightly outside its stated domain. That ADR said versioning is for _care instructions_ — things a volunteer executes, where _what were we doing then_ explains an outcome later. A release is not a care instruction, but it has the identical property: _what did she actually agree to_ is a question asked years later by someone defending the answer, and an audit log replayed to reconstruct it would be exactly the awkward, unreliable reconstruction the rescue rejected in #10.
 
 **The app records the fact, not the executed artifact.** Who signed, when, which version. The signed paper stays in the cabinet as the original.
 
-This was chosen over holding a scan and over in-app signing, on a fact about our own stack rather than a principle: **ADR 0006 keeps backups on 30-day retention.** An application presenting itself as the five-year home of a legal document, on a stack whose restore window is thirty days, would be worse than the filing cabinet *and* look better than it — the combination this map keeps refusing. The record is shaped so a scan can attach later without a migration, and true e-signature is a separate decision with a lawyer in it.
+This was chosen over holding a scan and over in-app signing, on a fact about our own stack rather than a principle: **ADR 0006 keeps backups on 30-day retention.** An application presenting itself as the five-year home of a legal document, on a stack whose restore window is thirty days, would be worse than the filing cabinet _and_ look better than it — the combination this map keeps refusing. The record is shaped so a scan can attach later without a migration, and true e-signature is a separate decision with a lawyer in it.
 
-**The version does carry the blank template**, though — one file per version, uploaded under `roster`. The asymmetry is deliberate and it is the point: the *executed* copies are sixty pieces of paper and stay paper; the *unexecuted* text is one document, and storing it is what makes "which text did she sign" answerable in 2031 when 2020 is three revisions back and the last copy of it is in a folder nobody opens. The consequence is worth stating plainly: **this feature puts no signature image and no personal data into object storage at all.**
+**The version does carry the blank template**, though — one file per version, uploaded under `roster`. The asymmetry is deliberate and it is the point: the _executed_ copies are sixty pieces of paper and stay paper; the _unexecuted_ text is one document, and storing it is what makes "which text did she sign" answerable in 2031 when 2020 is three revisions back and the last copy of it is in a folder nobody opens. The consequence is worth stating plainly: **this feature puts no signature image and no personal data into object storage at all.**
 
 # It gates the roster at two doors, and never at the third
 
-A missing release is a **hard block on rosterability with no override**, at ADR 0011's two doors: adding someone to a Shift Pattern's Standing Roster, and adding them to a single dated Shift, self-Cover included. That ADR's argument is adopted whole — an override is how a gate becomes decorative, and *assigned with override* becomes simply how people get onto Saturdays within a year.
+A missing release is a **hard block on rosterability with no override**, at ADR 0011's two doors: adding someone to a Shift Pattern's Standing Roster, and adding them to a single dated Shift, self-Cover included. That ADR's argument is adopted whole — an override is how a gate becomes decorative, and _assigned with override_ becomes simply how people get onto Saturdays within a year.
 
 It is a **sibling of the Orientation gate and not a twin**. Orientation "never lapses and is never revoked." This one versions and revokes. That difference is the source of nearly every remaining decision below.
 
-**It does not gate sign-in.** A volunteer with no release who walks into the barn and taps sign-in is recorded like anyone else. Gating there would mean the app refusing to record that a person was present — and the person *is* present either way, so what a block buys is not safety but a hole in the record, on the one document a carrier would actually read. An unreleased Attendance is strictly better evidence than an absent one. This is the map's *never fabricate a completion* pointed at an omission rather than an invention.
+**It does not gate sign-in.** A volunteer with no release who walks into the barn and taps sign-in is recorded like anyone else. Gating there would mean the app refusing to record that a person was present — and the person _is_ present either way, so what a block buys is not safety but a hole in the record, on the one document a carrier would actually read. An unreleased Attendance is strictly better evidence than an absent one. This is the map's _never fabricate a completion_ pointed at an omission rather than an invention.
 
 # Consent and the release are two records, written by one interaction
 
 `CONTEXT.md` already held them distinct, and this ADR confirms it against the temptation to collapse them, since on paper they are frequently two signature lines on one form.
 
-They agree on nothing else. **Consent** is a *parent's* statement satisfying Md. Labor & Employment § 3-203(4)(ix), a statutory condition on the child-labour exemption, and it is meaningless the day the volunteer turns 18. **The release** is the *participant's* waiver of their own tort claim, it rides versions, and for a minor it is additionally signed by the parent under *BJ's*. One row cannot expire on two clocks. One screen at orientation writes both.
+They agree on nothing else. **Consent** is a _parent's_ statement satisfying Md. Labor & Employment § 3-203(4)(ix), a statutory condition on the child-labour exemption, and it is meaningless the day the volunteer turns 18. **The release** is the _participant's_ waiver of their own tort claim, it rides versions, and for a minor it is additionally signed by the parent under _BJ's_. One row cannot expire on two clocks. One screen at orientation writes both.
 
 # Revocation is one field
 
@@ -53,9 +53,9 @@ The clock splits in two and only one half is ours.
 
 **The app's own rows are kept indefinitely**, on ADR 0012's precedent for Attendance: pruning is the only mechanism by which someone who needs this two years later gets told no.
 
-**The paper is the cabinet's**, and *which of these may be shredded* is the question the five-year representation is really asking. The app answers it in one direction only: a `roster` view listing releases by age and by the volunteer's last Attendance, so the cabinet is legible. **It never marks anything eligible for destruction.**
+**The paper is the cabinet's**, and _which of these may be shredded_ is the question the five-year representation is really asking. The app answers it in one direction only: a `roster` view listing releases by age and by the volunteer's last Attendance, so the cabinet is legible. **It never marks anything eligible for destruction.**
 
-That restraint is not squeamishness. The ticket asked whether the clock runs from signature or from last shift, and the framing has a third answer that breaks both: **minors' claims toll.** A release a parent signed for a fourteen-year-old defends a claim that does not begin running until she reaches majority, so a five-year clock from signature would authorise destroying the paper years before the claim it answers can be filed. *(Confidence, marked in the house style: Md. CJP § 5-201 was not read in this session — this is asserted from general knowledge and is the weakest sentence in this ADR.)* A screen that printed "eligible for destruction" would be the app making a legal call it cannot make, and this is exactly how it would make it wrong. **The shred question joins the counsel hour** already booked for § 5-401.2.
+That restraint is not squeamishness. The ticket asked whether the clock runs from signature or from last shift, and the framing has a third answer that breaks both: **minors' claims toll.** A release a parent signed for a fourteen-year-old defends a claim that does not begin running until she reaches majority, so a five-year clock from signature would authorise destroying the paper years before the claim it answers can be filed. _(Confidence, marked in the house style: Md. CJP § 5-201 was not read in this session — this is asserted from general knowledge and is the weakest sentence in this ADR.)_ A screen that printed "eligible for destruction" would be the app making a legal call it cannot make, and this is exactly how it would make it wrong. **The shred question joins the counsel hour** already booked for § 5-401.2.
 
 # Recorded under `roster`, never self-recorded, and it queues
 
@@ -63,13 +63,13 @@ A signature is written under `roster`, by the same hand and in the same minute a
 
 **It is never self-recorded.** Unlike Attendance — where self-report is the norm and ADR 0012's attribution is what makes it safe — this is a statement about a piece of paper that only the person holding the paper can see. A volunteer asserting their own release exists is evidence of nothing.
 
-It is an **ordinary ADR 0005 queued write**, and not a second carve-out. ADR 0011's boundary governs: *work that happened queues; a promise about work that has not happened yet does not.* A signature is a statement about the past. The wrinkle is that it is also a gate input, so an Unsent one leaves a volunteer who genuinely signed briefly un-rosterable — a Coordinator at a desk on wifi, momentarily blocked, which is nothing like two volunteers each believing they have Thursday. ADR 0011 said a second carve-out without an equally sharp argument is the rule dissolving, and this is not that argument.
+It is an **ordinary ADR 0005 queued write**, and not a second carve-out. ADR 0011's boundary governs: _work that happened queues; a promise about work that has not happened yet does not._ A signature is a statement about the past. The wrinkle is that it is also a gate input, so an Unsent one leaves a volunteer who genuinely signed briefly un-rosterable — a Coordinator at a desk on wifi, momentarily blocked, which is nothing like two volunteers each believing they have Thursday. ADR 0011 said a second carve-out without an equally sharp argument is the rule dissolving, and this is not that argument.
 
 # The backfill is real dates, and a human arms the gate
 
 The rescue holds signed releases on paper for its current volunteers. They are **backfilled in full, with the real dates read off the paper, before the gate is armed.**
 
-This deliberately differs from ADR 0011's Orientation backfill, which dated sixty people as *preceding Caballus* rather than fabricating dates. There the date did not matter. Here it is the retention clock and the version binding, so a sentinel would look like data and answer nothing on the one day — a re-papering — when the question gets asked. Sixty dates is an afternoon, once, and it is the only moment the cabinet and the app will ever be knowably in agreement.
+This deliberately differs from ADR 0011's Orientation backfill, which dated sixty people as _preceding Caballus_ rather than fabricating dates. There the date did not matter. Here it is the retention clock and the version binding, so a sentinel would look like data and answer nothing on the one day — a re-papering — when the question gets asked. Sixty dates is an afternoon, once, and it is the only moment the cabinet and the app will ever be knowably in agreement.
 
 **The gate is armed by one deliberate human act when the backfill is declared complete** — not by a config flag that lingers. An un-armed gate is a status that expires silently, which is the failure ADR 0006 named a tripwire to prevent.
 
@@ -79,9 +79,9 @@ The gap surfaces on the **people list ADR 0011 already built** as the Coordinato
 
 **ADR 0012's under-16 flag is deleted**, not deprecated, and both thresholds derive from a date.
 
-That ADR chose the flag on an explicit principle — *the app needs the answer and not the data* — and the principle was sound given one consumer. There are two. **The rescue celebrates volunteers' birthdays**, so this is not data the app is hoarding to run a gate; it is a fact the barn already keeps, which the gate gets for free. And the rescue **requires photo ID showing a date of birth** from every volunteer and candidate before they start, so there is no unknown-date state to design around: the desk process produces a date for everyone. For a minor without ID, the parent provides it.
+That ADR chose the flag on an explicit principle — _the app needs the answer and not the data_ — and the principle was sound given one consumer. There are two. **The rescue celebrates volunteers' birthdays**, so this is not data the app is hoarding to run a gate; it is a fact the barn already keeps, which the gate gets for free. And the rescue **requires photo ID showing a date of birth** from every volunteer and candidate before they start, so there is no unknown-date state to design around: the desk process produces a date for everyone. For a minor without ID, the parent provides it.
 
-Keeping the flag alongside the date would be ADR 0003's cautionary tale repeating — the whiteboard records halter colour on the name plate *and* in a separate panel, "and the two already disagree."
+Keeping the flag alongside the date would be ADR 0003's cautionary tale repeating — the whiteboard records halter colour on the name plate _and_ in a separate panel, "and the two already disagree."
 
 **Who sees it is where the care goes.** ADR 0010's floor is that every Volunteer reads everything, with exactly two carve-outs behind `roster`: contact details and the audit log. ADR 0012 refused a third for a student's school, naming the cost as "a minor's school affiliation visible to sixty adults." A minor's full date of birth is that objection with more teeth — but note what the celebration actually needs, which is **the day and the month**. The year is the entire sensitive part and the entire gate input.
 
@@ -101,7 +101,7 @@ The eighteenth birthday is the only gate failure in this design that arrives on 
 
 **Consent becomes historical** — kept, never deleted, because it was true — and stops gating anything.
 
-**The release obsoletes**, reusing the same flag a version bump sets rather than inventing a second staleness mechanism. The parent's waiver under *BJ's* waived a minor's claim; the adult signs in her own name. Without this, the app would happily roster a nineteen-year-old on her mother's signature.
+**The release obsoletes**, reusing the same flag a version bump sets rather than inventing a second staleness mechanism. The parent's waiver under _BJ's_ waived a minor's claim; the adult signs in her own name. Without this, the app would happily roster a nineteen-year-old on her mother's signature.
 
 # A failing gate never empties a roster
 
@@ -121,7 +121,7 @@ Letting the only predictable gate failure in the system fire silently and then f
 
 # What this does not do
 
-**No re-papering campaign, and no ticket for one.** If counsel says replace the 2020 text, the obsoletes flag plus the people list already answer *who must sign*, and nothing gets auto-unrostered. What is missing is only a way to chase sixty people, and ADR 0009's dilution argument governs that: mail to sixty volunteers about paperwork is exactly the message that teaches people mail from this app means nothing. The rescue's channel for *everyone please sign this* is the Facebook group and the barn door. The Coordinator works the list. Named here so a later reader can tell deferred from forgotten.
+**No re-papering campaign, and no ticket for one.** If counsel says replace the 2020 text, the obsoletes flag plus the people list already answer _who must sign_, and nothing gets auto-unrostered. What is missing is only a way to chase sixty people, and ADR 0009's dilution argument governs that: mail to sixty volunteers about paperwork is exactly the message that teaches people mail from this app means nothing. The rescue's channel for _everyone please sign this_ is the Facebook group and the barn door. The Coordinator works the list. Named here so a later reader can tell deferred from forgotten.
 
 **No in-app signing.** The parent/guardian block is the hard part — the parent of a fifteen-year-old may hold no Account at all — and it is ESIGN territory rather than a UI decision.
 
@@ -143,7 +143,7 @@ Letting the only predictable gate failure in the system fire silently and then f
 
 ## What would make this wrong
 
-**If counsel says § 5-401.2 reaches a no-fee 501(c)(3).** The release itself becomes void as to the rescue's own negligence, the 2020 text has to be replaced, and everything here still works — the version obsoletes, sixty people re-sign, no roster empties. That is the scenario this design was built against, and if it arrives and the machinery does *not* absorb it, the versioning was theatre.
+**If counsel says § 5-401.2 reaches a no-fee 501(c)(3).** The release itself becomes void as to the rescue's own negligence, the 2020 text has to be replaced, and everything here still works — the version obsoletes, sixty people re-sign, no roster empties. That is the scenario this design was built against, and if it arrives and the machinery does _not_ absorb it, the versioning was theatre.
 
 **If the carrier is not Markel.** The five-year clock is Markel's application language. A different carrier and the retention half of this ticket loses its only external anchor — the record is still worth keeping, but it should be justified by the rescue's own reasons rather than attributed to a carrier who never asked. ADR 0012 made exactly this mistake in the opposite direction and corrected it.
 

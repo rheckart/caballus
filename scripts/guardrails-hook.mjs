@@ -37,7 +37,9 @@ const eslint = new ESLint({
 
 const results = await eslint.lintFiles([filePath])
 const problems = results.flatMap((result) =>
-  result.messages.map((message) => `${relative}:${message.line}:${message.column} ${message.message}`),
+  result.messages.map(
+    (message) => `${relative}:${message.line}:${message.column} ${message.message}`,
+  ),
 )
 
 if (problems.length === 0) process.exit(0)

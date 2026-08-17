@@ -17,6 +17,8 @@ import js from '@eslint/js'
 import type { Linter } from 'eslint'
 import tseslint from 'typescript-eslint'
 
+import prettier from 'eslint-config-prettier'
+
 export type BanId = 'serverFn' | 'dbClient' | 'dayBoundary' | 'drizzleZod' | 'sentry' | 'apiPath'
 
 interface Ban {
@@ -54,7 +56,14 @@ export const BANS: readonly Ban[] = [
     invariant: 'No database handle except through forOrg',
     message:
       'Reach the database through forOrg in src/db/for-org.ts; a raw handle runs with no app.org_id and quietly returns nothing (ADR 0007).',
-    patterns: ['**/db/client', '**/db/client.*', './client', './client.*', '../client', '../client.*'],
+    patterns: [
+      '**/db/client',
+      '**/db/client.*',
+      './client',
+      './client.*',
+      '../client',
+      '../client.*',
+    ],
     // A static import is not the only way through a door.
     syntax: ['ImportExpression[source.value=/db\\/client(\\.\\w+)?$/]'],
   },
@@ -67,7 +76,16 @@ export const BANS: readonly Ban[] = [
     // The calendar libraries too, and the ones nobody has installed yet: a ban
     // on `Date` that leaves the library sitting in `package.json` reachable
     // just moves the wrong answer one import along.
-    patterns: ['luxon', 'luxon/**', 'date-fns', 'date-fns/**', 'dayjs', 'dayjs/**', 'temporal-polyfill', 'temporal-polyfill/**'],
+    patterns: [
+      'luxon',
+      'luxon/**',
+      'date-fns',
+      'date-fns/**',
+      'dayjs',
+      'dayjs/**',
+      'temporal-polyfill',
+      'temporal-polyfill/**',
+    ],
     syntax: [
       'MemberExpression[object.name="Date"][property.name="now"]',
       'MemberExpression[object.name="globalThis"][property.name=/^(Date|Intl)$/]',
@@ -211,13 +229,11 @@ export const guardrails: Linter.Config[] = [
     },
     rules: rulesExcept(),
   },
-  ...EXEMPTIONS.map(
-    (exemption): Linter.Config => ({
-      name: `caballus/exempt: ${exemption.reason}`,
-      files: [...exemption.files],
-      rules: rulesExcept(exemption.bans),
-    }),
-  ),
+  ...EXEMPTIONS.map((exemption): Linter.Config => ({
+    name: `caballus/exempt: ${exemption.reason}`,
+    files: [...exemption.files],
+    rules: rulesExcept(exemption.bans),
+  })),
 ]
 
 export default [
@@ -251,4 +267,10 @@ export default [
     },
   },
   ...guardrails,
+  // Last, so it wins: turns off every ESLint stylistic rule Prettier already
+  // has an opinion on, so the two never disagree about the same line (#27).
+  // None of the configs above set one today — `js.configs.recommended` and
+  // `tseslint.configs.recommended` are both semantic — so this has nothing to
+  // do yet. It stays last so that stays true if one of them ever does.
+  prettier,
 ] satisfies Linter.Config[]

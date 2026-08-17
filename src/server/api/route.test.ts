@@ -208,7 +208,9 @@ describe('the version in the path', () => {
     const key = '019267c0-6f7e-7a3d-9c2f-2f9a1c7e5b10'
 
     const lines = await linesWhile(() =>
-      api.fetch(toVersion('POST', 'v0', '/observations', { note: 'gate latch', idempotencyKey: key })),
+      api.fetch(
+        toVersion('POST', 'v0', '/observations', { note: 'gate latch', idempotencyKey: key }),
+      ),
     )
 
     // The write never reaches `mutation`, so this line is the only record that

@@ -23,8 +23,7 @@ interface InitOptions {
 
 const sentry = vi.hoisted(() => ({
   init: vi.fn<(options: InitOptions) => void>(),
-  captureException:
-    vi.fn<(error: unknown, hint?: { extra?: Record<string, unknown> }) => void>(),
+  captureException: vi.fn<(error: unknown, hint?: { extra?: Record<string, unknown> }) => void>(),
 }))
 
 vi.mock('@sentry/browser', () => sentry)
