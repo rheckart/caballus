@@ -18,64 +18,14 @@ import type { Actor } from '../request-context'
 export { DOMAIN_SCOPES, type DomainScope }
 
 /**
- * ADR 0010's roles, carrying the barn's own words. Stored as rows on the
- * Volunteer; **the mapping below is a constant in code**, because nobody at
- * this rescue will ever redefine what Head of Maintenance means and the price
- * of letting them would be a permissions screen with its own audit problem.
- *
- * Three roles the brief lists are deliberately absent. Feed Shift Lead and
- * Co-Lead dissolve into roster positions — being Lead of *this* Shift is not
- * something anyone holds between Shifts — and Feed Shift Volunteer *is* the
- * floor, so a role granting it would mean nothing. Keeping any of the three
- * would be worse than absent: they would look like the thing that authorizes,
- * and something would eventually check them instead of checking the roster.
+ * ADR 0010's roles and the mapping from one to the Domain Scopes it confers,
+ * re-exported from `src/shared/roles.ts` for the same reason the scopes
+ * themselves are: the desktop admin screen grants Roles and shows what they
+ * carry, so the vocabulary crosses the wire and a second copy of it would be
+ * the drift ADR 0021 exists to remove. **The checks stay on this side** —
+ * `authorize` below is the only thing that decides anything.
  */
-export const ROLE_SCOPES = {
-  // Enumerated rather than a wildcard. ADR 0010 rejects a short-circuit as a
-  // second code path through authorization, reliably the one nobody tests —
-  // and enumeration buys deliberateness: when `medical` arrives, somebody has
-  // to decide whether the President reads diagnoses.
-  president: DOMAIN_SCOPES,
-  board_member: DOMAIN_SCOPES,
-  head_of_horse_welfare: ['horse_care'],
-  head_of_maintenance: ['maintenance'],
-  volunteer_coordinator: ['roster'],
-  treasurer: ['financial'],
-  event_coordinator: ['events'],
-} as const satisfies Readonly<Record<string, readonly DomainScope[]>>
-
-export type Role = keyof typeof ROLE_SCOPES
-
-export const ROLES = Object.keys(ROLE_SCOPES) as readonly Role[]
-
-/**
- * Whether a stored string is a role this build knows.
- *
- * The column is text and a deploy can be older than a row, so the question is
- * real. `supplies` is the standing example pointing the other way: it has no
- * dedicated role and is the President's until the rescue names the position,
- * at which point the name is one line here and one grant.
- */
-export function isRole(stored: string): stored is Role {
-  return Object.hasOwn(ROLE_SCOPES, stored)
-}
-
-/**
- * The Domain Scopes a set of roles confers, in `DOMAIN_SCOPES` order and
- * without repeats.
- *
- * A role this build does not know confers nothing, which is the direction that
- * fails closed — the alternative is a row nobody can read granting something
- * nobody decided.
- */
-export function scopesOf(roles: readonly string[]): readonly DomainScope[] {
-  const held = new Set<DomainScope>()
-  for (const role of roles) {
-    if (!isRole(role)) continue
-    for (const scope of ROLE_SCOPES[role]) held.add(scope)
-  }
-  return DOMAIN_SCOPES.filter((scope) => held.has(scope))
-}
+export { ROLES, ROLE_NAMES, ROLE_SCOPES, isRole, scopesOf, type Role } from '../../shared/roles'
 
 /**
  * The three legitimate uses of `floor` today. Stated as a type so that a

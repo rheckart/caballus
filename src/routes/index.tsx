@@ -72,7 +72,25 @@ function Home() {
               ? 'You hold no domain scopes.'
               : `You hold ${who.me.domainScopes.join(', ')}.`}
           </p>
-          <p>Nothing to do here yet. The barn comes next.</p>
+          {/* The desk, for whoever holds the scopes it needs. Shown to
+              everybody rather than hidden by scope: the server is what
+              refuses, and a link that is not there is indistinguishable from
+              a broken app — ADR 0011's argument for the disabled-and-explained
+              action, applied to navigation. */}
+          <nav>
+            <ul>
+              <li>
+                <Link to="/admin/volunteers">Volunteers</Link>
+              </li>
+              <li>
+                <Link to="/admin/release-versions">Release versions</Link>
+              </li>
+              <li>
+                <Link to="/admin/audit">Audit log</Link>
+              </li>
+            </ul>
+          </nav>
+          <p>The barn comes next.</p>
           {/* Reachable, because a session lasts until somebody ends it and the
               barn has a shared tablet on it. This ends *this* session only —
               revoking every session an Account holds is an officer's act. */}

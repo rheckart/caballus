@@ -22,6 +22,13 @@
       "when": 1786982481526,
       "tag": "0002_a_volunteer_before_an_account",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1786995000559,
+      "tag": "0003_three_gates_and_a_signature",
+      "breakpoints": true
     }
   ]
 }

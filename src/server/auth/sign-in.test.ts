@@ -53,6 +53,10 @@ describe.skipIf(!reachable)('email codes, sessions and revocation, against the d
 
   beforeAll(async () => {
     process.env.APP_ORG_ID = FRONT_BARN
+    await owner`delete from audit_entries where org_id = ${FRONT_BARN}`
+    await owner`delete from volunteer_roles where org_id = ${FRONT_BARN}`
+    await owner`delete from volunteer_accounts where org_id = ${FRONT_BARN}`
+    await owner`delete from volunteers where org_id = ${FRONT_BARN}`
     await owner`delete from orgs where id = ${FRONT_BARN}`
     await owner`
       insert into orgs (id, name, time_zone)
@@ -73,6 +77,9 @@ describe.skipIf(!reachable)('email codes, sessions and revocation, against the d
   afterEach(async () => {
     setEmailTransport(null)
     vi.restoreAllMocks()
+    // First, because every grant and removal below now writes one and it
+    // references both the volunteer and the org (ADR 0010).
+    await owner`delete from audit_entries where org_id = ${FRONT_BARN}`
     await owner`delete from volunteer_roles where org_id = ${FRONT_BARN}`
     await owner`delete from volunteer_accounts where org_id = ${FRONT_BARN}`
     await owner`delete from volunteers where org_id = ${FRONT_BARN}`
@@ -82,6 +89,10 @@ describe.skipIf(!reachable)('email codes, sessions and revocation, against the d
   })
 
   afterAll(async () => {
+    await owner`delete from audit_entries where org_id = ${FRONT_BARN}`
+    await owner`delete from volunteer_roles where org_id = ${FRONT_BARN}`
+    await owner`delete from volunteer_accounts where org_id = ${FRONT_BARN}`
+    await owner`delete from volunteers where org_id = ${FRONT_BARN}`
     await owner`delete from orgs where id = ${FRONT_BARN}`
     await owner.end()
     // Closed once, here. Better Auth builds its adapter over the same handle

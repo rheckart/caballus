@@ -19,6 +19,7 @@
 import { sql } from 'drizzle-orm'
 import {
   boolean,
+  date,
   index,
   integer,
   pgPolicy,
@@ -28,7 +29,27 @@ import {
   timestamp,
   uniqueIndex,
   uuid,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core'
+
+/**
+ * The policy nearly every table carries (ADR 0007). One function rather than
+ * eleven copies of the same two lines: a policy that fails closed is the single
+ * structural guarantee this stack was chosen for, and the way to keep that true
+ * across a growing schema is to make the correct one the shortest thing to
+ * write.
+ *
+ * `current_setting('app.org_id', true)` is null when nothing set it, and `=`
+ * against null is null rather than true — so a query outside `forOrg` sees zero
+ * rows instead of somebody else's.
+ */
+function inScope(name: string) {
+  return pgPolicy(name, {
+    for: 'all',
+    using: sql`org_id::text = current_setting('app.org_id', true)`,
+    withCheck: sql`org_id::text = current_setting('app.org_id', true)`,
+  })
+}
 
 export const orgs = pgTable(
   'orgs',
@@ -93,11 +114,7 @@ export const idempotencyKeys = pgTable(
     // For the sweep that enforces retention, which is a scan of this column
     // and nothing else.
     index('idempotency_keys_recorded_at').on(table.recordedAt),
-    pgPolicy('idempotency_keys_in_scope', {
-      for: 'all',
-      using: sql`org_id::text = current_setting('app.org_id', true)`,
-      withCheck: sql`org_id::text = current_setting('app.org_id', true)`,
-    }),
+    inScope('idempotency_keys_in_scope'),
   ],
 ).enableRLS()
 
@@ -205,6 +222,47 @@ export const volunteers = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     /** Removed from the rescue. The work they did still happened. */
     removedAt: timestamp('removed_at', { withTimezone: true }),
+
+    /**
+     * The date of birth, and **how it was established** (ADR 0017).
+     *
+     * A column and not a table, because it is one fact about one person that
+     * cannot be held twice — ADR 0012's under-16 flag was deleted rather than
+     * deprecated for exactly the reason ADR 0003 gives about halter colour on
+     * the name plate *and* in a separate panel: the two already disagree.
+     *
+     * Who may read it is where the care goes. Day and month are a birthday and
+     * sit on the floor; **the year and the derived age sit behind `roster`**
+     * with contact details, because the year is the whole of the sensitive part
+     * and the whole of the gate input. Redaction is
+     * `src/server/roster/people.ts`, not this table.
+     *
+     * The app never holds the identity document — no image, no number, no
+     * issuing state. Sixty driver's licence scans would be the highest-value
+     * target in the system and would assert nothing the sighting below does not.
+     */
+    dateOfBirth: date('date_of_birth'),
+    /** `photo_id` or `parent_provided` — see `DATE_OF_BIRTH_PROVENANCE`. */
+    dateOfBirthProvenance: text('date_of_birth_provenance'),
+    dateOfBirthRecordedBy: uuid('date_of_birth_recorded_by').references(
+      (): AnyPgColumn => volunteers.id,
+    ),
+    dateOfBirthRecordedAt: timestamp('date_of_birth_recorded_at', { withTimezone: true }),
+
+    /**
+     * The Orientation: a date and who recorded it, on the Volunteer (ADR 0011).
+     *
+     * The first of the three gates and the one the barn treats as the moment
+     * somebody joins. **It never lapses and is never revoked** — leaving the
+     * rescue is the act that exists for that — so there is no revoked-at here
+     * and there should never be one. Not yet oriented is a real state, and its
+     * name is Candidate.
+     */
+    orientedOn: date('oriented_on'),
+    orientationRecordedBy: uuid('orientation_recorded_by').references(
+      (): AnyPgColumn => volunteers.id,
+    ),
+    orientationRecordedAt: timestamp('orientation_recorded_at', { withTimezone: true }),
   },
   (table) => [
     // One email, one *current* Volunteer within a rescue — because the email is
@@ -220,11 +278,7 @@ export const volunteers = pgTable(
     uniqueIndex('volunteers_email_in_org')
       .on(table.orgId, table.email)
       .where(sql`removed_at is null`),
-    pgPolicy('volunteers_in_scope', {
-      for: 'all',
-      using: sql`org_id::text = current_setting('app.org_id', true)`,
-      withCheck: sql`org_id::text = current_setting('app.org_id', true)`,
-    }),
+    inScope('volunteers_in_scope'),
   ],
 ).enableRLS()
 
@@ -268,18 +322,14 @@ export const volunteerAccounts = pgTable(
     // resolves through a server-side active organisation, and which ADR 0007
     // put `org_id` on every table to keep cheap.
     uniqueIndex('volunteer_accounts_user_in_org').on(table.orgId, table.userId),
-    pgPolicy('volunteer_accounts_in_scope', {
-      for: 'all',
-      using: sql`org_id::text = current_setting('app.org_id', true)`,
-      withCheck: sql`org_id::text = current_setting('app.org_id', true)`,
-    }),
+    inScope('volunteer_accounts_in_scope'),
   ],
 ).enableRLS()
 
 /**
  * A role somebody holds, carrying the barn's own words (ADR 0010). The mapping
  * from a role to the Domain Scopes it confers is a constant in code — in
- * `src/server/api/authorization.ts` — and never a row, because nobody at this
+ * `src/shared/roles.ts` — and never a row, because nobody at this
  * rescue will ever redefine what Head of Maintenance means and the price of
  * letting them would be a permissions screen with its own audit problem.
  *
@@ -295,16 +345,248 @@ export const volunteerRoles = pgTable(
     volunteerId: uuid('volunteer_id')
       .notNull()
       .references(() => volunteers.id),
-    /** One of `ROLES` in `src/server/api/authorization.ts`. */
+    /** One of `ROLES` in `src/shared/roles.ts`. */
     role: text('role').notNull(),
     grantedAt: timestamp('granted_at', { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * Who conferred it. Nobody grants themselves a role (ADR 0010), and the
+     * check needs the actor rather than only the date — the audit entry carries
+     * the same fact for the log, and this carries it for the row.
+     */
+    grantedBy: uuid('granted_by').references(() => volunteers.id),
   },
   (table) => [
     primaryKey({ columns: [table.orgId, table.volunteerId, table.role] }),
-    pgPolicy('volunteer_roles_in_scope', {
-      for: 'all',
-      using: sql`org_id::text = current_setting('app.org_id', true)`,
-      withCheck: sql`org_id::text = current_setting('app.org_id', true)`,
-    }),
+    inScope('volunteer_roles_in_scope'),
+  ],
+).enableRLS()
+
+/**
+ * Permission to prepare and administer medication — **a qualification granted
+ * to a Volunteer under `horse_care`, and not a Domain Scope** (ADR 0010).
+ *
+ * It is not derived from leading a Shift, which is what `CONTEXT.md` originally
+ * read like. Being permitted to handle Bute is a training fact about a person
+ * that does not stop being true between Shifts and is revocable for cause; and
+ * the roster being built a fortnight out has to answer *will this Shift have
+ * Medication Authority present*, which is a question about people rather than
+ * about a position on a Shift that has not happened.
+ *
+ * Revoking keeps the row, like `volunteer_accounts`: a revocation is a fact
+ * somebody can read, and an acting Lead without the qualification still cannot
+ * medicate.
+ */
+export const medicationAuthority = pgTable(
+  'medication_authority',
+  {
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id),
+    volunteerId: uuid('volunteer_id')
+      .notNull()
+      .references(() => volunteers.id),
+    grantedAt: timestamp('granted_at', { withTimezone: true }).notNull().defaultNow(),
+    grantedBy: uuid('granted_by').references(() => volunteers.id),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    revokedBy: uuid('revoked_by').references(() => volunteers.id),
+  },
+  (table) => [
+    primaryKey({ columns: [table.orgId, table.volunteerId] }),
+    inScope('medication_authority_in_scope'),
+  ],
+).enableRLS()
+
+/**
+ * One issue of the release text (ADR 0017). **On ADR 0003's versioned tier:
+ * immutable, carrying a valid-from date, and the current one is the latest.**
+ *
+ * Immutability is that nothing updates one — there is no endpoint that does,
+ * and a correction is a new Version. That is what keeps *which text did she
+ * actually sign* answerable in 2031 when 2020 is three revisions back.
+ *
+ * `obsoletesPrior` is the whole reason a Version is an entity rather than a
+ * label on a signature. The one foreseeable event here is the rescue
+ * re-papering after Md. CJP § 5-401.2, and that day needs to sweep sixty people
+ * back through a signature — a query if Versions are real, and a spreadsheet if
+ * they are a string. Publishing without the flag is a typo fix that invalidates
+ * nobody.
+ *
+ * The blank template the Version carries is **not here**: ADR 0017 puts one
+ * file per Version under `roster`, and object storage is out of scope for v1.
+ * The column lands with the storage rather than sitting here pointing at
+ * nothing. No signature image and no personal data goes to object storage at
+ * all — the executed copies stay paper in the cabinet.
+ */
+export const releaseVersions = pgTable(
+  'release_versions',
+  {
+    id: uuid('id').primaryKey(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id),
+    /** The rescue's words for it — the current one is marked *Updated 2020*. */
+    label: text('label').notNull(),
+    validFrom: date('valid_from').notNull(),
+    /** Whether publishing this stales every signature given before `validFrom`. */
+    obsoletesPrior: boolean('obsoletes_prior').notNull().default(false),
+    publishedAt: timestamp('published_at', { withTimezone: true }).notNull().defaultNow(),
+    publishedBy: uuid('published_by').references(() => volunteers.id),
+  },
+  (table) => [
+    // The current Version is the latest, and the staleness sweep is a scan of
+    // the obsoleting ones — both are this index rather than a sort of the table.
+    index('release_versions_valid_from').on(table.orgId, table.validFrom),
+    inScope('release_versions_in_scope'),
+  ],
+).enableRLS()
+
+/**
+ * A Volunteer's signature against one Release Version (ADR 0017).
+ *
+ * **The app records the fact, not the executed artifact**: who signed, when,
+ * which Version. The signed paper stays in the cabinet as the original, because
+ * an application presenting itself as the five-year home of a legal document,
+ * on a stack whose restore window is thirty days (ADR 0006), would be worse
+ * than the filing cabinet *and* look better than it.
+ *
+ * **Never self-recorded.** Unlike Attendance, where self-report is the norm,
+ * this is a statement about a piece of paper that only the person holding the
+ * paper can see, and a volunteer asserting their own release exists is evidence
+ * of nothing. The check is in `src/server/roster/releases.ts`.
+ *
+ * Rows are kept indefinitely. Pruning is the only mechanism by which somebody
+ * who needs this two years later gets told no — and the app never computes a
+ * shred date, because a minor's claims toll and a five-year clock from
+ * signature would authorise destroying paper years before the claim it answers
+ * can be filed.
+ */
+export const releaseSignatures = pgTable(
+  'release_signatures',
+  {
+    id: uuid('id').primaryKey(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id),
+    volunteerId: uuid('volunteer_id')
+      .notNull()
+      .references(() => volunteers.id),
+    releaseVersionId: uuid('release_version_id')
+      .notNull()
+      .references(() => releaseVersions.id),
+    /** Read off the paper, which is why the backfill is real dates. */
+    signedOn: date('signed_on').notNull(),
+    /**
+     * The Parent/Guardian block, which does real work in Maryland under *BJ's
+     * Wholesale Club v. Rosen* and is what an eighteenth birthday obsoletes.
+     */
+    byParent: boolean('by_parent').notNull().default(false),
+    recordedBy: uuid('recorded_by')
+      .notNull()
+      .references(() => volunteers.id),
+    recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * Expressly revoked in writing, which is how a release stops being
+     * effective and is the entire feature — no status enum, no reason field, no
+     * workflow. The column is worth its weight because the alternative, when it
+     * does happen, is somebody editing a row so that a true past fact
+     * disappears.
+     */
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    revokedBy: uuid('revoked_by').references(() => volunteers.id),
+  },
+  (table) => [
+    // Every gate check reads one Volunteer's signatures.
+    index('release_signatures_volunteer').on(table.orgId, table.volunteerId),
+    inScope('release_signatures_in_scope'),
+  ],
+).enableRLS()
+
+/**
+ * A parent's written permission for a Volunteer under 18 (ADR 0017).
+ *
+ * **Two records, one interaction.** On paper this is frequently a second
+ * signature line on the release form, and collapsing them is the temptation
+ * this table exists against: a Consent satisfies a statutory condition on
+ * Maryland's child-labour exemption and is meaningless the day the volunteer
+ * turns 18, while a Release is the participant's own waiver and rides Versions.
+ * One row cannot expire on two clocks.
+ *
+ * One per Volunteer, kept after the eighteenth birthday because it was true.
+ * That it has stopped gating is derived at read time in
+ * `src/shared/rostering.ts`, never written here by a job.
+ */
+export const volunteerConsents = pgTable(
+  'volunteer_consents',
+  {
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id),
+    volunteerId: uuid('volunteer_id')
+      .notNull()
+      .references(() => volunteers.id),
+    consentedOn: date('consented_on').notNull(),
+    /** Who gave it, as the paper names them. The parent holds no Volunteer row. */
+    parentName: text('parent_name').notNull(),
+    recordedBy: uuid('recorded_by')
+      .notNull()
+      .references(() => volunteers.id),
+    recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.orgId, table.volunteerId] }),
+    inScope('volunteer_consents_in_scope'),
+  ],
+).enableRLS()
+
+/**
+ * The audit log: actor, instant, entity reference, field, before, after, and an
+ * optional reason — written by the same transaction as the edit it records.
+ *
+ * **It is derived, and an event store is the app.** Keeping it derived is what
+ * keeps ADR 0006's restore simple: this table could be lost without losing the
+ * application, and that is the property being protected.
+ *
+ * ADR 0003's three tiers decide what lands here, and the distinction is the
+ * point rather than an accident. **Versioned-tier changes are versions, not
+ * audit entries** — publishing a Release Version writes nothing here, because
+ * the Version *is* the record of the change. **Current-state edits get audit
+ * entries.** Measurement-tier appends get neither, being their own record.
+ *
+ * Reading it is behind `roster`, one of ADR 0010's two carve-outs from the
+ * read-everything floor.
+ */
+export const auditEntries = pgTable(
+  'audit_entries',
+  {
+    id: uuid('id').primaryKey(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id),
+    /**
+     * The Volunteer who did it, never the Account. Nullable for the one act
+     * with no actor inside the application: `npm run bootstrap` making the
+     * first President before anybody can sign in.
+     */
+    actorVolunteerId: uuid('actor_volunteer_id').references(() => volunteers.id),
+    recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull().defaultNow(),
+    /** `volunteer`, `release_signature`, `volunteer_role` — the kind of thing. */
+    entity: text('entity').notNull(),
+    entityId: uuid('entity_id').notNull(),
+    /**
+     * Which field changed, or null for the record as a whole — a creation, a
+     * removal, a grant. A grant has no field to name and inventing one would
+     * make the column lie in the rows that are read most.
+     */
+    field: text('field'),
+    before: text('before'),
+    after: text('after'),
+    /** Optional, and asked for on the acts where somebody has a reason. */
+    reason: text('reason'),
+  },
+  (table) => [
+    // The two ways it is read: everything about one record, and the tail.
+    index('audit_entries_entity').on(table.orgId, table.entity, table.entityId),
+    index('audit_entries_recorded_at').on(table.orgId, table.recordedAt),
+    inScope('audit_entries_in_scope'),
   ],
 ).enableRLS()

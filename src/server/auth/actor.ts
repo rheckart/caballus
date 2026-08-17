@@ -4,7 +4,7 @@
  * This is the join ADR 0008 refused to let a token carry. The session says
  * which Better Auth user; `volunteer_accounts` says which Volunteer of this
  * organisation that is; `volunteer_roles` says what they hold, and the
- * constant in `src/server/api/authorization.ts` turns that into Domain Scopes.
+ * constant in `src/shared/roles.ts` turns that into Domain Scopes.
  * All three are indexed reads in the same database, which is the whole point:
  * with no session expiry, revocation is the entire security model, and a
  * membership claim in a long-lived token is exactly the fact that outlives its

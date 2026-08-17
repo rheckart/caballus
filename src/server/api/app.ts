@@ -2,16 +2,55 @@
  * The `/api/v1` application. Every queueable write in the system arrives here
  * (ADR 0007), and every handler declares what it requires (ADR 0010).
  *
- * Two endpoints so far: the day in the organisation's timezone, since a
- * browser deriving its own would be right for most of the year and wrong at
- * the edges that matter, and who the session says is asking.
+ * The roster is the first domain on it. The Coordinator creates a Volunteer,
+ * establishes a date of birth, ticks an Orientation, records a Release against
+ * the current Version and — for a minor — a Consent; officers confer Roles
+ * under `grants`, and `horse_care` confers Medication Authority.
+ *
+ * **Recording these queues, and that is not a carve-out.** ADR 0011's boundary
+ * governs — *work that happened queues; a promise about work that has not
+ * happened yet does not* — and every write here is a statement about the past.
+ * ADR 0017 says so in as many words for the signature, and notes what it costs:
+ * an Unsent one leaves a volunteer who genuinely signed briefly un-rosterable,
+ * which is a Coordinator at a desk on wifi momentarily blocked, and nothing
+ * like two volunteers each believing they have Thursday.
+ *
+ * **Every refusal is a 4xx naming itself**, and specifically a 409 for the ones
+ * a retry cannot fix — an Orientation already ticked, a release somebody tried
+ * to record about themselves. A queue reads 409 as *stop*, which is the right
+ * thing for all of them, and a silent empty answer would be indistinguishable
+ * from success to it (ADR 0010).
  */
 import { eq } from 'drizzle-orm'
 
-import { forOrg } from '../../db/for-org'
+import { forOrg, type OrgScopedDatabase } from '../../db/for-org'
 import { orgs, volunteers } from '../../db/schema'
-import { readEverything } from './authorization'
-import { createApi, json } from './route'
+import type { contract } from '../../shared/api-contract'
+import { type DayString } from '../../shared/time'
+import { domainScope, readEverything } from './authorization'
+import { createApi, json, noContent, type Api, type ApiOptions } from './route'
+import type { Actor, RequestContext } from '../request-context'
+import { auditLog, peopleList, unstaffedScopes } from '../roster/people'
+import {
+  createVolunteerIn,
+  recordConsent,
+  recordDateOfBirth,
+  recordOrientation,
+  removeVolunteerIn,
+  type Refusal,
+} from '../roster/records'
+import {
+  grantMedicationAuthority,
+  grantRoleIn,
+  revokeMedicationAuthority,
+  revokeRoleIn,
+} from '../roster/grants'
+import {
+  publishReleaseVersion,
+  recordReleaseSignature,
+  releaseVersionList,
+  revokeReleaseSignature,
+} from '../roster/releases'
 import { startObservability } from '../observability'
 import { today } from '../time'
 
@@ -19,61 +58,326 @@ import { today } from '../time'
 // no-op without a DSN, which is the state of every machine until one is set.
 startObservability()
 
-export const api = createApi()
+/**
+ * Registers every endpoint against a fresh API.
+ *
+ * A function rather than a module-level `api.route(...)` sequence so that a
+ * test can bind its own request context and idempotency store — the seam the
+ * spec names first: features are exercised through this fetch entry, against
+ * contract-declared endpoints, with somebody put in the barn rather than signed
+ * in. The application calls it once, below, with the real ones.
+ */
+export function buildApi(
+  options: Omit<ApiOptions<typeof contract>, 'contract'> = {},
+): Api<typeof contract> {
+  const api = createApi(options)
 
-api.route('GET', '/day', readEverything(), async ({ context }) => {
-  const [org] = await forOrg(context.orgId).run((db) =>
-    db.select({ name: orgs.name, timeZone: orgs.timeZone }).from(orgs).limit(1),
-  )
-
-  if (org === undefined) {
-    // The policies fail closed, so this is either an unconfigured APP_ORG_ID
-    // or an organisation that does not exist. Both are deployment faults and
-    // both should say so rather than answer with a day.
-    return json({ error: 'organisation_not_found' }, 503)
+  /**
+   * The actor, where the authorization already guaranteed one.
+   *
+   * Every declaration but `read-everything` on a signed-out request refuses a
+   * null actor before a handler runs, and `read-everything` refuses one too — so
+   * by the time any handler below is reached there is somebody there. Saying that
+   * once, loudly, beats eleven copies of a nullability check that can only ever
+   * be a comment about what already happened.
+   */
+  function actorOf(context: RequestContext): Actor {
+    if (context.actor === null) {
+      throw new Error(
+        'A handler ran with no actor; the authorization declaration did not refuse it.',
+      )
+    }
+    return context.actor
   }
 
-  return json({ day: today(org.timeZone), timeZone: org.timeZone, organisation: org.name })
-})
+  /**
+   * The day, in the organisation's timezone (ADR 0007).
+   *
+   * Every gate here is a question about a day — is she a minor *today*, was this
+   * signature given before the Version became valid — and a browser deriving its
+   * own would be right for most of the year and wrong at the edges that matter.
+   */
+  async function dayHere(db: OrgScopedDatabase): Promise<DayString> {
+    const [org] = await db.select({ timeZone: orgs.timeZone }).from(orgs).limit(1)
+    if (org === undefined) {
+      throw new Error('The organisation is not visible; APP_ORG_ID names one that does not exist.')
+    }
+    return today(org.timeZone)
+  }
+
+  /**
+   * What a refusal answers with.
+   *
+   * 404 where the thing named is not there, and **409 for everything else** — a
+   * conflict is precisely *this will not become true by retrying*, which is what
+   * a phone's queue needs to hear about an Orientation that is already ticked or
+   * a release somebody tried to record about themselves. A 400 would invite the
+   * queue to treat it as a malformed body and a 403 would claim it was about
+   * authorization, and neither is true.
+   */
+  function refusal(because: Refusal) {
+    const missing =
+      because === 'volunteer_not_found' ||
+      because === 'release_version_not_found' ||
+      because === 'signature_not_found'
+    return json({ error: because }, missing ? 404 : 409)
+  }
+
+  api.route('GET', '/day', readEverything(), async ({ context }) => {
+    const [org] = await forOrg(context.orgId).run((db) =>
+      db.select({ name: orgs.name, timeZone: orgs.timeZone }).from(orgs).limit(1),
+    )
+
+    if (org === undefined) {
+      // The policies fail closed, so this is either an unconfigured APP_ORG_ID
+      // or an organisation that does not exist. Both are deployment faults and
+      // both should say so rather than answer with a day.
+      return json({ error: 'organisation_not_found' }, 503)
+    }
+
+    return json({ day: today(org.timeZone), timeZone: org.timeZone, organisation: org.name })
+  })
+
+  /**
+   * Who the session says is asking.
+   *
+   * `readEverything()` and not a floor of its own: the question *who am I* is
+   * answerable to a Volunteer and to nobody else, which is exactly what the
+   * floor already says. A signed-out request therefore gets the same explicit
+   * `401 not_authorized` every other read gives it, rather than a body
+   * announcing that nobody is signed in — one fact, one shape (ADR 0010).
+   */
+  api.route('GET', '/me', readEverything(), async ({ context }) => {
+    const actor = actorOf(context)
+
+    const [volunteer] = await forOrg(context.orgId).run((db) =>
+      db
+        .select({ name: volunteers.name })
+        .from(volunteers)
+        .where(eq(volunteers.id, actor.volunteerId))
+        .limit(1),
+    )
+
+    if (volunteer === undefined) {
+      // The session resolved to a Volunteer that the policies cannot see, which
+      // means the row went while the session stayed. Saying so beats answering
+      // with a nameless person.
+      return json({ error: 'volunteer_not_found' }, 503)
+    }
+
+    return json({
+      volunteerId: actor.volunteerId,
+      name: volunteer.name,
+      domainScopes: [...actor.domainScopes],
+    })
+  })
+
+  /**
+   * The people list — one surface for all three gates (ADR 0017).
+   *
+   * `readEverything()`, because ADR 0010's floor is that every Volunteer reads
+   * everything and this list is the rescue's own noticeboard. The carve-outs are
+   * enforced **inside** the answer rather than by refusing the request: contact
+   * details, the year of a date of birth and the signatures behind it come back
+   * only for a holder of `roster`, and as `null` rather than as an empty object
+   * for everybody else.
+   */
+  api.route('GET', '/volunteers', readEverything(), async ({ context }) => {
+    const actor = actorOf(context)
+    const seesRoster = actor.domainScopes.includes('roster')
+
+    return forOrg(context.orgId).run(async (db) => {
+      const on = await dayHere(db)
+      const people = await peopleList(db, on, seesRoster)
+      return json({
+        today: on,
+        people: people.map((person) => ({
+          ...person,
+          gaps: [...person.gaps],
+          roles: [...person.roles],
+          domainScopes: [...person.domainScopes],
+          behindRoster:
+            person.behindRoster === null
+              ? null
+              : { ...person.behindRoster, signatures: [...person.behindRoster.signatures] },
+        })),
+        unstaffedScopes: [...unstaffedScopes(people)],
+      })
+    })
+  })
+
+  /**
+   * The Release Versions, newest first.
+   *
+   * On the floor, because a Version is the *blank* text and there is nothing
+   * personal in it — the asymmetry ADR 0017 calls the point: the executed copies
+   * are sixty pieces of paper and stay paper, the unexecuted text is one document
+   * and is what makes *which text did she sign* answerable in 2031.
+   */
+  api.route('GET', '/release-versions', readEverything(), async ({ context }) => {
+    const versions = await forOrg(context.orgId).run((db) => releaseVersionList(db))
+    return json({ versions: versions.map((version) => ({ ...version })) })
+  })
+
+  /**
+   * The audit log. Behind `roster`, which is one of ADR 0010's two carve-outs
+   * from the read-everything floor — the other being contact details.
+   */
+  api.route('GET', '/audit', domainScope('roster'), async ({ context }) => {
+    const entries = await forOrg(context.orgId).run((db) => auditLog(db, 200))
+    return json({ entries: entries.map((entry) => ({ ...entry })) })
+  })
+
+  api.mutation('/volunteers', domainScope('roster'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await createVolunteerIn(db, context.orgId, actor.volunteerId, {
+      name: input.name,
+      email: input.email,
+      mobile: input.mobile ?? null,
+    })
+    if (!outcome.ok) return refusal(outcome.because)
+    return json({ volunteerId: outcome.value.id }, 201)
+  })
+
+  api.mutation(
+    '/volunteers/date-of-birth',
+    domainScope('roster'),
+    async (input, { context, db }) => {
+      const actor = actorOf(context)
+      const outcome = await recordDateOfBirth(db, context.orgId, actor.volunteerId, {
+        volunteerId: input.volunteerId,
+        dateOfBirth: input.dateOfBirth,
+        provenance: input.provenance,
+        reason: input.reason ?? null,
+      })
+      return outcome.ok ? noContent() : refusal(outcome.because)
+    },
+  )
+
+  api.mutation('/volunteers/orientation', domainScope('roster'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await recordOrientation(db, context.orgId, actor.volunteerId, input)
+    return outcome.ok ? noContent() : refusal(outcome.because)
+  })
+
+  api.mutation('/volunteers/consent', domainScope('roster'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await recordConsent(db, context.orgId, actor.volunteerId, {
+      ...input,
+      today: await dayHere(db),
+    })
+    return outcome.ok ? noContent() : refusal(outcome.because)
+  })
+
+  /**
+   * A Release signature. Recorded under `roster`, by the same hand and in the
+   * same minute as the Orientation tick — and **never self-recorded**, which the
+   * record enforces rather than this endpoint.
+   */
+  api.mutation('/volunteers/release', domainScope('roster'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await recordReleaseSignature(db, context.orgId, actor.volunteerId, input)
+    if (!outcome.ok) return refusal(outcome.because)
+    return json({ signatureId: outcome.value.id }, 201)
+  })
+
+  api.mutation(
+    '/volunteers/release-revocation',
+    domainScope('roster'),
+    async (input, { context, db }) => {
+      const actor = actorOf(context)
+      const outcome = await revokeReleaseSignature(db, context.orgId, actor.volunteerId, {
+        signatureId: input.signatureId,
+        reason: input.reason ?? null,
+      })
+      return outcome.ok ? noContent() : refusal(outcome.because)
+    },
+  )
+
+  api.mutation('/volunteers/removal', domainScope('roster'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await removeVolunteerIn(db, context.orgId, actor.volunteerId, {
+      volunteerId: input.volunteerId,
+      reason: input.reason ?? null,
+    })
+    return outcome.ok ? noContent() : refusal(outcome.because)
+  })
+
+  /**
+   * Conferring a Role, under `grants` and never under `roster`.
+   *
+   * Letting `roster` grant Roles would make `roster` transitively every scope,
+   * which would render the domain partition the whole authorization model rests
+   * on decorative (ADR 0010). Hence a scope of its own, held only by officers.
+   */
+  api.mutation('/volunteers/roles', domainScope('grants'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await grantRoleIn(db, context.orgId, actor.volunteerId, {
+      volunteerId: input.volunteerId,
+      role: input.role,
+      reason: input.reason ?? null,
+    })
+    return outcome.ok ? noContent() : refusal(outcome.because)
+  })
+
+  api.mutation(
+    '/volunteers/role-revocation',
+    domainScope('grants'),
+    async (input, { context, db }) => {
+      const actor = actorOf(context)
+      const outcome = await revokeRoleIn(db, context.orgId, actor.volunteerId, {
+        volunteerId: input.volunteerId,
+        role: input.role,
+        reason: input.reason ?? null,
+      })
+      return outcome.ok ? noContent() : refusal(outcome.because)
+    },
+  )
+
+  /**
+   * Medication Authority, under `horse_care` — the scope that owns medication
+   * schedules, and not `roster`, which owns who is on a Shift. The two acts are
+   * different and are held by different people.
+   */
+  api.mutation(
+    '/volunteers/medication-authority',
+    domainScope('horse_care'),
+    async (input, { context, db }) => {
+      const actor = actorOf(context)
+      const about = { volunteerId: input.volunteerId, reason: input.reason ?? null }
+      const outcome = input.granted
+        ? await grantMedicationAuthority(db, context.orgId, actor.volunteerId, about)
+        : await revokeMedicationAuthority(db, context.orgId, actor.volunteerId, about)
+      return outcome.ok ? noContent() : refusal(outcome.because)
+    },
+  )
+
+  /**
+   * Publishing a Release Version.
+   *
+   * **It removes nothing.** With `obsoletesPrior` set, every signature given
+   * before `validFrom` stales — and every affected Volunteer's release gap
+   * appears on the next read of the people list, derived. Existing roster rows
+   * stand and are flagged, because a re-papering would otherwise fire that
+   * failure across every roster in the system on a single morning (ADR 0017).
+   */
+  api.mutation('/release-versions', domainScope('roster'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const published = await publishReleaseVersion(db, context.orgId, actor.volunteerId, input)
+    return json({ releaseVersionId: published.id }, 201)
+  })
+
+  // Every path the contract declares now has a handler, or this throws and the
+  // container does not start. Registering a path nothing declares is a type
+  // error; this is the other direction, which would otherwise be a 404 that the
+  // phone in the barn finds first (ADR 0021).
+  api.sealed()
+
+  return api
+}
 
 /**
- * Who the session says is asking.
- *
- * `readEverything()` and not a floor of its own: the question *who am I* is
- * answerable to a Volunteer and to nobody else, which is exactly what the
- * floor already says. A signed-out request therefore gets the same explicit
- * `401 not_authorized` every other read gives it, rather than a body
- * announcing that nobody is signed in — one fact, one shape (ADR 0010).
+ * The application's own, with the real session lookup and the real idempotency
+ * table behind it.
  */
-api.route('GET', '/me', readEverything(), async ({ context }) => {
-  // Sound: `readEverything` refused a null actor before this handler ran.
-  const actor = context.actor
-  if (actor === null) return json({ error: 'not_authorized' }, 401)
-
-  const [volunteer] = await forOrg(context.orgId).run((db) =>
-    db
-      .select({ name: volunteers.name })
-      .from(volunteers)
-      .where(eq(volunteers.id, actor.volunteerId))
-      .limit(1),
-  )
-
-  if (volunteer === undefined) {
-    // The session resolved to a Volunteer that the policies cannot see, which
-    // means the row went while the session stayed. Saying so beats answering
-    // with a nameless person.
-    return json({ error: 'volunteer_not_found' }, 503)
-  }
-
-  return json({
-    volunteerId: actor.volunteerId,
-    name: volunteer.name,
-    domainScopes: [...actor.domainScopes],
-  })
-})
-
-// Every path the contract declares now has a handler, or this throws and the
-// container does not start. Registering a path nothing declares is a type
-// error; this is the other direction, which would otherwise be a 404 that the
-// phone in the barn finds first (ADR 0021).
-api.sealed()
+export const api = buildApi()
