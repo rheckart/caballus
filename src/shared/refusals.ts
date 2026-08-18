@@ -82,6 +82,16 @@ const REFUSALS: Record<string, string> = {
   not_the_addressed_scope: 'Only a holder of the Scope this was sent to may close it.',
   observations_undispositioned:
     'Every Observation on this Visit needs a decision — Escalate, or note with no action — before signing out.',
+  not_discretionary: 'Essential work cannot be Dropped — record it Not done, with a reason.',
+  overdue_drop_withdrawn: 'This has gone too long undone to Drop. Record Not done, with a reason.',
+  reason_required: 'Say why, in a few words.',
+  volunteer_not_rostered: 'They are not on this Shift.',
+  close_blocked: 'This Shift still has Unsent work, an Open Attendance, or an undecided report.',
+  shift_closed: 'This Shift has closed — only an officer holding horse_care may still add a note.',
+  note_text_required: 'Say what to put in the note.',
+  not_on_this_shift: 'That report was not recorded on this Shift.',
+  relative_may_not_attest: 'A parent, guardian or relative may not attest for this volunteer.',
+  attestation_relationship_required: 'Say whether the Supervising Adult is a relative.',
 }
 
 /** What a failed call says when the server never answered at all. */

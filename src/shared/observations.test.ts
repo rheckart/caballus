@@ -42,10 +42,12 @@ describe('isObservationSubjectKind', () => {
 })
 
 describe('isObservationDisposition', () => {
-  it('accepts the two Visit exits and refuses everything else', () => {
+  it('accepts the three declared Dispositions and refuses everything else', () => {
     expect(isObservationDisposition('escalated')).toBe(true)
     expect(isObservationDisposition('noted_no_action')).toBe(true)
-    // Curated into Shift Notes is a Shift's third exit, not a Visit's — #45.
-    expect(isObservationDisposition('curated_into_shift_notes')).toBe(false)
+    // A Shift's own third exit — curated into Shift Notes (#45).
+    expect(isObservationDisposition('curated_into_shift_notes')).toBe(true)
+    expect(isObservationDisposition('acknowledged')).toBe(false)
+    expect(isObservationDisposition('')).toBe(false)
   })
 })

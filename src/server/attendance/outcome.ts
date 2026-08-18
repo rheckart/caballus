@@ -25,6 +25,10 @@ export type Refusal =
    * the two doors that clear it.
    */
   | 'observations_undispositioned'
+  /** MSDE's own rule: a parent, a guardian or a relative may not attest (ADR 0012, #45). */
+  | 'relative_may_not_attest'
+  /** A Supervising Adult named with no relationship stated, or the reverse. */
+  | 'attestation_relationship_required'
 
 export type Recorded<T = null> =
   { readonly ok: true; readonly value: T } | { readonly ok: false; readonly because: Refusal }

@@ -6,13 +6,17 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  ATTESTATION_RELATIONSHIPS,
   anneArundelReport,
   calvertReport,
   hoursOf,
+  isAttestationRelationship,
   isOpen,
   isSchoolEligible,
+  mayAttest,
   rosteredAbsent,
   type AttendanceRecord,
+  type AttestationRelationship,
   type LedgerRow,
 } from './attendance'
 import type { DayString } from './time'
@@ -39,7 +43,11 @@ describe('hoursOf', () => {
 
   it('is the exact duration, never rounded', () => {
     const oneHour = 60 * 60 * 1000
-    const record: AttendanceRecord = { volunteerId: 'beth', arrivedAt: 0, departedAt: oneHour * 2.5 }
+    const record: AttendanceRecord = {
+      volunteerId: 'beth',
+      arrivedAt: 0,
+      departedAt: oneHour * 2.5,
+    }
     expect(hoursOf(record)).toBe(2.5)
   })
 })
@@ -116,9 +124,9 @@ describe('calvertReport — one row per visit', () => {
       row({ id: 'b', hours: 4 }),
       row({ id: 'c', volunteerName: 'Valerie', hours: 5 }),
     ])
-    expect(rows.find((r) => r.description === 'Mowed the north field' && r.hours === 5)?.overCap).toBe(
-      true,
-    )
+    expect(
+      rows.find((r) => r.description === 'Mowed the north field' && r.hours === 5)?.overCap,
+    ).toBe(true)
     expect(rows.filter((r) => r.volunteerName === 'Beth Ann').every((r) => r.overCap)).toBe(true)
     expect(rows.find((r) => r.volunteerName === 'Valerie')?.overCap).toBe(false)
   })
@@ -140,5 +148,28 @@ describe('anneArundelReport — totals composed up from the same rows', () => {
   it('leaves an open visit out of the total, the same as Calvert’s rows', () => {
     const totals = anneArundelReport([row({ hours: null })])
     expect(totals).toEqual([])
+  })
+})
+
+describe('isAttestationRelationship', () => {
+  it('accepts the four declared relationships and refuses everything else', () => {
+    for (const relationship of ATTESTATION_RELATIONSHIPS) {
+      expect(isAttestationRelationship(relationship)).toBe(true)
+    }
+    expect(isAttestationRelationship('sibling')).toBe(false)
+    expect(isAttestationRelationship('')).toBe(false)
+  })
+})
+
+describe('mayAttest', () => {
+  const cases: readonly [AttestationRelationship, boolean][] = [
+    ['none', true],
+    ['parent', false],
+    ['guardian', false],
+    ['relative', false],
+  ]
+
+  it.each(cases)('%s may attest: %s', (relationship, expected) => {
+    expect(mayAttest(relationship)).toBe(expected)
   })
 })

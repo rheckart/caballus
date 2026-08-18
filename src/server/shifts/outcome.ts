@@ -54,6 +54,24 @@ export type Refusal =
   | 'already_short'
   /** Clearing a Shift nobody declared Short. Nothing to take back. */
   | 'not_short'
+  /** A Shift already closed — immutable domain fact, and there is no reopen (ADR 0013, ADR 0014, #45). */
+  | 'already_closed'
+  /** An empty Shift Note — there is nothing to append (#45). */
+  | 'text_required'
+  /**
+   * Curating a Shift Note against a Shift whose Lead's window has already
+   * closed, by somebody who holds only Shift Authority and not `horse_care`
+   * (ADR 0010's amendment, #45): "the Lead's curation window closes with the
+   * Shift," and only an officer's own scope reaches past it.
+   */
+  | 'shift_closed'
+  /**
+   * Unsent-and-visible-here work, an Open Attendance, or an undispositioned
+   * Observation still stands (ADR 0013, ADR 0014, #45) — the single refusal a
+   * retry cannot fix by itself; `closeBlockers` in `src/shared/shift-close.ts`
+   * is what names them concretely, on the read the close screen already made.
+   */
+  | 'close_blocked'
 
 export type Recorded<T = null> =
   { readonly ok: true; readonly value: T } | { readonly ok: false; readonly because: Refusal }

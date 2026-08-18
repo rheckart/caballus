@@ -34,11 +34,16 @@ export function suggestedScope(subjectKind: ObservationSubjectKind | null): Doma
 }
 
 /**
- * The two exits open to a Visit's own recorder at sign-out (ADR 0014). A
- * Shift's third exit — curated into Shift Notes — is #45's, because a Visit
- * has no Shift Notes to curate into.
+ * The three exits a Disposition may be (ADR 0014). `escalated` and
+ * `noted_no_action` are open to a Visit's own recorder at sign-out;
+ * `curated_into_shift_notes` is a Shift's own third exit, because a Visit has
+ * no Shift Notes to curate into (#45).
  */
-export const OBSERVATION_DISPOSITIONS = ['escalated', 'noted_no_action'] as const
+export const OBSERVATION_DISPOSITIONS = [
+  'escalated',
+  'noted_no_action',
+  'curated_into_shift_notes',
+] as const
 
 export type ObservationDisposition = (typeof OBSERVATION_DISPOSITIONS)[number]
 

@@ -27,11 +27,13 @@ import {
   items,
   shifts,
   spaces,
+  tasks as tasksTable,
   volunteers,
 } from '../../db/schema'
 import { currentFeedSchedulesByHorse } from '../horses/feed-schedules'
 import { resolveConditions, windowFor, type HourReading } from '../../shared/conditions'
 import { isShiftType, type ShiftType } from '../../shared/feed-schedule'
+import { isItemOutcome, isOverdue, type ItemOutcome } from '../../shared/item-outcomes'
 import {
   materializeDay,
   type ConditionAnswer,
@@ -43,6 +45,7 @@ import {
 import { instant, type DayString, type Instant } from '../../shared/time'
 import { conditionsScoped, isConditionName, type ConditionName } from '../../shared/weather'
 import { currentTaskAssignments, taskList, type TaskAssignmentRow } from './assignments'
+import { priorConsecutiveSkips } from './tick'
 import { addDays, dayBounds, instantOfTimestamp, startOfShift } from '../time'
 import { currentThresholds } from '../weather/thresholds'
 import { readingFor } from '../weather/readings'
@@ -269,6 +272,16 @@ export interface ChecklistItem {
   readonly done: boolean
   readonly doneAt: Instant | null
   readonly doneByName: string | null
+  /** The latest claim's own outcome — `null` is blank (ADR 0013, #45). */
+  readonly outcome: ItemOutcome | null
+  readonly outcomeReason: string | null
+  readonly outcomeAt: Instant | null
+  readonly outcomeByName: string | null
+  readonly outcomeLate: boolean
+  /** Whether this Item has reached its Task's Discretionary tolerance (ADR 0013, #45). */
+  readonly overdue: boolean
+  readonly assignedToVolunteerId: string | null
+  readonly assignedToVolunteerName: string | null
 }
 
 export interface Checklist {
@@ -306,12 +319,14 @@ export async function checklistForShift(
       .from(items)
       .leftJoin(horses, eq(horses.id, items.horseId))
       .leftJoin(spaces, eq(spaces.id, items.spaceId))
+      .leftJoin(tasksTable, eq(tasksTable.id, items.taskId))
       .where(or(eq(items.shiftId, shift.id), and(isNull(items.shiftId), eq(items.day, shift.day)))),
     db
       .select(SELECTED)
       .from(items)
       .leftJoin(horses, eq(horses.id, items.horseId))
       .leftJoin(spaces, eq(spaces.id, items.spaceId))
+      .leftJoin(tasksTable, eq(tasksTable.id, items.taskId))
       .where(
         and(
           eq(items.prepForShiftType, shift.shiftType),
@@ -321,21 +336,68 @@ export async function checklistForShift(
       ),
   ])
 
-  const [stallNames, outcomes] = await Promise.all([
+  const allRows = [...ownRows, ...prepRows]
+
+  const [stallNames, outcomes, assignedNames, overdueById] = await Promise.all([
     stallNamesFor(db),
     outcomesFor(
       db,
-      [...ownRows, ...prepRows].map((row) => row.id),
+      allRows.map((row) => row.id),
     ),
+    namesOf(
+      db,
+      allRows.flatMap((row) =>
+        row.assignedToVolunteerId === null ? [] : [row.assignedToVolunteerId],
+      ),
+    ),
+    overdueFor(db, allRows),
   ])
 
   const materialized = ownRows.length > 0
 
   return {
     materialized,
-    items: ownRows.map((row) => view(row, stallNames, outcomes)),
-    prepOwed: prepRows.map((row) => view(row, stallNames, outcomes)),
+    items: ownRows.map((row) => view(row, stallNames, outcomes, assignedNames, overdueById)),
+    prepOwed: prepRows.map((row) => view(row, stallNames, outcomes, assignedNames, overdueById)),
   }
+}
+
+/** Names for a batch of Volunteer ids — the same pattern `src/server/observations/list.ts` follows. */
+async function namesOf(
+  db: OrgScopedDatabase,
+  ids: readonly string[],
+): Promise<ReadonlyMap<string, string>> {
+  if (ids.length === 0) return new Map()
+  const rows = await db
+    .select({ id: volunteers.id, name: volunteers.name })
+    .from(volunteers)
+    .where(inArray(volunteers.id, [...new Set(ids)]))
+  return new Map(rows.map((row) => [row.id, row.name]))
+}
+
+/**
+ * Whether each row with a nullable tolerance has reached it — the same
+ * `priorConsecutiveSkips`/`isOverdue` pair `src/server/checklist/tick.ts`
+ * checks a Drop against, so the card and the write agree (ADR 0013, #45).
+ */
+async function overdueFor(
+  db: OrgScopedDatabase,
+  rows: readonly {
+    readonly id: string
+    readonly taskId: string | null
+    readonly horseId: string | null
+    readonly spaceId: string | null
+    readonly toleranceCount: number | null
+  }[],
+): Promise<ReadonlyMap<string, boolean>> {
+  const candidates = rows.filter((row) => row.taskId !== null && row.toleranceCount !== null)
+  const entries = await Promise.all(
+    candidates.map(async (row) => {
+      const priorSkips = await priorConsecutiveSkips(db, row)
+      return [row.id, isOverdue(priorSkips, row.toleranceCount)] as const
+    }),
+  )
+  return new Map(entries)
 }
 
 /** Every horse's own stall, by horse id — the Board's own `stall` kind (ADR 0002). */
@@ -349,26 +411,33 @@ async function stallNamesFor(db: OrgScopedDatabase): Promise<ReadonlyMap<string,
   return new Map(rows.map((row) => [row.horseId, row.stallName]))
 }
 
+interface LatestOutcome {
+  readonly outcome: ItemOutcome
+  readonly reason: string | null
+  readonly at: Instant
+  readonly by: string
+  readonly late: boolean
+}
+
 /**
  * The latest claim against each of `itemIds`, by id — "latest" because ADR
  * 0013 makes an Item's current outcome the newest of its append-only series,
- * never a value overwritten in place. Only `done` is ever written today
- * (#42), so this reads as *has anyone claimed it, and when, and who*.
+ * never a value overwritten in place.
  */
 async function outcomesFor(
   db: OrgScopedDatabase,
   itemIds: readonly string[],
-): Promise<
-  ReadonlyMap<string, { readonly outcome: string; readonly at: Instant; readonly by: string }>
-> {
+): Promise<ReadonlyMap<string, LatestOutcome>> {
   if (itemIds.length === 0) return new Map()
 
   const rows = await db
     .select({
       itemId: itemOutcomes.itemId,
       outcome: itemOutcomes.outcome,
+      reason: itemOutcomes.reason,
       claimedAt: itemOutcomes.claimedAt,
       claimedByName: volunteers.name,
+      late: itemOutcomes.late,
     })
     .from(itemOutcomes)
     .innerJoin(volunteers, eq(volunteers.id, itemOutcomes.claimedBy))
@@ -377,12 +446,15 @@ async function outcomesFor(
 
   // Ordered oldest first, so the last write for a given Item id in this loop
   // is the latest claim — no second pass to find a maximum.
-  const by = new Map<string, { outcome: string; at: Instant; by: string }>()
+  const by = new Map<string, LatestOutcome>()
   for (const row of rows) {
+    if (!isItemOutcome(row.outcome)) continue
     by.set(row.itemId, {
       outcome: row.outcome,
+      reason: row.reason,
       at: instantOfTimestamp(row.claimedAt),
       by: row.claimedByName,
+      late: row.late,
     })
   }
   return by
@@ -404,6 +476,9 @@ const SELECTED = {
   prepForShiftType: items.prepForShiftType,
   closing: items.closing,
   conditionName: items.conditionName,
+  taskId: items.taskId,
+  toleranceCount: tasksTable.toleranceCount,
+  assignedToVolunteerId: items.assignedToVolunteerId,
 }
 
 function view(
@@ -423,12 +498,14 @@ function view(
     readonly prepForShiftType: string | null
     readonly closing: boolean
     readonly conditionName: string | null
+    readonly taskId: string | null
+    readonly toleranceCount: number | null
+    readonly assignedToVolunteerId: string | null
   },
   stallNames: ReadonlyMap<string, string>,
-  outcomes: ReadonlyMap<
-    string,
-    { readonly outcome: string; readonly at: Instant; readonly by: string }
-  >,
+  outcomes: ReadonlyMap<string, LatestOutcome>,
+  assignedNames: ReadonlyMap<string, string>,
+  overdueById: ReadonlyMap<string, boolean>,
 ): ChecklistItem {
   const latest = outcomes.get(row.id) ?? null
 
@@ -460,5 +537,16 @@ function view(
     done: latest?.outcome === 'done',
     doneAt: latest === null ? null : latest.at,
     doneByName: latest === null ? null : latest.by,
+    outcome: latest?.outcome ?? null,
+    outcomeReason: latest?.reason ?? null,
+    outcomeAt: latest === null ? null : latest.at,
+    outcomeByName: latest === null ? null : latest.by,
+    outcomeLate: latest?.late ?? false,
+    overdue: overdueById.get(row.id) ?? false,
+    assignedToVolunteerId: row.assignedToVolunteerId,
+    assignedToVolunteerName:
+      row.assignedToVolunteerId === null
+        ? null
+        : (assignedNames.get(row.assignedToVolunteerId) ?? null),
   }
 }

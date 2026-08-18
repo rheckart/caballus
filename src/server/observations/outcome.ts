@@ -25,6 +25,10 @@ export type Refusal =
   | 'observer_not_rostered'
   | 'observation_not_found'
   | 'already_dispositioned'
+  /** Naming a Shift the Observation was not recorded on (#45). */
+  | 'not_on_this_shift'
+  /** `curated_into_shift_notes` needs words to curate — the Observation's own if none were sent. */
+  | 'note_text_required'
   /** `noted_no_action` belongs to the Observation's own recorder alone. */
   | 'not_the_recorder'
   /** Neither Shift Authority over the Observation's Shift, nor a holder of the named Scope. */

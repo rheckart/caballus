@@ -1197,6 +1197,14 @@ export const shifts = pgTable(
     shortClearedBy: uuid('short_cleared_by').references(() => volunteers.id),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     createdBy: uuid('created_by').references(() => volunteers.id),
+    /**
+     * When the record became true (ADR 0013, ADR 0014, #45). Null while open.
+     * A closed Shift is immutable domain fact — nothing here ever clears this
+     * once set, and there is no reopen, the same refusal ADR 0014 gives an
+     * Escalation.
+     */
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    closedBy: uuid('closed_by').references(() => volunteers.id),
   },
   (table) => [
     // What makes two runs at the same moment create nothing twice. The
@@ -1425,6 +1433,17 @@ export const items = pgTable(
      */
     materializationKey: text('materialization_key').notNull(),
     materializedAt: timestamp('materialized_at', { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * A hint, never a gate (ADR 0013, #45): the Volunteer *expected* to do this
+     * Item, set by Shift Authority naming a rostered volunteer or by a
+     * volunteer self-claiming — "the same field used in the other direction".
+     * Mutable and unaudited, because a hand-off is coordination rather than a
+     * domain fact worth a history: any rostered Volunteer may still complete an
+     * Item nobody assigned to them.
+     */
+    assignedToVolunteerId: uuid('assigned_to_volunteer_id').references(() => volunteers.id),
+    assignedAt: timestamp('assigned_at', { withTimezone: true }),
+    assignedBy: uuid('assigned_by').references(() => volunteers.id),
   },
   (table) => [
     uniqueIndex('items_materialization_key').on(table.orgId, table.materializationKey),
@@ -1448,11 +1467,10 @@ export const items = pgTable(
  * Shift that day may satisfy it (ADR 0013), so the claim needs its own record
  * of which one the volunteer was actually standing on.
  *
- * **Only `done` is written today.** ADR 0013 names four outcomes — Done,
- * Dropped, Not done, and blank as the default nothing here ever writes — and
- * `outcome` is text rather than an enum column for the same reason `position`
- * on `shift_roster` is, so the other three arrive as a value rather than a
- * migration (#42).
+ * **Three outcomes are written: `done`, `dropped`, `not_done`** — blank is the
+ * fourth, the default nothing here ever writes — and `outcome` is text rather
+ * than an enum column for the same reason `position` on `shift_roster` is
+ * (#42, #45).
  *
  * No audit entry: this *is* the record, the way `items` itself carries none.
  */
@@ -1469,19 +1487,77 @@ export const itemOutcomes = pgTable(
     shiftId: uuid('shift_id')
       .notNull()
       .references(() => shifts.id),
-    /** `done` today; ADR 0013's other two are a later ticket's write. */
+    /** One of `ITEM_OUTCOMES` in `src/shared/item-outcomes.ts` — `done`, `dropped` or `not_done`. */
     outcome: text('outcome').notNull(),
-    /** Free text, for the outcomes that carry one — none does yet. */
+    /** Free text. Required for `not_done`; optional for `dropped`; unused by `done`. */
     reason: text('reason'),
     claimedAt: timestamp('claimed_at', { withTimezone: true }).notNull().defaultNow(),
     claimedBy: uuid('claimed_by')
       .notNull()
       .references(() => volunteers.id),
+    /**
+     * Set when this claim was recorded against a Shift already closed — a late
+     * claim ADR 0013 says to accept rather than refuse, because the alternative
+     * is throwing away work that actually happened. The close record itself
+     * stays the truthful snapshot it was at the moment of close; this is what
+     * lets a screen tell a late claim apart from one the close already saw.
+     */
+    late: boolean('late').notNull().default(false),
   },
   (table) => [
     // The read a checklist makes: every claim against one Item, newest first.
     index('item_outcomes_item').on(table.orgId, table.itemId),
     inScope('item_outcomes_in_scope'),
+  ],
+).enableRLS()
+
+/**
+ * Shift Notes: the Lead's own handover log, curated at the Shift and read by
+ * date (`CONTEXT.md`'s Shift Notes; ADR 0013, #45).
+ *
+ * **Appended, never overwritten** — "a field is edited by overwriting and the
+ * second Lead of the day would silently erase the first" — so this is a list
+ * of entries rather than one free-text column, the same append-only shape
+ * `escalation_comments` gives a thread.
+ *
+ * `day` rather than a pointer to a following Shift is the whole of how a note
+ * surfaces: "the AM Shift's successor is Lunch for two horses and PM for the
+ * other nine," so recency by date is what lets both read this morning's note
+ * without either being told it is the other's successor. Kept by date rather
+ * than by close specifically, because a Shift nobody staffs never closes and
+ * its notes would otherwise never surface.
+ *
+ * `postClose` marks an entry `horse_care` wrote after `shiftId`'s own Shift
+ * Authority window ended — ADR 0010 amended: "the President reading
+ * Thursday's notes on Friday and adding *I called the vet* is a real act,"
+ * carried here rather than left for a reader to infer from the timestamp
+ * alone.
+ */
+export const shiftNotes = pgTable(
+  'shift_notes',
+  {
+    id: uuid('id').primaryKey(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id),
+    shiftId: uuid('shift_id')
+      .notNull()
+      .references(() => shifts.id),
+    /** Copied from the Shift at write time — the read every later Shift's opening makes. */
+    day: date('day').notNull(),
+    text: text('text').notNull(),
+    /** The Horse this note concerns, or null for one about the Shift generally. */
+    horseId: uuid('horse_id').references(() => horses.id),
+    authoredBy: uuid('authored_by')
+      .notNull()
+      .references(() => volunteers.id),
+    authoredAt: timestamp('authored_at', { withTimezone: true }).notNull().defaultNow(),
+    postClose: boolean('post_close').notNull().default(false),
+  },
+  (table) => [
+    // The read every Shift's opening makes: recent days' notes, newest first.
+    index('shift_notes_day').on(table.orgId, table.day),
+    inScope('shift_notes_in_scope'),
   ],
 ).enableRLS()
 
@@ -1536,10 +1612,23 @@ export const attendance = pgTable(
     /** Null while open. Never written by a timer — a person closes it, or Shift Authority does (ADR 0012). */
     departedAt: timestamp('departed_at', { withTimezone: true }),
     departedRecordedBy: uuid('departed_recorded_by').references(() => volunteers.id),
-    /** Who supervised a minor, as a Volunteer — distinct from who was merely present (ADR 0012). */
+    /**
+     * Who supervised a minor, as a Volunteer — distinct from who was merely
+     * present (ADR 0012). This is the Attestation: MSDE refuses one from a
+     * parent, guardian or relative, which `attestationRelationship` is what
+     * that refusal is checked against.
+     */
     supervisingAdultId: uuid('supervising_adult_id').references(() => volunteers.id),
     /** A phone number a school can ring, captured alongside the adult (ADR 0012). */
     supervisingAdultPhone: text('supervising_adult_phone'),
+    /**
+     * One of `ATTESTATION_RELATIONSHIPS` in `src/shared/attendance.ts` — the
+     * fact the write refuses an Attestation against (ADR 0012, #45): "the
+     * model separates who was present with a volunteer from who supervised
+     * them, stores the relationship, and refuses an attestation by a parent,
+     * guardian or relative." Null unless `supervisingAdultId` is set.
+     */
+    attestationRelationship: text('attestation_relationship'),
   },
   (table) => [
     // A volunteer's own ledger, and the read the desktop report builds on.

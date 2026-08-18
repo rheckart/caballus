@@ -50,6 +50,30 @@ function item(overrides: Record<string, unknown> = {}) {
     done: false,
     doneAt: null,
     doneByName: null,
+    outcome: null,
+    outcomeReason: null,
+    outcomeAt: null,
+    outcomeByName: null,
+    outcomeLate: false,
+    overdue: false,
+    assignedToVolunteerId: null,
+    assignedToVolunteerName: null,
+    ...overrides,
+  }
+}
+
+function checklistBody(overrides: Record<string, unknown> = {}) {
+  return {
+    shiftId: 'shift-1',
+    day: '2026-08-18',
+    shiftType: 'feed_am',
+    materialized: true,
+    items: [],
+    prepOwed: [],
+    closedAt: null,
+    openAttendanceCount: 0,
+    undispositionedObservationCount: 0,
+    shiftNotes: [],
     ...overrides,
   }
 }
@@ -104,14 +128,7 @@ function jsonResponse(body: unknown, status: number): Promise<Response> {
 describe('opening a Shift', () => {
   it('shows a Shift whose day nothing has materialized as unfixed, not as empty', async () => {
     stubApi({
-      '/shifts/shift-1': {
-        shiftId: 'shift-1',
-        day: '2026-08-18',
-        shiftType: 'feed_am',
-        materialized: false,
-        items: [],
-        prepOwed: [],
-      },
+      '/shifts/shift-1': checklistBody({ materialized: false }),
     })
     renderAt('shift-1')
 
@@ -120,11 +137,7 @@ describe('opening a Shift', () => {
 
   it('groups Items per horse', async () => {
     stubApi({
-      '/shifts/shift-1': {
-        shiftId: 'shift-1',
-        day: '2026-08-18',
-        shiftType: 'feed_am',
-        materialized: true,
+      '/shifts/shift-1': checklistBody({
         items: [
           item(),
           item({
@@ -134,8 +147,7 @@ describe('opening a Shift', () => {
             requiresMedicationAuthority: true,
           }),
         ],
-        prepOwed: [],
-      },
+      }),
     })
     renderAt('shift-1')
 
@@ -146,11 +158,7 @@ describe('opening a Shift', () => {
 
   it('groups Items per Space', async () => {
     stubApi({
-      '/shifts/shift-1': {
-        shiftId: 'shift-1',
-        day: '2026-08-18',
-        shiftType: 'feed_am',
-        materialized: true,
+      '/shifts/shift-1': checklistBody({
         items: [
           item({
             id: 'item-3',
@@ -163,8 +171,7 @@ describe('opening a Shift', () => {
             instructionText: 'Muck the stalls.',
           }),
         ],
-        prepOwed: [],
-      },
+      }),
     })
     renderAt('shift-1')
 
@@ -174,11 +181,7 @@ describe('opening a Shift', () => {
 
   it('renders an undecided Task Assignment as an unanswered question, not as no work', async () => {
     stubApi({
-      '/shifts/shift-1': {
-        shiftId: 'shift-1',
-        day: '2026-08-18',
-        shiftType: 'feed_am',
-        materialized: true,
+      '/shifts/shift-1': checklistBody({
         items: [
           item({
             id: 'item-4',
@@ -192,8 +195,7 @@ describe('opening a Shift', () => {
             assignmentUndecided: true,
           }),
         ],
-        prepOwed: [],
-      },
+      }),
     })
     renderAt('shift-1')
 
@@ -202,12 +204,8 @@ describe('opening a Shift', () => {
 
   it('shows the Prep this Shift is owed', async () => {
     stubApi({
-      '/shifts/shift-1': {
-        shiftId: 'shift-1',
-        day: '2026-08-18',
+      '/shifts/shift-1': checklistBody({
         shiftType: 'lunch',
-        materialized: true,
-        items: [],
         prepOwed: [
           item({
             id: 'prep-1',
@@ -215,7 +213,7 @@ describe('opening a Shift', () => {
             prepForShiftType: 'lunch',
           }),
         ],
-      },
+      }),
     })
     renderAt('shift-1')
 
@@ -227,22 +225,22 @@ describe('opening a Shift', () => {
 
   it('puts horse cards in stall order, "10" after "9"', async () => {
     stubApi({
-      '/shifts/shift-1': {
-        shiftId: 'shift-1',
-        day: '2026-08-18',
-        shiftType: 'feed_am',
-        materialized: true,
+      '/shifts/shift-1': checklistBody({
         items: [
           item({ id: 'blue', horseId: 'blue', horseName: 'Blue', horseStallName: '10' }),
           item({ id: 'nora', horseId: 'nora', horseName: 'Nora', horseStallName: '9' }),
         ],
-        prepOwed: [],
-      },
+      }),
     })
     renderAt('shift-1')
 
     const headings = await screen.findAllByRole('heading', { level: 2 })
-    expect(headings.map((heading) => heading.textContent)).toEqual(['Nora', 'Blue'])
+    // Shift Notes carries its own heading now (#45) — this asserts the horse
+    // cards' own order among whatever else the screen puts on the page.
+    const names = headings
+      .map((heading) => heading.textContent)
+      .filter((text) => text !== 'Shift Notes')
+    expect(names).toEqual(['Nora', 'Blue'])
   })
 
   it('ticks an Item Done: lands optimistically, and reads Done only once the server confirms it', async () => {
@@ -251,14 +249,10 @@ describe('opening a Shift', () => {
     // to send, say) must not be mistaken for the server confirming a tick.
     let posted = false
     stubApi({
-      '/shifts/shift-1': () => ({
-        shiftId: 'shift-1',
-        day: '2026-08-18',
-        shiftType: 'feed_am',
-        materialized: true,
-        items: [item({ done: posted, doneByName: posted ? 'Priya Chandra' : null })],
-        prepOwed: [],
-      }),
+      '/shifts/shift-1': () =>
+        checklistBody({
+          items: [item({ done: posted, doneByName: posted ? 'Priya Chandra' : null })],
+        }),
       '/items/done': () => {
         posted = true
         return { itemOutcomeId: 'outcome-1' }
@@ -280,14 +274,7 @@ describe('opening a Shift', () => {
   it('shows a tick as Unsent while it cannot reach the server, and never as Done', async () => {
     stubApiWith(
       {
-        '/shifts/shift-1': {
-          shiftId: 'shift-1',
-          day: '2026-08-18',
-          shiftType: 'feed_am',
-          materialized: true,
-          items: [item()],
-          prepOwed: [],
-        },
+        '/shifts/shift-1': checklistBody({ items: [item()] }),
       },
       { '/items/done': () => Promise.reject(new TypeError('network unreachable')) },
     )
@@ -304,11 +291,7 @@ describe('opening a Shift', () => {
   it('refuses a Medicate Item explicitly when the actor holds no Medication Authority', async () => {
     stubApiWith(
       {
-        '/shifts/shift-1': {
-          shiftId: 'shift-1',
-          day: '2026-08-18',
-          shiftType: 'feed_am',
-          materialized: true,
+        '/shifts/shift-1': checklistBody({
           items: [
             item({
               id: 'medicate-1',
@@ -317,8 +300,7 @@ describe('opening a Shift', () => {
               instructionText: 'Give 1g Bute.',
             }),
           ],
-          prepOwed: [],
-        },
+        }),
       },
       {
         '/items/done': () => jsonResponse({ error: 'medication_authority_required' }, 409),
@@ -335,5 +317,127 @@ describe('opening a Shift', () => {
     await waitFor(() => {
       expect((screen.getByRole('checkbox') as HTMLInputElement).checked).toBe(false)
     })
+  })
+})
+
+describe('closing a Shift (#45)', () => {
+  it('records Not done, with a reason, on any Item', async () => {
+    stubApiWith(
+      { '/shifts/shift-1': checklistBody({ items: [item()] }) },
+      { '/items/not-done': () => jsonResponse({ itemOutcomeId: 'outcome-1' }, 201) },
+    )
+    renderAt('shift-1')
+
+    fireEvent.click(await screen.findByText('Not done'))
+    fireEvent.change(screen.getByLabelText(/Why/), { target: { value: 'It warmed up.' } })
+    // Shift Notes carries its own "Save" too — this Item's own form is the
+    // second one on the page, the Notes section rendering first.
+    fireEvent.click(screen.getAllByText('Save')[1] ?? screen.getByText('Save'))
+
+    await waitFor(() => {
+      expect(screen.queryByText('Not done')).toBeTruthy()
+    })
+  })
+
+  it('offers Drop on Discretionary work', async () => {
+    stubApiWith(
+      {
+        '/shifts/shift-1': checklistBody({
+          items: [item({ priority: 'discretionary' })],
+        }),
+      },
+      { '/items/drop': () => jsonResponse({ itemOutcomeId: 'outcome-1' }, 201) },
+    )
+    renderAt('shift-1')
+
+    expect(await screen.findByText('Drop')).toBeTruthy()
+  })
+
+  it('withdraws Drop once the Item is overdue', async () => {
+    stubApi({
+      '/shifts/shift-1': checklistBody({
+        items: [item({ priority: 'discretionary', overdue: true })],
+      }),
+    })
+    renderAt('shift-1')
+
+    await screen.findByText(/overdue: Drop is withdrawn/)
+    expect(screen.queryByText('Drop')).toBeNull()
+  })
+
+  it('lists the concrete blockers and refuses to close until they clear', async () => {
+    stubApi({
+      '/shifts/shift-1': checklistBody({
+        openAttendanceCount: 1,
+        undispositionedObservationCount: 2,
+      }),
+    })
+    renderAt('shift-1')
+
+    expect(await screen.findByText(/Somebody still signed in \(1\)/)).toBeTruthy()
+    expect(screen.getByText(/A report with no decision yet \(2\)/)).toBeTruthy()
+    expect(screen.queryByText('Close Shift')).toBeNull()
+  })
+
+  it('closes the Shift once nothing blocks it', async () => {
+    let closed = false
+    stubApiWith(
+      {
+        '/shifts/shift-1': () => checklistBody({ closedAt: closed ? 1_700_000_000_000 : null }),
+      },
+      {
+        '/shifts/close': () => {
+          closed = true
+          return jsonResponse({ closedAt: 1_700_000_000_000 }, 200)
+        },
+      },
+    )
+    renderAt('shift-1')
+
+    fireEvent.click(await screen.findByText('Close Shift'))
+
+    expect(await screen.findByText('Closed.')).toBeTruthy()
+  })
+
+  it('shows Shift Notes and lets Shift Authority add one', async () => {
+    let noted = false
+    stubApiWith(
+      {
+        '/shifts/shift-1': () =>
+          checklistBody({
+            shiftNotes: noted
+              ? [
+                  {
+                    id: 'note-1',
+                    day: '2026-08-18',
+                    text: 'Dawson is off his feed.',
+                    horseId: null,
+                    horseName: null,
+                    authoredBy: 'lead-1',
+                    authoredByName: 'Lead Lucy',
+                    authoredAt: 1_700_000_000_000,
+                    postClose: false,
+                  },
+                ]
+              : [],
+          }),
+      },
+      {
+        '/shifts/notes': () => {
+          noted = true
+          return jsonResponse({ shiftNoteId: 'note-1' }, 201)
+        },
+      },
+    )
+    renderAt('shift-1')
+
+    expect(await screen.findByText('Nothing left for today or yesterday.')).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('Add a note:'), {
+      target: { value: 'Dawson is off his feed.' },
+    })
+    fireEvent.click(screen.getByText('Save'))
+
+    expect(await screen.findByText(/Dawson is off his feed\./)).toBeTruthy()
   })
 })

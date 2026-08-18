@@ -23,6 +23,7 @@ import { isObservationSubjectKind, type ObservationSubjectKind } from '../../sha
 import { now } from '../../shared/time'
 import type { Actor } from '../request-context'
 import { holdsShiftAuthority } from '../shifts/authority'
+import { addShiftNote } from '../shifts/notes'
 import { timestampOf } from '../time'
 import { recorded, refused, type Recorded } from './outcome'
 
@@ -187,6 +188,77 @@ export async function noteObservation(
       dispositionedAt: timestampOf(now()),
       dispositionedBy: actorVolunteerId,
       disposition: 'noted_no_action',
+    })
+    .where(eq(observations.id, about.observationId))
+
+  return recorded(null)
+}
+
+export interface DispositionShiftObservation {
+  readonly shiftId: string
+  readonly observationId: string
+  readonly disposition: 'noted_no_action' | 'curated_into_shift_notes'
+  /** Required by `curated_into_shift_notes`; ignored by `noted_no_action`. */
+  readonly noteText?: string | null
+}
+
+/**
+ * A Shift's own two remaining exits, decided by whoever holds Shift Authority
+ * over it — never only the recorder, because close is the one moment the
+ * person who can act is standing there holding the phone (ADR 0014, #45).
+ *
+ * `mutation`'s own join already settled Shift Authority before this runs, so
+ * this checks only what that join cannot: that the Observation actually
+ * belongs to the Shift named, and that it has nobody's Disposition on it yet.
+ */
+export async function dispositionShiftObservation(
+  db: OrgScopedDatabase,
+  orgId: OrgId,
+  actor: Actor,
+  about: DispositionShiftObservation,
+): Promise<Recorded<null>> {
+  const [row] = await db
+    .select({
+      id: observations.id,
+      attendanceId: observations.attendanceId,
+      text: observations.text,
+      subjectKind: observations.subjectKind,
+      subjectId: observations.subjectId,
+      dispositionedAt: observations.dispositionedAt,
+    })
+    .from(observations)
+    .where(eq(observations.id, about.observationId))
+    .limit(1)
+  if (row === undefined) return refused('observation_not_found')
+  if (row.dispositionedAt !== null) return refused('already_dispositioned')
+
+  const [att] = await db
+    .select({ shiftId: attendance.shiftId })
+    .from(attendance)
+    .where(eq(attendance.id, row.attendanceId))
+    .limit(1)
+  if (att === undefined || att.shiftId !== about.shiftId) return refused('not_on_this_shift')
+
+  if (about.disposition === 'curated_into_shift_notes') {
+    const text = (about.noteText ?? row.text).trim()
+    if (text === '') return refused('note_text_required')
+
+    const horseId = row.subjectKind === 'horse' ? row.subjectId : null
+    const created = await addShiftNote(
+      db,
+      orgId,
+      { volunteerId: actor.volunteerId, holdsHorseCare: actor.domainScopes.includes('horse_care') },
+      { shiftId: about.shiftId, text, horseId },
+    )
+    if (!created.ok) return refused('observation_not_found')
+  }
+
+  await db
+    .update(observations)
+    .set({
+      dispositionedAt: timestampOf(now()),
+      dispositionedBy: actor.volunteerId,
+      disposition: about.disposition,
     })
     .where(eq(observations.id, about.observationId))
 
