@@ -19,6 +19,7 @@
  */
 import { z } from 'zod'
 
+import { ATTENDANCE_CATEGORIES } from './attendance'
 import { DOMAIN_SCOPES } from './domain-scopes'
 import { ROUTES, SHIFT_TYPES } from './feed-schedule'
 import {
@@ -694,6 +695,19 @@ const declaredShort = z.object({
 })
 
 /**
+ * Arrival and departure only, floor-readable so a Lead can see who has
+ * arrived without a `roster` grant (ADR 0012). The full ledger — description,
+ * category, who recorded it, the Supervising Adult — is `/attendance`, behind
+ * `roster`.
+ */
+const shiftAttendanceMember = z.object({
+  volunteerId: z.string(),
+  /** Epoch milliseconds. */
+  arrivedAt: z.number(),
+  departedAt: z.number().nullable(),
+})
+
+/**
  * One dated Shift (`CONTEXT.md`'s Shift).
  *
  * `state` is derived from the clock rather than stored, and there is no
@@ -714,6 +728,7 @@ const shift = z.object({
   roster: z.array(shiftRosterMember),
   staffing: shiftStaffing,
   short: declaredShort.nullable(),
+  attendance: z.array(shiftAttendanceMember),
 })
 
 /**
@@ -845,6 +860,49 @@ const horseId = z.uuid()
 const spaceId = z.uuid()
 const supplierId = z.uuid()
 const productId = z.uuid()
+const shiftId = z.uuid()
+const attendanceCategory = z.enum(ATTENDANCE_CATEGORIES)
+
+/**
+ * One row of the sign-in sheet, replaced (ADR 0012): a person, an arrival, a
+ * departure, an optional Shift, and — for a Visit — the job in the
+ * volunteer's own words plus its category.
+ *
+ * `departedAt` null is an open Attendance: never invented by the app, and
+ * closable only by a person recording it (ADR 0012). Everybody's name rides
+ * along rather than an id alone — this is the ledger a report is built from,
+ * and a screen resolving sixty names one at a time is the slowness ADR 0007's
+ * roster read was written against.
+ */
+const attendanceRecord = z.object({
+  id: z.string(),
+  volunteerId: z.string(),
+  volunteerName: z.string(),
+  /** Null for a Visit. */
+  shiftId: z.string().nullable(),
+  day: dayOfTheOrganisation,
+  category: attendanceCategory,
+  description: z.string().nullable(),
+  /** Epoch milliseconds. */
+  arrivedAt: z.number(),
+  arrivedBy: z.string(),
+  arrivedByName: z.string(),
+  departedAt: z.number().nullable(),
+  departedBy: z.string().nullable(),
+  departedByName: z.string().nullable(),
+  /** Who supervised, as a Volunteer — distinct from who was merely present (ADR 0012). */
+  supervisingAdultId: z.string().nullable(),
+  supervisingAdultName: z.string().nullable(),
+  supervisingAdultPhone: z.string().nullable(),
+})
+
+/**
+ * The whole ledger, newest first, behind `roster` — the hours report is built
+ * from this on the desktop, and it is the one Attendance read this ticket
+ * puts behind that scope rather than on ADR 0010's floor (`src/server/attendance/list.ts`
+ * says why).
+ */
+export const attendanceLedger = z.object({ entries: z.array(attendanceRecord) })
 
 export const contract = {
   reads: {
@@ -878,6 +936,8 @@ export const contract = {
     '/tasks': { answers: taskList },
     /** Which Shift Type normally does which Task, and the decisions still owed (ADR 0013). */
     '/task-assignments': { answers: taskAssignmentList },
+    /** The sign-in sheet, whole, behind `roster` — the hours report is built from this (ADR 0012). */
+    '/attendance': { answers: attendanceLedger },
   },
   writes: {
     /**
@@ -1343,6 +1403,49 @@ export const contract = {
         takenOn: dayOfTheOrganisation,
       }),
       answers: z.object({ measurementId: z.string() }),
+    },
+    /**
+     * An arrival, against a Shift or as a Visit (ADR 0012). `volunteerId` is
+     * who arrived — self, or somebody else, always attributed to whoever
+     * called this rather than to them.
+     *
+     * `shiftId` present means a Shift row: `description` and `category` are
+     * ignored, and the server writes `category: 'shift'` regardless of what
+     * was sent. `shiftId` absent means a Visit: both are required, and
+     * `category` is never `shift`.
+     *
+     * Queues, like every ordinary statement about work that already happened
+     * (ADR 0005, ADR 0012) — this is not a Cover or a Drop, so it carries no
+     * `neverQueued`.
+     */
+    '/attendance/sign-in': {
+      accepts: z.object({
+        volunteerId,
+        shiftId: shiftId.nullish(),
+        description: z.string().max(1000).nullish(),
+        category: attendanceCategory.nullish(),
+      }),
+      answers: z.object({ attendanceId: z.string() }),
+    },
+    /**
+     * A departure, resolved rather than named: the server finds the open
+     * Attendance for `volunteerId` — against `shiftId` where one is given, the
+     * open Visit otherwise — and closes it. **A missing sign-out is never
+     * invented by the app**; this is the one thing that ever closes one, and
+     * it always names who did (ADR 0012).
+     *
+     * `supervisingAdultId` and `supervisingAdultPhone` are captured here,
+     * alongside the sign-out that already happens at this moment — the adult
+     * who supervised a minor, distinct from who was merely present.
+     */
+    '/attendance/sign-out': {
+      accepts: z.object({
+        volunteerId,
+        shiftId: shiftId.nullish(),
+        supervisingAdultId: volunteerId.nullish(),
+        supervisingAdultPhone: z.string().max(30).nullish(),
+      }),
+      answers: z.void(),
     },
   },
 } as const satisfies Contract

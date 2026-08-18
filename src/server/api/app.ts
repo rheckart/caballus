@@ -110,6 +110,8 @@ import { checklistForShift, materializeDayFor, type Checklist } from '../checkli
 import type { Refusal as ChecklistRefusal } from '../checklist/outcome'
 import { shiftById } from '../shifts/list'
 import type { ShiftType } from '../../shared/feed-schedule'
+import { attendanceLedger } from '../attendance/list'
+import { signIn, signOut, type Refusal as AttendanceRefusal } from '../attendance/records'
 
 // The server's one entry point, so this is where reporting starts. It is a
 // no-op without a DSN, which is the state of every machine until one is set.
@@ -242,6 +244,16 @@ export function buildApi(
   function checklistRefusal(because: ChecklistRefusal) {
     const missing =
       because === 'task_not_found' || because === 'horse_not_found' || because === 'space_not_found'
+    return json({ error: because }, missing ? 404 : 409)
+  }
+
+  /**
+   * And again for Attendance. A thing that is not there — the Volunteer, the
+   * Shift — is a 404; everything else is a conflict, because none of them
+   * becomes true by retrying (ADR 0012).
+   */
+  function attendanceRefusal(because: AttendanceRefusal) {
+    const missing = because === 'volunteer_not_found' || because === 'shift_not_found'
     return json({ error: because }, missing ? 404 : 409)
   }
 
@@ -625,6 +637,7 @@ export function buildApi(
         ...shift,
         roster: shift.roster.map((member) => ({ ...member, gaps: [...member.gaps] })),
         staffing: { ...shift.staffing, gaps: [...shift.staffing.gaps] },
+        attendance: shift.attendance.map((member) => ({ ...member })),
       })),
     })
   })
@@ -770,6 +783,20 @@ export function buildApi(
         undecided: [...entry.undecided],
       })),
     })
+  })
+
+  /**
+   * The sign-in sheet, whole — every Visit and every Shift sign-in, newest
+   * first. Behind `roster`, which is where this ticket puts the hours report
+   * built from it (`src/server/attendance/list.ts` says why, against ADR
+   * 0012's own tension on this point).
+   */
+  api.route('GET', '/attendance', domainScope('roster'), async ({ context }) => {
+    const entries = await forOrg(context.orgId).run(async (db) => {
+      const clock = await clockHere(db)
+      return attendanceLedger(db, clock.timeZone)
+    })
+    return json({ entries: entries.map((entry) => ({ ...entry })) })
   })
 
   api.mutation('/spaces', domainScope('horse_care'), async (input, { context, db }) => {
@@ -1217,6 +1244,52 @@ export function buildApi(
     if (!outcome.ok) return horseRefusal(outcome.because)
     return json({ measurementId: outcome.value.id }, 201)
   })
+
+  /**
+   * An arrival, against a Shift or as a Visit (ADR 0012). On the floor: this
+   * is what makes recording your own presence — or somebody else's, in either
+   * direction — a thing that needs no Domain Scope, on the same reasoning as
+   * Cover and Drop. What makes it safe rather than a forgery surface is that
+   * `signIn` always attributes the write to the actor, never to the subject
+   * alone.
+   */
+  api.mutation(
+    '/attendance/sign-in',
+    floor('record-your-own-presence'),
+    async (input, { context, db }) => {
+      const actor = actorOf(context)
+      const outcome = await signIn(db, context.orgId, actor.volunteerId, {
+        volunteerId: input.volunteerId,
+        shiftId: input.shiftId ?? null,
+        description: input.description ?? null,
+        category: input.category ?? null,
+      })
+      if (!outcome.ok) return attendanceRefusal(outcome.because)
+      return json({ attendanceId: outcome.value.id }, 201)
+    },
+  )
+
+  /**
+   * A departure. Never invented by the app — this is the one write that ever
+   * closes an Attendance, and it always names who did (ADR 0012). Resolved
+   * from the Volunteer and, where given, the Shift, rather than an Attendance
+   * id: that is what lets a plain Volunteer close their own Visit without
+   * first reading the ledger behind `roster`.
+   */
+  api.mutation(
+    '/attendance/sign-out',
+    floor('record-your-own-presence'),
+    async (input, { context, db }) => {
+      const actor = actorOf(context)
+      const outcome = await signOut(db, context.orgId, actor.volunteerId, {
+        volunteerId: input.volunteerId,
+        shiftId: input.shiftId ?? null,
+        supervisingAdultId: input.supervisingAdultId ?? null,
+        supervisingAdultPhone: input.supervisingAdultPhone ?? null,
+      })
+      return outcome.ok ? noContent() : attendanceRefusal(outcome.because)
+    },
+  )
 
   // Every path the contract declares now has a handler, or this throws and the
   // container does not start. Registering a path nothing declares is a type

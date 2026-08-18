@@ -10,9 +10,11 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AttendanceRouteImport } from './routes/attendance'
 import { Route as BoardRouteImport } from './routes/board'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ShiftsRouteImport } from './routes/shifts'
+import { Route as AdminAttendanceRouteImport } from './routes/admin/attendance'
 import { Route as AdminAuditRouteImport } from './routes/admin/audit'
 import { Route as AdminHorsesRouteImport } from './routes/admin/horses'
 import { Route as AdminProductsRouteImport } from './routes/admin/products'
@@ -32,6 +34,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AttendanceRoute = AttendanceRouteImport.update({
+  id: '/attendance',
+  path: '/attendance',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const BoardRoute = BoardRouteImport.update({
   id: '/board',
   path: '/board',
@@ -45,6 +52,11 @@ const LoginRoute = LoginRouteImport.update({
 const ShiftsRoute = ShiftsRouteImport.update({
   id: '/shifts',
   path: '/shifts',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminAttendanceRoute = AdminAttendanceRouteImport.update({
+  id: '/admin/attendance',
+  path: '/admin/attendance',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminAuditRoute = AdminAuditRouteImport.update({
@@ -115,9 +127,11 @@ const ShiftsShiftIdRoute = ShiftsShiftIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/attendance': typeof AttendanceRoute
   '/board': typeof BoardRoute
   '/login': typeof LoginRoute
   '/shifts': typeof ShiftsRouteWithChildren
+  '/admin/attendance': typeof AdminAttendanceRoute
   '/admin/audit': typeof AdminAuditRoute
   '/admin/horses': typeof AdminHorsesRoute
   '/admin/products': typeof AdminProductsRoute
@@ -134,9 +148,11 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/attendance': typeof AttendanceRoute
   '/board': typeof BoardRoute
   '/login': typeof LoginRoute
   '/shifts': typeof ShiftsRouteWithChildren
+  '/admin/attendance': typeof AdminAttendanceRoute
   '/admin/audit': typeof AdminAuditRoute
   '/admin/horses': typeof AdminHorsesRoute
   '/admin/products': typeof AdminProductsRoute
@@ -154,9 +170,11 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/attendance': typeof AttendanceRoute
   '/board': typeof BoardRoute
   '/login': typeof LoginRoute
   '/shifts': typeof ShiftsRouteWithChildren
+  '/admin/attendance': typeof AdminAttendanceRoute
   '/admin/audit': typeof AdminAuditRoute
   '/admin/horses': typeof AdminHorsesRoute
   '/admin/products': typeof AdminProductsRoute
@@ -175,9 +193,11 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/attendance'
     | '/board'
     | '/login'
     | '/shifts'
+    | '/admin/attendance'
     | '/admin/audit'
     | '/admin/horses'
     | '/admin/products'
@@ -194,9 +214,11 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/attendance'
     | '/board'
     | '/login'
     | '/shifts'
+    | '/admin/attendance'
     | '/admin/audit'
     | '/admin/horses'
     | '/admin/products'
@@ -213,9 +235,11 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/attendance'
     | '/board'
     | '/login'
     | '/shifts'
+    | '/admin/attendance'
     | '/admin/audit'
     | '/admin/horses'
     | '/admin/products'
@@ -233,9 +257,11 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AttendanceRoute: typeof AttendanceRoute
   BoardRoute: typeof BoardRoute
   LoginRoute: typeof LoginRoute
   ShiftsRoute: typeof ShiftsRouteWithChildren
+  AdminAttendanceRoute: typeof AdminAttendanceRoute
   AdminAuditRoute: typeof AdminAuditRoute
   AdminHorsesRoute: typeof AdminHorsesRoute
   AdminProductsRoute: typeof AdminProductsRoute
@@ -259,6 +285,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/attendance': {
+      id: '/attendance'
+      path: '/attendance'
+      fullPath: '/attendance'
+      preLoaderRoute: typeof AttendanceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/board': {
       id: '/board'
       path: '/board'
@@ -278,6 +311,13 @@ declare module '@tanstack/react-router' {
       path: '/shifts'
       fullPath: '/shifts'
       preLoaderRoute: typeof ShiftsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/attendance': {
+      id: '/admin/attendance'
+      path: '/admin/attendance'
+      fullPath: '/admin/attendance'
+      preLoaderRoute: typeof AdminAttendanceRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/audit': {
@@ -387,9 +427,11 @@ const ShiftsRouteWithChildren =
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AttendanceRoute: AttendanceRoute,
   BoardRoute: BoardRoute,
   LoginRoute: LoginRoute,
   ShiftsRoute: ShiftsRouteWithChildren,
+  AdminAttendanceRoute: AdminAttendanceRoute,
   AdminAuditRoute: AdminAuditRoute,
   AdminHorsesRoute: AdminHorsesRoute,
   AdminProductsRoute: AdminProductsRoute,

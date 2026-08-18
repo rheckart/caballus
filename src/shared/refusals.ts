@@ -54,6 +54,10 @@ const REFUSALS: Record<string, string> = {
   already_short:
     'Somebody has already called this shift short. Clear it first if that has changed.',
   not_short: 'Nobody has called this shift short.',
+  description_required: 'Say what the work was — a Visit needs a job in your own words.',
+  category_invalid: 'Pick a category for the visit.',
+  already_signed_in: 'Already signed in and not yet signed out.',
+  not_signed_in: 'Nothing open to sign out of.',
 }
 
 /** What a failed call says when the server never answered at all. */

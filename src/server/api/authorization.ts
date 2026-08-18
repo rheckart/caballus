@@ -35,6 +35,14 @@ export { ROLES, ROLE_NAMES, ROLE_SCOPES, isRole, scopesOf, type Role } from '../
 export type FloorReason =
   | 'work-on-a-shift-you-are-rostered-on'
   | 'record-an-observation'
+  /**
+   * Attendance: an arrival or a departure, against a Shift or as a Visit
+   * (ADR 0012). The name says *your own* because that is the common case, but
+   * the same floor covers recording it for somebody else too — "anyone may
+   * record another volunteer's arrival or departure, in both directions", and
+   * what makes that safe rather than a forgery surface is that the write
+   * always names the actor apart from the subject, never a Domain Scope.
+   */
   | 'record-your-own-presence'
   | 'record-a-measurement'
   /**
