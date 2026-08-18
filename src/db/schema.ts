@@ -555,6 +555,106 @@ export const volunteerConsents = pgTable(
  * Reading it is behind `roster`, one of ADR 0010's two carve-outs from the
  * read-everything floor.
  */
+/**
+ * A Space (ADR 0002): a named area of one *kind* — stall, field, barn — that
+ * may be one or more physical units joined together. `2 & 3` and `All of C +
+ * D` are single rows with a compound name, not sets.
+ *
+ * Current state plus an audit entry (ADR 0003): renaming a Space or changing
+ * its kind is an edit in place, which is the whole of how splitting or
+ * merging a joined Space happens — a deliberate act by someone with the
+ * authority to make it, never a gate sensor.
+ *
+ * An unoccupied Space is a row with nothing assigned to it, and stays exactly
+ * that visible: nothing here ties a Space to whether a horse holds it.
+ */
+export const spaces = pgTable(
+  'spaces',
+  {
+    id: uuid('id').primaryKey(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id),
+    /** One of `SPACE_KINDS` in `src/shared/spaces.ts`. */
+    kind: text('kind').notNull(),
+    name: text('name').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  () => [inScope('spaces_in_scope')],
+).enableRLS()
+
+/**
+ * The horse record (ADR 0002, 0003). This ticket carries the three
+ * descriptive attributes ADR 0003 puts on the current-state tier — halter
+ * colour, blanket size, height — plus the one identifying photo, all edited in
+ * place with an audit entry. Everything else on ADR 0003's versioned and
+ * measurement tiers (feed schedule, weight, body condition) lands with the
+ * domains that need them.
+ *
+ * `photoUrl` carries wherever the photo is hosted rather than the bytes
+ * themselves — this application holds no object storage yet, and a column
+ * pointing at nothing would be worse than the column's absence (the same call
+ * #34 made about the release template).
+ *
+ * Departed is a date, never a delete (ADR 0002's brief and #32's stories): the
+ * row and its history outlive the horse leaving, and redaction from a work
+ * surface is the reader's concern rather than this table's.
+ */
+export const horses = pgTable(
+  'horses',
+  {
+    id: uuid('id').primaryKey(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id),
+    name: text('name').notNull(),
+    halterColour: text('halter_colour'),
+    blanketSize: text('blanket_size'),
+    height: text('height'),
+    photoUrl: text('photo_url'),
+    departedOn: date('departed_on'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  () => [inScope('horses_in_scope')],
+).enableRLS()
+
+/**
+ * A horse's Space assignment for one kind (ADR 0002): a row rather than a
+ * column per kind, the way `volunteer_roles` and `medication_authority` are
+ * rows rather than flags on `volunteers` — a horse holds at most one row per
+ * kind, which is the primary key, and holding none for a kind is a horse
+ * intake has not placed yet rather than a value to invent.
+ *
+ * `kind` is stored on the row rather than resolved by joining `spaces.kind`,
+ * because the primary key needs it independent of which Space is assigned —
+ * the same reason a stored `role` string is checked against `ROLE_SCOPES`
+ * rather than assumed to agree with itself.
+ */
+export const horseSpaceAssignments = pgTable(
+  'horse_space_assignments',
+  {
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id),
+    horseId: uuid('horse_id')
+      .notNull()
+      .references(() => horses.id),
+    /** One of `SPACE_KINDS`, and always the assigned Space's own kind. */
+    kind: text('kind').notNull(),
+    spaceId: uuid('space_id')
+      .notNull()
+      .references(() => spaces.id),
+    assignedAt: timestamp('assigned_at', { withTimezone: true }).notNull().defaultNow(),
+    assignedBy: uuid('assigned_by').references(() => volunteers.id),
+  },
+  (table) => [
+    primaryKey({ columns: [table.orgId, table.horseId, table.kind] }),
+    // The admin screen's other read: which horses hold a given Space.
+    index('horse_space_assignments_space').on(table.spaceId),
+    inScope('horse_space_assignments_in_scope'),
+  ],
+).enableRLS()
+
 export const auditEntries = pgTable(
   'audit_entries',
   {

@@ -25,6 +25,7 @@ const testContract = {
   reads: {
     '/day': { answers: day },
     '/volunteers': { answers: z.object({ volunteers: z.array(z.string()) }) },
+    '/horses/:horseId': { answers: z.object({ id: z.string(), name: z.string() }) },
   },
   writes: {
     '/observations': {
@@ -255,10 +256,44 @@ describe('the answer, against the shape the contract promised', () => {
   })
 })
 
+describe('a parameterised path (ADR 0021)', () => {
+  it('interpolates the param into the path it fetches', async () => {
+    const calls = serverAnswering(200, { id: 'apollo-1', name: 'Apollo' })
+    await client.get('/horses/:horseId', { horseId: 'apollo-1' })
+    expect(calls[0]?.url).toBe(`${API_BASE}/horses/apollo-1`)
+  })
+
+  it('encodes a param that would otherwise spell two segments', async () => {
+    const calls = serverAnswering(200, { id: 'a/b', name: 'Odd' })
+    await client.get('/horses/:horseId', { horseId: 'a/b' })
+    expect(calls[0]?.url).toBe(`${API_BASE}/horses/a%2Fb`)
+  })
+
+  it('leaves a path with no params exactly as every existing call site sends it', async () => {
+    const calls = serverAnswering(200, { volunteers: [] })
+    await client.get('/volunteers')
+    expect(calls[0]?.url).toBe(`${API_BASE}/volunteers`)
+  })
+})
+
 // These do not run. They fail the build if the constraint ever loosens, because
 // an unused `@ts-expect-error` is itself an error — which is the point of #26:
 // a wrong path is a type error, not a 404 at 6am.
 describe('the path is a type', () => {
+  it('will not read a parameterised path with no params', () => {
+    const read = () =>
+      // @ts-expect-error `/horses/:horseId` needs a `horseId` param
+      client.get('/horses/:horseId')
+    expect(read).toBeTypeOf('function')
+  })
+
+  it('will not read a parameterised path with the wrong param name', () => {
+    const read = () =>
+      // @ts-expect-error the param is `horseId`, not `id`
+      client.get('/horses/:horseId', { id: 'apollo-1' })
+    expect(read).toBeTypeOf('function')
+  })
+
   it('will not read a path no route registers', async () => {
     await expect(
       // @ts-expect-error `/shifts` is not in the contract, so nothing serves it

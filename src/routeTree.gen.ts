@@ -12,9 +12,13 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AdminAuditRouteImport } from './routes/admin/audit'
+import { Route as AdminHorsesRouteImport } from './routes/admin/horses'
 import { Route as AdminReleaseVersionsRouteImport } from './routes/admin/release-versions'
+import { Route as AdminSpacesRouteImport } from './routes/admin/spaces'
 import { Route as AdminVolunteersRouteImport } from './routes/admin/volunteers'
 import { Route as ApiSplatRouteImport } from './routes/api.$'
+import { Route as HorsesIndexRouteImport } from './routes/horses/index'
+import { Route as HorsesHorseIdRouteImport } from './routes/horses/$horseId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -31,9 +35,19 @@ const AdminAuditRoute = AdminAuditRouteImport.update({
   path: '/admin/audit',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminHorsesRoute = AdminHorsesRouteImport.update({
+  id: '/admin/horses',
+  path: '/admin/horses',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminReleaseVersionsRoute = AdminReleaseVersionsRouteImport.update({
   id: '/admin/release-versions',
   path: '/admin/release-versions',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminSpacesRoute = AdminSpacesRouteImport.update({
+  id: '/admin/spaces',
+  path: '/admin/spaces',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminVolunteersRoute = AdminVolunteersRouteImport.update({
@@ -46,31 +60,53 @@ const ApiSplatRoute = ApiSplatRouteImport.update({
   path: '/api/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const HorsesIndexRoute = HorsesIndexRouteImport.update({
+  id: '/horses/',
+  path: '/horses/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HorsesHorseIdRoute = HorsesHorseIdRouteImport.update({
+  id: '/horses/$horseId',
+  path: '/horses/$horseId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/admin/audit': typeof AdminAuditRoute
+  '/admin/horses': typeof AdminHorsesRoute
   '/admin/release-versions': typeof AdminReleaseVersionsRoute
+  '/admin/spaces': typeof AdminSpacesRoute
   '/admin/volunteers': typeof AdminVolunteersRoute
   '/api/$': typeof ApiSplatRoute
+  '/horses/$horseId': typeof HorsesHorseIdRoute
+  '/horses/': typeof HorsesIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/admin/audit': typeof AdminAuditRoute
+  '/admin/horses': typeof AdminHorsesRoute
   '/admin/release-versions': typeof AdminReleaseVersionsRoute
+  '/admin/spaces': typeof AdminSpacesRoute
   '/admin/volunteers': typeof AdminVolunteersRoute
   '/api/$': typeof ApiSplatRoute
+  '/horses/$horseId': typeof HorsesHorseIdRoute
+  '/horses': typeof HorsesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/admin/audit': typeof AdminAuditRoute
+  '/admin/horses': typeof AdminHorsesRoute
   '/admin/release-versions': typeof AdminReleaseVersionsRoute
+  '/admin/spaces': typeof AdminSpacesRoute
   '/admin/volunteers': typeof AdminVolunteersRoute
   '/api/$': typeof ApiSplatRoute
+  '/horses/$horseId': typeof HorsesHorseIdRoute
+  '/horses/': typeof HorsesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -78,34 +114,50 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/admin/audit'
+    | '/admin/horses'
     | '/admin/release-versions'
+    | '/admin/spaces'
     | '/admin/volunteers'
     | '/api/$'
+    | '/horses/$horseId'
+    | '/horses/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/login'
     | '/admin/audit'
+    | '/admin/horses'
     | '/admin/release-versions'
+    | '/admin/spaces'
     | '/admin/volunteers'
     | '/api/$'
+    | '/horses/$horseId'
+    | '/horses'
   id:
     | '__root__'
     | '/'
     | '/login'
     | '/admin/audit'
+    | '/admin/horses'
     | '/admin/release-versions'
+    | '/admin/spaces'
     | '/admin/volunteers'
     | '/api/$'
+    | '/horses/$horseId'
+    | '/horses/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LoginRoute: typeof LoginRoute
   AdminAuditRoute: typeof AdminAuditRoute
+  AdminHorsesRoute: typeof AdminHorsesRoute
   AdminReleaseVersionsRoute: typeof AdminReleaseVersionsRoute
+  AdminSpacesRoute: typeof AdminSpacesRoute
   AdminVolunteersRoute: typeof AdminVolunteersRoute
   ApiSplatRoute: typeof ApiSplatRoute
+  HorsesHorseIdRoute: typeof HorsesHorseIdRoute
+  HorsesIndexRoute: typeof HorsesIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -131,11 +183,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminAuditRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/horses': {
+      id: '/admin/horses'
+      path: '/admin/horses'
+      fullPath: '/admin/horses'
+      preLoaderRoute: typeof AdminHorsesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/release-versions': {
       id: '/admin/release-versions'
       path: '/admin/release-versions'
       fullPath: '/admin/release-versions'
       preLoaderRoute: typeof AdminReleaseVersionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/spaces': {
+      id: '/admin/spaces'
+      path: '/admin/spaces'
+      fullPath: '/admin/spaces'
+      preLoaderRoute: typeof AdminSpacesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/volunteers': {
@@ -152,6 +218,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/horses/': {
+      id: '/horses/'
+      path: '/horses'
+      fullPath: '/horses/'
+      preLoaderRoute: typeof HorsesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/horses/$horseId': {
+      id: '/horses/$horseId'
+      path: '/horses/$horseId'
+      fullPath: '/horses/$horseId'
+      preLoaderRoute: typeof HorsesHorseIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -159,9 +239,13 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LoginRoute: LoginRoute,
   AdminAuditRoute: AdminAuditRoute,
+  AdminHorsesRoute: AdminHorsesRoute,
   AdminReleaseVersionsRoute: AdminReleaseVersionsRoute,
+  AdminSpacesRoute: AdminSpacesRoute,
   AdminVolunteersRoute: AdminVolunteersRoute,
   ApiSplatRoute: ApiSplatRoute,
+  HorsesHorseIdRoute: HorsesHorseIdRoute,
+  HorsesIndexRoute: HorsesIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

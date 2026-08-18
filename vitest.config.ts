@@ -13,11 +13,28 @@ if (existsSync('.env')) process.loadEnvFile('.env')
 // nothing but time on a machine that is also running Postgres.
 export default defineConfig({
   test: {
-    environment: 'node',
-    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
     env: {
       DATABASE_URL: process.env.DATABASE_URL ?? '',
       ADMIN_DATABASE_URL: process.env.ADMIN_DATABASE_URL ?? '',
     },
+    // Two projects rather than one `environment`: component tests render real
+    // route components with Testing Library (the spec's fifth seam), which
+    // needs a DOM, and everything else is a module test that does not need
+    // the cost of one.
+    projects: [
+      {
+        extends: true,
+        test: { name: 'unit', environment: 'node', include: ['src/**/*.test.ts'] },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'component',
+          environment: 'jsdom',
+          include: ['src/**/*.test.tsx'],
+          setupFiles: ['src/test/setup-dom.ts'],
+        },
+      },
+    ],
   },
 })

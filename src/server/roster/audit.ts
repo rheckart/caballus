@@ -36,6 +36,9 @@ export const AUDIT_ENTITIES = [
   'medication_authority',
   'release_signature',
   'volunteer_consent',
+  'space',
+  'horse',
+  'horse_space_assignment',
 ] as const
 
 export type AuditEntity = (typeof AUDIT_ENTITIES)[number]
