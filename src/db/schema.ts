@@ -27,6 +27,7 @@ import {
   pgTable,
   primaryKey,
   text,
+  time,
   timestamp,
   uniqueIndex,
   uuid,
@@ -1054,5 +1055,182 @@ export const weatherConditionResolutions = pgTable(
   (table) => [
     index('weather_condition_resolutions_reading').on(table.readingId, table.condition),
     inScope('weather_condition_resolutions_in_scope'),
+  ],
+).enableRLS()
+
+/**
+ * A Shift Pattern: the recurring commitment (`CONTEXT.md`'s Shift Pattern;
+ * ADR 0001). A weekday, a time of day and a type, from which dated Shifts are
+ * generated on a rolling two-week horizon.
+ *
+ * Current state plus an audit entry (ADR 0003): a Pattern is *what we do on
+ * Tuesdays*, and what it used to be is answered by the Shifts it generated
+ * rather than by a version of the Pattern — which is the whole of ADR 0001's
+ * copy-on-generate rule. Editing one therefore changes future generations only,
+ * and whether it reaches the Shifts already inside the horizon is a question
+ * the Coordinator answers on the way in.
+ *
+ * `retiredAt` rather than a delete, for the reason a horse Departs rather than
+ * vanishing: the Shifts it generated keep pointing at it, and *what were the
+ * Tuesday mornings before we stopped* stays answerable.
+ */
+export const shiftPatterns = pgTable(
+  'shift_patterns',
+  {
+    id: uuid('id').primaryKey(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id),
+    /** One of `WEEKDAYS` in `src/shared/shifts.ts` — a word, never a number. */
+    weekday: text('weekday').notNull(),
+    /** One of `SHIFT_TYPES` — a Pattern never generates a Pop-up, which has no Pattern. */
+    shiftType: text('shift_type').notNull(),
+    /** `HH:MM` on the barn's own clock, copied onto every Shift generated from it. */
+    startTime: time('start_time').notNull(),
+    /** What the Shift is meant to have: three for a Feed Shift, one for Lunch. */
+    targetHeadcount: integer('target_headcount').notNull(),
+    retiredAt: timestamp('retired_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdBy: uuid('created_by').references(() => volunteers.id),
+  },
+  (table) => [
+    index('shift_patterns_weekday').on(table.orgId, table.weekday),
+    inScope('shift_patterns_in_scope'),
+  ],
+).enableRLS()
+
+/**
+ * The Standing Roster: who is normally expected on a Pattern
+ * (`CONTEXT.md`'s Standing Roster; ADR 0001).
+ *
+ * A row per Volunteer per Pattern, the way a Role is a row rather than a column
+ * — one Volunteer holds one position on one Pattern, which is the primary key.
+ * At most one `lead` per Pattern is enforced by the write rather than by an
+ * index, because **zero of both Lead and Co-Lead is legal** (ADR 0010) and a
+ * partial unique index would say nothing about the case that actually matters.
+ */
+export const shiftPatternRoster = pgTable(
+  'shift_pattern_roster',
+  {
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id),
+    patternId: uuid('pattern_id')
+      .notNull()
+      .references(() => shiftPatterns.id),
+    volunteerId: uuid('volunteer_id')
+      .notNull()
+      .references(() => volunteers.id),
+    /** One of `ASSIGNABLE_POSITIONS`; `acting_lead` is claimed on a Shift, never assigned. */
+    position: text('position').notNull(),
+    assignedAt: timestamp('assigned_at', { withTimezone: true }).notNull().defaultNow(),
+    assignedBy: uuid('assigned_by').references(() => volunteers.id),
+  },
+  (table) => [
+    primaryKey({ columns: [table.orgId, table.patternId, table.volunteerId] }),
+    index('shift_pattern_roster_volunteer').on(table.volunteerId),
+    inScope('shift_pattern_roster_in_scope'),
+  ],
+).enableRLS()
+
+/**
+ * One dated occurrence of work (`CONTEXT.md`'s Shift; ADR 0001).
+ *
+ * **It copies rather than resolves.** `startTime`, `targetHeadcount` and the
+ * roster are written here when the Shift is generated, so that *who was
+ * supposed to be there on the 14th* is a fact recorded at the time and not a
+ * value recomputed from a Pattern somebody has since edited.
+ *
+ * `patternId` is null for a **Pop-up** — a Shift with no Pattern behind it and
+ * Staffing Mode `sign_up` from birth (ADR 0011) — which is also why the unique
+ * index below covers `(pattern_id, day)` and leaves Pop-ups alone: two Pop-ups
+ * on one morning are two calls for help, and generation never makes either.
+ *
+ * **There is no `cancelled` and there is no state column.** A Shift nobody can
+ * staff is still a Shift, still visible and escalating (ADR 0001); and
+ * *in progress* is derived from the clock until something can honestly write
+ * the transition, which is Attendance in a later ticket.
+ */
+export const shifts = pgTable(
+  'shifts',
+  {
+    id: uuid('id').primaryKey(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id),
+    /** Null for a Pop-up, which is an occurrence of nothing. */
+    patternId: uuid('pattern_id').references(() => shiftPatterns.id),
+    day: date('day').notNull(),
+    /** One of `SHIFT_TYPES_INCLUDING_POP_UP` in `src/shared/shifts.ts`. */
+    shiftType: text('shift_type').notNull(),
+    /** Copied from the Pattern at generation, and editable on this Shift alone. */
+    startTime: time('start_time').notNull(),
+    targetHeadcount: integer('target_headcount').notNull(),
+    /** One of `STAFFING_MODES` — a property of the Shift, not of its type. */
+    staffingMode: text('staffing_mode').notNull(),
+    /** What a Pop-up is for, in the words of whoever called it. Null on a generated Shift. */
+    purpose: text('purpose'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdBy: uuid('created_by').references(() => volunteers.id),
+  },
+  (table) => [
+    // What makes two runs at the same moment create nothing twice. The
+    // application decides which occurrences are missing (`shiftsToGenerate`);
+    // this is what holds when two deciders overlap.
+    uniqueIndex('shifts_occurrence').on(table.orgId, table.patternId, table.day),
+    // The schedule read: this organisation's Shifts from today forward.
+    index('shifts_day').on(table.orgId, table.day),
+    inScope('shifts_in_scope'),
+  ],
+).enableRLS()
+
+/**
+ * One person on one dated Shift — the copied roster row of ADR 0001, and the
+ * thing ADR 0010 hangs Shift Authority off.
+ *
+ * **A row is marked, never deleted** (ADR 0011). *Beth was rostered and
+ * dropped*, *Beth was never on Thursday* and — when Attendance lands — *Beth
+ * was rostered and did not come* are three different facts, and deleting the
+ * row collapses all three. `endedKind` says whether she took herself off or
+ * somebody holding `roster` did.
+ *
+ * `origin` records how she came to be here: copied from the Standing Roster, or
+ * a Cover she claimed. That distinction is the Coordinator's actual interest in
+ * Cover — noticing who turns up outside their assignment, rather than gating it.
+ */
+export const shiftRoster = pgTable(
+  'shift_roster',
+  {
+    id: uuid('id').primaryKey(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id),
+    shiftId: uuid('shift_id')
+      .notNull()
+      .references(() => shifts.id),
+    volunteerId: uuid('volunteer_id')
+      .notNull()
+      .references(() => volunteers.id),
+    /** One of `SHIFT_POSITIONS`. A Cover always lands as `volunteer` (ADR 0011). */
+    position: text('position').notNull(),
+    /** One of `ROSTER_ORIGINS`. */
+    origin: text('origin').notNull(),
+    addedAt: timestamp('added_at', { withTimezone: true }).notNull().defaultNow(),
+    addedBy: uuid('added_by').references(() => volunteers.id),
+    /** When the row stopped being a commitment. Null while it stands. */
+    endedAt: timestamp('ended_at', { withTimezone: true }),
+    /** One of `ROSTER_END_KINDS` — `dropped` by the volunteer, `removed` under `roster`. */
+    endedKind: text('ended_kind'),
+    /** Optional free text. A required reason collects the word "personal" sixty times. */
+    endedReason: text('ended_reason'),
+    endedBy: uuid('ended_by').references(() => volunteers.id),
+  },
+  (table) => [
+    // One row per Volunteer per Shift: a Drop marks the row it finds, and a
+    // Cover after a Drop is that same row coming back rather than a second one.
+    uniqueIndex('shift_roster_person').on(table.orgId, table.shiftId, table.volunteerId),
+    // A volunteer's own upcoming Shifts, which is what the phone reads.
+    index('shift_roster_volunteer').on(table.orgId, table.volunteerId),
+    inScope('shift_roster_in_scope'),
   ],
 ).enableRLS()

@@ -41,6 +41,15 @@ const REFUSALS: Record<string, string> = {
     'Nobody has told this deployment where the barn is. Set BARN_LATITUDE and BARN_LONGITUDE.',
   forecast_unavailable:
     'No weather service answered and there is no earlier forecast for today to fall back on. Try again shortly.',
+  pattern_not_found: 'That shift pattern is gone.',
+  shift_not_found: 'That shift is gone.',
+  not_rosterable:
+    'They cannot be put on a roster yet — the orientation, release or consent is missing.',
+  no_orientation: 'An orientation is recorded before anyone takes a shift. Ask the coordinator.',
+  lead_already_held: 'Somebody already holds Lead here. Take them off first, or use Co-Lead.',
+  already_rostered: 'They are already on this shift.',
+  not_rostered: 'They are not on this shift.',
+  shift_is_over: 'That shift is over.',
 }
 
 /** What a failed call says when the server never answered at all. */

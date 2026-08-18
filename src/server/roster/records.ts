@@ -16,7 +16,13 @@ import { and, eq, isNull, sql } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 
 import type { OrgId, OrgScopedDatabase } from '../../db/for-org'
-import { volunteerConsents, volunteerRoles, volunteers } from '../../db/schema'
+import {
+  shiftPatternRoster,
+  shiftRoster,
+  volunteerConsents,
+  volunteerRoles,
+  volunteers,
+} from '../../db/schema'
 import { rosterability } from '../../shared/rostering'
 import { type DayString } from '../../shared/time'
 import { audit, type AuditEntry } from './audit'
@@ -331,6 +337,25 @@ export async function removeVolunteerIn(
     .set({ removedAt: sql`now()` })
     .where(eq(volunteers.id, about.volunteerId))
   await db.delete(volunteerRoles).where(eq(volunteerRoles.volunteerId, about.volunteerId))
+
+  // And off every roster. A Standing Roster row is a commitment somebody who
+  // has left cannot keep, and leaving it would put them on every Shift
+  // generated from that Pattern for as long as it exists — a name on a
+  // fortnight's worth of rosters, flagged with a gap list nobody can read
+  // because the gates are only derived for people still here.
+  await db.delete(shiftPatternRoster).where(eq(shiftPatternRoster.volunteerId, about.volunteerId))
+  // On the dated Shifts the row is **marked**, never deleted, like every other
+  // way a roster row stops standing: *she was rostered and left* is a fact the
+  // record keeps (ADR 0011).
+  await db
+    .update(shiftRoster)
+    .set({
+      endedAt: sql`now()`,
+      endedKind: 'removed',
+      endedReason: about.reason ?? null,
+      endedBy: actorVolunteerId,
+    })
+    .where(and(eq(shiftRoster.volunteerId, about.volunteerId), isNull(shiftRoster.endedAt)))
 
   const entries: AuditEntry[] = [
     {
