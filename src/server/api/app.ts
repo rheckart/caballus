@@ -95,7 +95,10 @@ import {
 } from '../shifts/roster'
 import { declareShort } from '../shifts/short'
 import { sendStaffingDigest } from '../shifts/digest'
+import { closeCountsFor, closeShift } from '../shifts/close'
+import { addShiftNote, shiftNotesFor } from '../shifts/notes'
 import type { Refusal as ShiftRefusal } from '../shifts/outcome'
+import { holdsShiftAuthority } from '../shifts/authority'
 import { currentThresholds, publishThreshold } from '../weather/thresholds'
 import { readingFor, recordReading } from '../weather/readings'
 import type { Refusal as WeatherRefusal } from '../weather/outcome'
@@ -109,13 +112,23 @@ import {
 import { createTask, editTask } from '../checklist/records'
 import { checklistForShift, materializeDayFor, type Checklist } from '../checklist/materialize'
 import type { Refusal as ChecklistRefusal } from '../checklist/outcome'
-import { tickItemDone, type Refusal as TickRefusal } from '../checklist/tick'
+import {
+  assignItem,
+  dropItem,
+  notDoneItem,
+  tickItemDone,
+  type Refusal as TickRefusal,
+} from '../checklist/tick'
 import { shiftById } from '../shifts/list'
 import type { ShiftType } from '../../shared/feed-schedule'
 import { attendanceLedger } from '../attendance/list'
 import { signIn, signOut, type Refusal as AttendanceRefusal } from '../attendance/records'
 import { escalationList, observationsFor, reporterEmail } from '../observations/list'
-import { noteObservation, recordObservation } from '../observations/records'
+import {
+  dispositionShiftObservation,
+  noteObservation,
+  recordObservation,
+} from '../observations/records'
 import {
   addEscalationComment,
   closeEscalation,
@@ -738,7 +751,11 @@ export function buildApi(
       readonly id: string
       readonly day: DayString
       readonly shiftType: ShiftType
+      readonly closedAt: number | null
       readonly checklist: Checklist
+      readonly openAttendanceCount: number
+      readonly undispositionedObservationCount: number
+      readonly shiftNotes: Awaited<ReturnType<typeof shiftNotesFor>>
     }
 
     const found: Found | null = await forOrg(context.orgId).run(
@@ -747,12 +764,21 @@ export function buildApi(
         const shift = await shiftById(db, params.shiftId ?? '')
         if (shift === null || shift.shiftType === 'pop_up') return null
         const shiftType = shift.shiftType
-        const checklist = await checklistForShift(
-          db,
-          { id: shift.id, day: shift.day, shiftType },
-          clock.timeZone,
-        )
-        return { id: shift.id, day: shift.day, shiftType, checklist }
+        const [checklist, counts, notes] = await Promise.all([
+          checklistForShift(db, { id: shift.id, day: shift.day, shiftType }, clock.timeZone),
+          closeCountsFor(db, shift.id),
+          shiftNotesFor(db, shift.day, clock.timeZone),
+        ])
+        return {
+          id: shift.id,
+          day: shift.day,
+          shiftType,
+          closedAt: shift.closedAt,
+          checklist,
+          openAttendanceCount: counts.openAttendanceCount,
+          undispositionedObservationCount: counts.undispositionedObservationCount,
+          shiftNotes: notes,
+        }
       },
     )
     if (found === null) return json({ error: 'shift_not_found' }, 404)
@@ -764,6 +790,10 @@ export function buildApi(
       materialized: found.checklist.materialized,
       items: found.checklist.items.map((item) => ({ ...item })),
       prepOwed: found.checklist.prepOwed.map((item) => ({ ...item })),
+      closedAt: found.closedAt,
+      openAttendanceCount: found.openAttendanceCount,
+      undispositionedObservationCount: found.undispositionedObservationCount,
+      shiftNotes: found.shiftNotes.map((note) => ({ ...note })),
     })
   })
 
@@ -1369,6 +1399,104 @@ export function buildApi(
   )
 
   /**
+   * Drops a Discretionary Item — recorded, never silent (ADR 0013, #45).
+   * `shiftAuthority()`: `mutation`'s own join settles the position over the
+   * Shift named; `dropItem` checks what that join cannot — whether the Item
+   * is Discretionary at all, and whether it has already gone overdue.
+   */
+  api.mutation('/items/drop', shiftAuthority(), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await dropItem(db, context.orgId, actor.volunteerId, {
+      shiftId: input.shiftId,
+      itemId: input.itemId,
+      reason: input.reason ?? null,
+    })
+    if (!outcome.ok) return tickRefusal(outcome.because)
+    return json({ itemOutcomeId: outcome.value.id }, 201)
+  })
+
+  /**
+   * Records an Item Not done, with a required reason — on the floor, the same
+   * stand `/items/done` takes: ADR 0013 gives Not done no Shift-Authority gate,
+   * and this is also how a deviation from the materialized plan is recorded
+   * without the plan itself ever changing mid-Shift (#45).
+   */
+  api.mutation(
+    '/items/not-done',
+    floor('work-on-a-shift-you-are-rostered-on'),
+    async (input, { context, db }) => {
+      const actor = actorOf(context)
+      const outcome = await notDoneItem(db, context.orgId, actor.volunteerId, {
+        shiftId: input.shiftId,
+        itemId: input.itemId,
+        reason: input.reason,
+      })
+      if (!outcome.ok) return tickRefusal(outcome.because)
+      return json({ itemOutcomeId: outcome.value.id }, 201)
+    },
+  )
+
+  /**
+   * Sets or clears who is expected to do an Item — a hint, never a gate (ADR
+   * 0013, #45). On the floor: self-claim needs only to be rostered, and
+   * naming somebody else needs Shift Authority, both checked inside
+   * `assignItem` because half of it is a fact about this Shift's own roster
+   * rows.
+   */
+  api.mutation(
+    '/items/assign',
+    floor('work-on-a-shift-you-are-rostered-on'),
+    async (input, { context, db }) => {
+      const actor = actorOf(context)
+      const holdsAuthority = await holdsShiftAuthority(context.orgId, actor, input.shiftId)
+      const outcome = await assignItem(
+        db,
+        { volunteerId: actor.volunteerId, holdsShiftAuthority: holdsAuthority },
+        { shiftId: input.shiftId, itemId: input.itemId, volunteerId: input.volunteerId },
+      )
+      return outcome.ok ? noContent() : tickRefusal(outcome.because)
+    },
+  )
+
+  /**
+   * Curates a Shift Note (ADR 0013, #45): Shift Authority while the Shift
+   * stands, `horse_care` after it closes — `shiftAuthority(['horse_care'])`
+   * settles both, and `addShiftNote` refuses the one case that check cannot:
+   * Shift Authority alone, against a Shift that has already closed.
+   */
+  api.mutation('/shifts/notes', shiftAuthority(['horse_care']), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await addShiftNote(
+      db,
+      context.orgId,
+      { volunteerId: actor.volunteerId, holdsHorseCare: actor.domainScopes.includes('horse_care') },
+      { shiftId: input.shiftId, text: input.text, horseId: input.horseId ?? null },
+    )
+    if (!outcome.ok) return shiftRefusal(outcome.because)
+    return json({ shiftNoteId: outcome.value.id }, 201)
+  })
+
+  /**
+   * Closes a Shift — the record becoming true (ADR 0013, ADR 0014, #45).
+   * `shiftAuthority()`: only the position over this Shift closes it, and the
+   * concrete blockers a refusal here answers with are the same read the phone
+   * already had before it ever attempted this.
+   */
+  api.mutation('/shifts/close', shiftAuthority(), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const clock = await clockHere(db)
+    const outcome = await closeShift(
+      db,
+      context.orgId,
+      actor.volunteerId,
+      { shiftId: input.shiftId },
+      clock.timeZone,
+    )
+    if (!outcome.ok) return shiftRefusal(outcome.because)
+    return json({ closedAt: outcome.value.closedAt }, 200)
+  })
+
+  /**
    * Publishing a Threshold version — the rescue default or one horse's own.
    *
    * Under `horse_care`, the scope that owns care instructions: these numbers
@@ -1483,6 +1611,7 @@ export function buildApi(
         shiftId: input.shiftId ?? null,
         supervisingAdultId: input.supervisingAdultId ?? null,
         supervisingAdultPhone: input.supervisingAdultPhone ?? null,
+        attestationRelationship: input.attestationRelationship ?? null,
       })
       return outcome.ok ? noContent() : attendanceRefusal(outcome.because)
     },
@@ -1525,6 +1654,24 @@ export function buildApi(
       return outcome.ok ? noContent() : observationRefusal(outcome.because)
     },
   )
+
+  /**
+   * A Shift's own two remaining exits, at close — Shift Authority's own act
+   * (ADR 0014, #45). `shiftAuthority()` settles the position over the Shift
+   * named; `dispositionShiftObservation` checks the rest — that the
+   * Observation is actually this Shift's, and that nobody has dispositioned
+   * it yet.
+   */
+  api.mutation('/observations/disposition', shiftAuthority(), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await dispositionShiftObservation(db, context.orgId, actor, {
+      shiftId: input.shiftId,
+      observationId: input.observationId,
+      disposition: input.disposition,
+      noteText: input.noteText ?? null,
+    })
+    return outcome.ok ? noContent() : observationRefusal(outcome.because)
+  })
 
   /**
    * Escalates an Observation to one Domain Scope: Shift Authority over the

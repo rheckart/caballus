@@ -20,7 +20,12 @@ import { desc, eq, inArray, isNotNull } from 'drizzle-orm'
 
 import type { OrgScopedDatabase } from '../../db/for-org'
 import { attendance, volunteers } from '../../db/schema'
-import { isAttendanceCategory, type AttendanceCategory } from '../../shared/attendance'
+import {
+  isAttendanceCategory,
+  isAttestationRelationship,
+  type AttendanceCategory,
+  type AttestationRelationship,
+} from '../../shared/attendance'
 import type { DayString, Instant } from '../../shared/time'
 import { dayOf, instantOfTimestamp } from '../time'
 
@@ -41,6 +46,7 @@ export interface AttendanceEntry {
   readonly supervisingAdultId: string | null
   readonly supervisingAdultName: string | null
   readonly supervisingAdultPhone: string | null
+  readonly attestationRelationship: AttestationRelationship | null
 }
 
 /**
@@ -71,6 +77,7 @@ export async function attendanceLedger(
       departedBy: attendance.departedRecordedBy,
       supervisingAdultId: attendance.supervisingAdultId,
       supervisingAdultPhone: attendance.supervisingAdultPhone,
+      attestationRelationship: attendance.attestationRelationship,
     })
     .from(attendance)
     .innerJoin(subject, eq(subject.id, attendance.volunteerId))
@@ -110,8 +117,14 @@ export async function attendanceLedger(
     departedByName: row.departedBy === null ? null : (names.get(row.departedBy) ?? row.departedBy),
     supervisingAdultId: row.supervisingAdultId,
     supervisingAdultName:
-      row.supervisingAdultId === null ? null : (names.get(row.supervisingAdultId) ?? row.supervisingAdultId),
+      row.supervisingAdultId === null
+        ? null
+        : (names.get(row.supervisingAdultId) ?? row.supervisingAdultId),
     supervisingAdultPhone: row.supervisingAdultPhone,
+    attestationRelationship:
+      row.attestationRelationship !== null && isAttestationRelationship(row.attestationRelationship)
+        ? row.attestationRelationship
+        : null,
   }))
 }
 

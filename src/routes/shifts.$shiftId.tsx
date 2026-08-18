@@ -22,13 +22,14 @@
  * do* where the honest sentence is *not fixed yet*.
  */
 import { Link, createFileRoute, useParams } from '@tanstack/react-router'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 
 import { client } from '../shared/api-client'
 import type { Answers, contract } from '../shared/api-contract'
 import { report } from '../shared/observability.browser'
 import { arrangePrepQueue } from '../shared/prep-queue'
 import { refusalText } from '../shared/refusals'
+import { closeBlockers, type CloseBlockerKind } from '../shared/shift-close'
 import { resolveTickStore } from '../shared/tick-store.browser'
 import { TickQueue, type TickDenial } from '../shared/tick-queue'
 
@@ -49,6 +50,12 @@ const KIND_LABEL: Record<Item['kind'], string> = {
   feed: 'Feed',
   medicate: 'Medicate',
   task: 'Task',
+}
+
+const BLOCKER_LABEL: Record<CloseBlockerKind, string> = {
+  unsent_work: 'Unsent work still on this phone',
+  open_attendance: 'Somebody still signed in',
+  undispositioned_observation: 'A report with no decision yet',
 }
 
 /**
@@ -89,14 +96,119 @@ function useTickQueue() {
   return queue
 }
 
+/**
+ * Drop, Not done, and the assignment hint — the acts ADR 0013 gives no
+ * offline queue: each is one deliberate act by whoever holds Shift Authority
+ * or (Not done, self-claim) anybody rostered, rather than a tick fired
+ * without looking (#45). A local `busy`/`problem` pair is enough, because
+ * unlike a tick these are not expected to fire from a glove in a barn with no
+ * signal — the close screen is where connectivity is actually required.
+ */
+function ItemActions({
+  item,
+  shiftId,
+  myVolunteerId,
+  onChanged,
+}: {
+  readonly item: Item
+  readonly shiftId: string
+  /** Null until `/me` answers — the self-claim button waits for it (#45). */
+  readonly myVolunteerId: string | null
+  readonly onChanged: () => void
+}) {
+  const [busy, setBusy] = useState(false)
+  const [problem, setProblem] = useState<string | null>(null)
+  const [reasonFor, setReasonFor] = useState<'drop' | 'not_done' | null>(null)
+  const [reason, setReason] = useState('')
+
+  const run = useCallback(
+    async (act: () => Promise<unknown>) => {
+      setBusy(true)
+      setProblem(null)
+      try {
+        await act()
+        setReasonFor(null)
+        setReason('')
+        onChanged()
+      } catch (error: unknown) {
+        setProblem(refusalText(error))
+      } finally {
+        setBusy(false)
+      }
+    },
+    [onChanged],
+  )
+
+  const selfClaim = useCallback(() => {
+    if (myVolunteerId === null) return
+    run(() =>
+      client.post('/items/assign', { shiftId, itemId: item.id, volunteerId: myVolunteerId }),
+    ).catch(() => undefined)
+  }, [run, shiftId, item.id, myVolunteerId])
+
+  const submitReason = useCallback(
+    (event: FormEvent) => {
+      event.preventDefault()
+      const path = reasonFor === 'drop' ? '/items/drop' : '/items/not-done'
+      run(() => client.post(path, { shiftId, itemId: item.id, reason })).catch(() => undefined)
+    },
+    [run, reasonFor, shiftId, item.id, reason],
+  )
+
+  if (item.done) return null
+
+  return (
+    <span>
+      {' '}
+      {item.assignedToVolunteerName !== null ? (
+        <span>— assigned to {item.assignedToVolunteerName} </span>
+      ) : (
+        <button type="button" disabled={busy || myVolunteerId === null} onClick={selfClaim}>
+          It's mine
+        </button>
+      )}
+      {item.priority === 'discretionary' &&
+        (item.overdue ? (
+          <span> — overdue: Drop is withdrawn</span>
+        ) : (
+          <button type="button" disabled={busy} onClick={() => setReasonFor('drop')}>
+            Drop
+          </button>
+        ))}
+      <button type="button" disabled={busy} onClick={() => setReasonFor('not_done')}>
+        Not done
+      </button>
+      {reasonFor !== null && (
+        <form onSubmit={submitReason}>
+          <label>
+            Why{reasonFor === 'not_done' ? ' (required)' : ''}:
+            <input value={reason} onChange={(event) => setReason(event.target.value)} />
+          </label>
+          <button type="submit" disabled={busy}>
+            Save
+          </button>
+          <button type="button" onClick={() => setReasonFor(null)}>
+            Cancel
+          </button>
+        </form>
+      )}
+      {problem !== null && <span role="alert"> {problem}</span>}
+    </span>
+  )
+}
+
 function ItemLine({
   item,
   shiftId,
   queue,
+  myVolunteerId,
+  onChanged,
 }: {
   readonly item: Item
   readonly shiftId: string
   readonly queue: TickQueue
+  readonly myVolunteerId: string | null
+  readonly onChanged: () => void
 }) {
   const unsent = queue.isUnsent(item.id)
   // The server's own answer, never overridden by a local guess — `done` reads
@@ -129,7 +241,27 @@ function ItemLine({
       </label>
       {unsent && <span> Unsent</span>}
       {confirmedDone && <span> Done{item.doneByName !== null ? ` — ${item.doneByName}` : ''}</span>}
+      {item.outcome === 'dropped' && (
+        <span>
+          {' '}
+          Dropped{item.outcomeByName !== null ? ` — ${item.outcomeByName}` : ''}
+          {item.outcomeReason !== null ? ` (${item.outcomeReason})` : ''}
+        </span>
+      )}
+      {item.outcome === 'not_done' && (
+        <span role="alert">
+          {' '}
+          Not done{item.outcomeByName !== null ? ` — ${item.outcomeByName}` : ''}
+          {item.outcomeReason !== null ? `: ${item.outcomeReason}` : ''}
+        </span>
+      )}
       {denial !== null && <span role="alert"> {denial.message}</span>}
+      <ItemActions
+        item={item}
+        shiftId={shiftId}
+        myVolunteerId={myVolunteerId}
+        onChanged={onChanged}
+      />
     </li>
   )
 }
@@ -151,12 +283,146 @@ function PrepOwedLine({ item }: { readonly item: Item }) {
   )
 }
 
+/**
+ * Shift Notes: the handover log, curated by Shift Authority while the Shift
+ * stands and by `horse_care` after it closes (ADR 0013, #45). Posting is
+ * offered here to anyone — the server is where the real gate is, on
+ * `holdsShiftAuthority`'s own precedent for `/observations`.
+ */
+function ShiftNotes({
+  checklist,
+  shiftId,
+  onChanged,
+}: {
+  readonly checklist: Checklist
+  readonly shiftId: string
+  readonly onChanged: () => void
+}) {
+  const [text, setText] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [problem, setProblem] = useState<string | null>(null)
+
+  const submit = useCallback(
+    async (event: FormEvent) => {
+      event.preventDefault()
+      setBusy(true)
+      setProblem(null)
+      try {
+        await client.post('/shifts/notes', { shiftId, text, horseId: null })
+        setText('')
+        onChanged()
+      } catch (error: unknown) {
+        setProblem(refusalText(error))
+      } finally {
+        setBusy(false)
+      }
+    },
+    [shiftId, text, onChanged],
+  )
+
+  return (
+    <section>
+      <h2>Shift Notes</h2>
+      {checklist.shiftNotes.length === 0 ? (
+        <p>Nothing left for today or yesterday.</p>
+      ) : (
+        <ul>
+          {checklist.shiftNotes.map((note) => (
+            <li key={note.id}>
+              {note.text} — {note.authoredByName}
+              {note.horseName !== null ? ` (${note.horseName})` : ''}
+              {note.postClose && <em> (added after close)</em>}
+            </li>
+          ))}
+        </ul>
+      )}
+      <form onSubmit={(event) => void submit(event)}>
+        <label>
+          Add a note:
+          <input value={text} onChange={(event) => setText(event.target.value)} />
+        </label>
+        <button type="submit" disabled={busy || text.trim() === ''}>
+          Save
+        </button>
+      </form>
+      {problem !== null && <p role="alert">{problem}</p>}
+    </section>
+  )
+}
+
+/**
+ * The close gate: blockers computed by the one pure function the write
+ * itself checks, folding in this phone's own Unsent count beside the two the
+ * server already read (ADR 0013, ADR 0014, #45).
+ */
+function CloseSection({
+  checklist,
+  shiftId,
+  unsentCount,
+  onClosed,
+}: {
+  readonly checklist: Checklist
+  readonly shiftId: string
+  readonly unsentCount: number
+  readonly onClosed: () => void
+}) {
+  const [busy, setBusy] = useState(false)
+  const [problem, setProblem] = useState<string | null>(null)
+
+  const blockers = closeBlockers({
+    unsentCount,
+    openAttendanceCount: checklist.openAttendanceCount,
+    undispositionedObservationCount: checklist.undispositionedObservationCount,
+  })
+
+  const close = useCallback(async () => {
+    setBusy(true)
+    setProblem(null)
+    try {
+      await client.post('/shifts/close', { shiftId })
+      onClosed()
+    } catch (error: unknown) {
+      setProblem(refusalText(error))
+    } finally {
+      setBusy(false)
+    }
+  }, [shiftId, onClosed])
+
+  if (checklist.closedAt !== null) {
+    return (
+      <p>
+        <strong>Closed.</strong>
+      </p>
+    )
+  }
+
+  return (
+    <section>
+      {blockers.length > 0 ? (
+        <ul>
+          {blockers.map((blocker) => (
+            <li key={blocker.kind} role="alert">
+              {BLOCKER_LABEL[blocker.kind]} ({blocker.count})
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <button type="button" disabled={busy} onClick={() => void close()}>
+          Close Shift
+        </button>
+      )}
+      {problem !== null && <p role="alert">{problem}</p>}
+    </section>
+  )
+}
+
 export function ShiftChecklist() {
   // `strict: false`, the same reason the horse profile reads its param: the
   // route that matched may be this file's own or a test harness's.
   const { shiftId } = useParams({ strict: false })
   const [checklist, setChecklist] = useState<Checklist | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
+  const [myVolunteerId, setMyVolunteerId] = useState<string | null>(null)
   const queue = useTickQueue()
 
   const load = useCallback(async () => {
@@ -173,6 +439,19 @@ export function ShiftChecklist() {
       current = false
     }
   }, [load])
+
+  useEffect(() => {
+    let current = true
+    client
+      .get('/me')
+      .then((me) => {
+        if (current) setMyVolunteerId(me.volunteerId)
+      })
+      .catch((error: unknown) => report(error, { where: 'shift-checklist-me' }))
+    return () => {
+      current = false
+    }
+  }, [])
 
   // Re-reads the checklist whenever the queue settles a claim, so a
   // server-confirmed tick and the queue's own "no longer Unsent" arrive
@@ -242,6 +521,8 @@ export function ShiftChecklist() {
         </p>
       )}
 
+      <ShiftNotes checklist={checklist} shiftId={shiftId} onChanged={() => void load()} />
+
       {checklist.prepOwed.length > 0 && (
         <section>
           <h2>Prep owed to this Shift</h2>
@@ -262,7 +543,14 @@ export function ShiftChecklist() {
               <h2>{card.horseName}</h2>
               <ul>
                 {card.items.map((item) => (
-                  <ItemLine key={item.id} item={item} shiftId={shiftId} queue={queue} />
+                  <ItemLine
+                    key={item.id}
+                    item={item}
+                    shiftId={shiftId}
+                    queue={queue}
+                    myVolunteerId={myVolunteerId}
+                    onChanged={() => void load()}
+                  />
                 ))}
               </ul>
             </section>
@@ -273,7 +561,14 @@ export function ShiftChecklist() {
               <h2>{card.spaceName}</h2>
               <ul>
                 {card.items.map((item) => (
-                  <ItemLine key={item.id} item={item} shiftId={shiftId} queue={queue} />
+                  <ItemLine
+                    key={item.id}
+                    item={item}
+                    shiftId={shiftId}
+                    queue={queue}
+                    myVolunteerId={myVolunteerId}
+                    onChanged={() => void load()}
+                  />
                 ))}
               </ul>
             </section>
@@ -284,13 +579,27 @@ export function ShiftChecklist() {
               <h2>The rescue</h2>
               <ul>
                 {arranged.rescue.map((item) => (
-                  <ItemLine key={item.id} item={item} shiftId={shiftId} queue={queue} />
+                  <ItemLine
+                    key={item.id}
+                    item={item}
+                    shiftId={shiftId}
+                    queue={queue}
+                    myVolunteerId={myVolunteerId}
+                    onChanged={() => void load()}
+                  />
                 ))}
               </ul>
             </section>
           )}
         </>
       )}
+
+      <CloseSection
+        checklist={checklist}
+        shiftId={shiftId}
+        unsentCount={queue.pendingCount}
+        onClosed={() => void load()}
+      />
     </main>
   )
 }

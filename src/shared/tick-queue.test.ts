@@ -47,6 +47,19 @@ describe('TickQueue', () => {
     expect((await store.list()).map((tick) => tick.itemId)).toEqual(['item-1'])
   })
 
+  it('counts pending claims, and clears back to zero once they send (#45)', async () => {
+    const store = new MemoryTickStore()
+    const post = vi.fn<PostItemDone>().mockRejectedValueOnce(new TypeError('network unreachable'))
+    const queue = new TickQueue(store, post)
+
+    await queue.tick('shift-1', 'item-1')
+    expect(queue.pendingCount).toBe(1)
+
+    post.mockResolvedValueOnce({ itemOutcomeId: 'outcome-1' })
+    await queue.drain()
+    expect(queue.pendingCount).toBe(0)
+  })
+
   it('keeps the same idempotency key across every retry', async () => {
     const store = new MemoryTickStore()
     let firstKey: string | null = null

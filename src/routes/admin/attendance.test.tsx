@@ -43,6 +43,7 @@ function entry(id: string, extra: Record<string, unknown> = {}) {
     supervisingAdultId: null,
     supervisingAdultName: null,
     supervisingAdultPhone: null,
+    attestationRelationship: null,
   }
 }
 

@@ -246,7 +246,10 @@ describe.skipIf(!reachable)('Attendance, through the API', () => {
     it('refuses signing out of nothing open', async () => {
       const beth = await volunteer('Beth Ann')
       const shiftId = await shiftWith(beth)
-      const refused = await post(apiAs(beth, []), '/attendance/sign-out', { volunteerId: beth, shiftId })
+      const refused = await post(apiAs(beth, []), '/attendance/sign-out', {
+        volunteerId: beth,
+        shiftId,
+      })
       expect(refused.status).toBe(409)
       expect(refused.body.error).toBe('not_signed_in')
     })
@@ -354,7 +357,7 @@ describe.skipIf(!reachable)('Attendance, through the API', () => {
     })
   })
 
-  describe('the Supervising Adult', () => {
+  describe('the Supervising Adult and the Attestation (#45)', () => {
     it('is captured at sign-out, distinct from who was merely present', async () => {
       const student = await volunteer('A Student')
       const adult = await volunteer('An Adult')
@@ -366,6 +369,7 @@ describe.skipIf(!reachable)('Attendance, through the API', () => {
         shiftId,
         supervisingAdultId: adult,
         supervisingAdultPhone: '410-555-0100',
+        attestationRelationship: 'none',
       })
       expect(signedOut.status).toBe(204)
 
@@ -375,9 +379,42 @@ describe.skipIf(!reachable)('Attendance, through the API', () => {
         volunteerId: student,
         supervisingAdultId: adult,
         supervisingAdultPhone: '410-555-0100',
+        attestationRelationship: 'none',
       })
       // Distinct fields: who was present (`volunteerId`) is not who supervised.
       expect(ledger.entries[0]?.volunteerId).not.toBe(ledger.entries[0]?.supervisingAdultId)
+    })
+
+    it('refuses an Attestation from a parent, a guardian or a relative', async () => {
+      const student = await volunteer('Another Student')
+      const parent = await volunteer('The Parent')
+      const shiftId = await shiftWith(student)
+
+      await post(apiAs(student, []), '/attendance/sign-in', { volunteerId: student, shiftId })
+      const refused = await post(apiAs(parent, []), '/attendance/sign-out', {
+        volunteerId: student,
+        shiftId,
+        supervisingAdultId: parent,
+        supervisingAdultPhone: '410-555-0101',
+        attestationRelationship: 'parent',
+      })
+      expect(refused.status).toBe(409)
+      expect(refused.body.error).toBe('relative_may_not_attest')
+    })
+
+    it('refuses a Supervising Adult named with no relationship stated', async () => {
+      const student = await volunteer('Yet Another Student')
+      const adult = await volunteer('Some Adult')
+      const shiftId = await shiftWith(student)
+
+      await post(apiAs(student, []), '/attendance/sign-in', { volunteerId: student, shiftId })
+      const refused = await post(apiAs(adult, []), '/attendance/sign-out', {
+        volunteerId: student,
+        shiftId,
+        supervisingAdultId: adult,
+      })
+      expect(refused.status).toBe(409)
+      expect(refused.body.error).toBe('attestation_relationship_required')
     })
   })
 

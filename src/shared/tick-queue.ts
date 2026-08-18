@@ -106,6 +106,16 @@ export class TickQueue {
     return false
   }
 
+  /**
+   * How many claims this queue has not yet had confirmed — the client's own
+   * half of a Shift's close blockers (ADR 0013, #45): the server cannot see
+   * Unsent work, so the close screen folds this count in beside the two it
+   * reads, through `src/shared/shift-close.ts`'s one pure function.
+   */
+  get pendingCount(): number {
+    return this.pending.size
+  }
+
   /** The last denial against this Item, if the queue has not since taken a fresh claim for it. */
   denialFor(itemId: string): TickDenial | null {
     return this.denials.get(itemId) ?? null

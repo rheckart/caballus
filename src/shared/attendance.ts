@@ -199,3 +199,23 @@ export function anneArundelReport(rows: readonly LedgerRow[]): readonly AnneArun
 export const COUNTIES = ['calvert', 'anne_arundel'] as const
 
 export type County = (typeof COUNTIES)[number]
+
+/**
+ * The Attestor's relationship to the minor they are attesting for (ADR 0012,
+ * #45): "the model separates who was present with a volunteer from who
+ * supervised them, stores the relationship, and refuses an attestation by a
+ * parent, guardian or relative." `none` is the only relationship an
+ * Attestation is ever recorded against.
+ */
+export const ATTESTATION_RELATIONSHIPS = ['none', 'parent', 'guardian', 'relative'] as const
+
+export type AttestationRelationship = (typeof ATTESTATION_RELATIONSHIPS)[number]
+
+export function isAttestationRelationship(value: string): value is AttestationRelationship {
+  return (ATTESTATION_RELATIONSHIPS as readonly string[]).includes(value)
+}
+
+/** MSDE's own refusal: a parent, a guardian or a relative may not attest (ADR 0012). */
+export function mayAttest(relationship: AttestationRelationship): boolean {
+  return relationship === 'none'
+}

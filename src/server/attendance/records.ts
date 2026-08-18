@@ -26,7 +26,12 @@ import { v7 as uuidv7 } from 'uuid'
 
 import type { OrgId, OrgScopedDatabase } from '../../db/for-org'
 import { attendance, observations, shifts, volunteers } from '../../db/schema'
-import { isAttendanceCategory, type AttendanceCategory } from '../../shared/attendance'
+import {
+  isAttendanceCategory,
+  isAttestationRelationship,
+  mayAttest,
+  type AttendanceCategory,
+} from '../../shared/attendance'
 import { now } from '../../shared/time'
 import { timestampOf } from '../time'
 import { recorded, refused, type Recorded } from './outcome'
@@ -118,6 +123,8 @@ export interface Departure {
   /** Who supervised, as a Volunteer — distinct from who was merely present (ADR 0012). */
   readonly supervisingAdultId?: string | null
   readonly supervisingAdultPhone?: string | null
+  /** Required exactly when `supervisingAdultId` is — refused unless `none` (ADR 0012, #45). */
+  readonly attestationRelationship?: string | null
 }
 
 /**
@@ -145,13 +152,29 @@ export async function signOut(
     if (undispositioned !== undefined) return refused('observations_undispositioned')
   }
 
+  const supervisingAdultId = about.supervisingAdultId ?? null
+  const relationship = about.attestationRelationship ?? null
+
+  // Named together or not at all — a Supervising Adult with no stated
+  // relationship is a fact this write cannot check, and a relationship with
+  // nobody named is a fact about nobody (ADR 0012, #45).
+  if ((supervisingAdultId === null) !== (relationship === null)) {
+    return refused('attestation_relationship_required')
+  }
+  if (relationship !== null) {
+    if (!isAttestationRelationship(relationship))
+      return refused('attestation_relationship_required')
+    if (!mayAttest(relationship)) return refused('relative_may_not_attest')
+  }
+
   await db
     .update(attendance)
     .set({
       departedAt: timestampOf(now()),
       departedRecordedBy: actorVolunteerId,
-      supervisingAdultId: about.supervisingAdultId ?? null,
+      supervisingAdultId,
       supervisingAdultPhone: about.supervisingAdultPhone ?? null,
+      attestationRelationship: relationship,
     })
     .where(eq(attendance.id, open.id))
 

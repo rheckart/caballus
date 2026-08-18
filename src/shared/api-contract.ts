@@ -19,9 +19,10 @@
  */
 import { z } from 'zod'
 
-import { ATTENDANCE_CATEGORIES } from './attendance'
+import { ATTENDANCE_CATEGORIES, ATTESTATION_RELATIONSHIPS } from './attendance'
 import { DOMAIN_SCOPES } from './domain-scopes'
 import { ROUTES, SHIFT_TYPES } from './feed-schedule'
+import { ITEM_OUTCOMES } from './item-outcomes'
 import {
   ITEM_KINDS,
   TASK_ASSIGNMENT_STANCES,
@@ -804,6 +805,8 @@ const taskPeriod = z.enum(TASK_PERIODS)
 const taskAssignmentStance = z.enum(TASK_ASSIGNMENT_STANCES)
 const itemKind = z.enum(ITEM_KINDS)
 const conditionName = z.enum(CONDITIONS)
+/** Everything a claim can record — blank, the fourth, is `null` rather than a value (ADR 0013, #45). */
+const itemOutcome = z.enum(ITEM_OUTCOMES)
 
 /**
  * A Task, exactly as the rescue may edit it (ADR 0013). What it may choose
@@ -893,6 +896,38 @@ const checklistItem = z.object({
   /** Epoch milliseconds, or null where nobody has ticked this yet. */
   doneAt: z.number().nullable(),
   doneByName: z.string().nullable(),
+  /** The latest claim's own outcome — `null` is blank, and is never softer than that (ADR 0013, #45). */
+  outcome: itemOutcome.nullable(),
+  /** Carried by Dropped and Not done; null for Done and for blank. */
+  outcomeReason: z.string().nullable(),
+  /** Epoch milliseconds, or null while blank — the same instant as `doneAt` when `outcome` is `done`. */
+  outcomeAt: z.number().nullable(),
+  outcomeByName: z.string().nullable(),
+  /** Set on a claim recorded after this Item's Shift had already closed (ADR 0013's late claims, #45). */
+  outcomeLate: z.boolean(),
+  /**
+   * Whether this Item has reached its Task's Discretionary tolerance — Drop
+   * is withdrawn, and only Not-done-with-a-reason remains (ADR 0013, #45).
+   */
+  overdue: z.boolean(),
+  /** A hint at who is expected to do this Item — never a gate (ADR 0013, #45). */
+  assignedToVolunteerId: z.string().nullable(),
+  assignedToVolunteerName: z.string().nullable(),
+})
+
+/** One entry in a Shift's own handover log, curated by Shift Authority (`CONTEXT.md`'s Shift Notes; ADR 0013, #45). */
+const shiftNote = z.object({
+  id: z.string(),
+  day: dayOfTheOrganisation,
+  text: z.string(),
+  horseId: z.string().nullable(),
+  horseName: z.string().nullable(),
+  authoredBy: z.string(),
+  authoredByName: z.string(),
+  /** Epoch milliseconds. */
+  authoredAt: z.number(),
+  /** Written after this Shift's own Shift Authority window closed — `horse_care`'s own act (ADR 0010's amendment, #45). */
+  postClose: z.boolean(),
 })
 
 /**
@@ -903,6 +938,13 @@ const checklistItem = z.object({
  * `materialized: false` with an empty `items` is a Shift whose day nothing has
  * fixed yet — an honest state rather than a live preview this ticket does not
  * build.
+ *
+ * **Closing is blocked by counts this read carries, and by nothing else this
+ * screen has to compute for itself** (#45): `openAttendanceCount` and
+ * `undispositionedObservationCount` come off the server's own two doors, and
+ * the phone merges them with its own Unsent queue length through
+ * `src/shared/shift-close.ts`'s one pure function — the same one the write
+ * itself checks, so the button and the refusal cannot disagree.
  */
 export const shiftChecklist = z.object({
   shiftId: z.string(),
@@ -911,6 +953,12 @@ export const shiftChecklist = z.object({
   materialized: z.boolean(),
   items: z.array(checklistItem),
   prepOwed: z.array(checklistItem),
+  /** Epoch milliseconds, or null while open. A closed Shift is immutable domain fact (#45). */
+  closedAt: z.number().nullable(),
+  openAttendanceCount: z.number(),
+  undispositionedObservationCount: z.number(),
+  /** Recent Shift Notes, newest first — this Shift's own day and the day before (ADR 0013, #45). */
+  shiftNotes: z.array(shiftNote),
 })
 
 /** An optional note on a grant, a revocation or a correction (ADR 0010). */
@@ -955,6 +1003,8 @@ const attendanceRecord = z.object({
   supervisingAdultId: z.string().nullable(),
   supervisingAdultName: z.string().nullable(),
   supervisingAdultPhone: z.string().nullable(),
+  /** What the Attestor was to the minor, when one was named — MSDE refuses `parent`, `guardian` and `relative` (ADR 0012, #45). */
+  attestationRelationship: z.enum(ATTESTATION_RELATIONSHIPS).nullable(),
 })
 
 /**
@@ -1645,7 +1695,10 @@ export const contract = {
      *
      * `supervisingAdultId` and `supervisingAdultPhone` are captured here,
      * alongside the sign-out that already happens at this moment — the adult
-     * who supervised a minor, distinct from who was merely present.
+     * who supervised a minor, distinct from who was merely present. Naming one
+     * requires `attestationRelationship`, which the server refuses unless it
+     * is `none` — MSDE's own rule, that a parent, a guardian or a relative may
+     * not attest (ADR 0012, #45).
      */
     '/attendance/sign-out': {
       accepts: z.object({
@@ -1653,6 +1706,7 @@ export const contract = {
         shiftId: shiftId.nullish(),
         supervisingAdultId: volunteerId.nullish(),
         supervisingAdultPhone: z.string().max(30).nullish(),
+        attestationRelationship: z.enum(ATTESTATION_RELATIONSHIPS).nullish(),
       }),
       answers: z.void(),
     },
@@ -1672,6 +1726,69 @@ export const contract = {
     '/items/done': {
       accepts: z.object({ shiftId: z.uuid(), itemId: z.uuid() }),
       answers: z.object({ itemOutcomeId: z.string() }),
+    },
+    /**
+     * Drops a Discretionary Item — recorded, never silent (ADR 0013, #45).
+     * Requires Shift Authority, and is refused once the Item is overdue: past
+     * tolerance the only honest outcome left is Not done with a reason.
+     */
+    '/items/drop': {
+      accepts: z.object({ shiftId: z.uuid(), itemId: z.uuid(), reason }),
+      answers: z.object({ itemOutcomeId: z.string() }),
+    },
+    /**
+     * Records an Item Not done, with a required reason — available to anyone
+     * rostered on the Shift, the same floor `/items/done` stands on, because
+     * ADR 0013 gives Not done no Shift-Authority gate (#45). This is also how
+     * a deviation from the materialized plan is recorded — "it warmed up and
+     * we did not blanket" — without the plan itself ever changing mid-Shift.
+     */
+    '/items/not-done': {
+      accepts: z.object({
+        shiftId: z.uuid(),
+        itemId: z.uuid(),
+        reason: z.string().min(1).max(1000),
+      }),
+      answers: z.object({ itemOutcomeId: z.string() }),
+    },
+    /**
+     * Sets or clears who is expected to do an Item — a hint, never a gate
+     * (ADR 0013, #45). Self-claim and Shift Authority naming somebody else are
+     * the same write, resolved inside `assignItem`: naming yourself needs only
+     * to be rostered, naming somebody else needs Shift Authority.
+     */
+    '/items/assign': {
+      accepts: z.object({
+        shiftId: z.uuid(),
+        itemId: z.uuid(),
+        volunteerId: volunteerId.nullable(),
+      }),
+      answers: z.void(),
+    },
+    /**
+     * Curates a Shift Note (ADR 0013, #45): Shift Authority while the Shift
+     * stands, or `horse_care` afterward — ADR 0010's amendment that lets an
+     * officer add to a Shift's own record once its Lead's window has closed.
+     */
+    '/shifts/notes': {
+      accepts: z.object({
+        shiftId: z.uuid(),
+        text: z.string().min(1).max(2000),
+        horseId: horseId.nullish(),
+      }),
+      answers: z.object({ shiftNoteId: z.string() }),
+    },
+    /**
+     * Closes a Shift — the record becoming true (ADR 0013, ADR 0014, #45).
+     * Requires Shift Authority, and is refused while any Open Attendance or
+     * undispositioned Observation remains; the phone adds its own Unsent
+     * queue to the same check before ever attempting this write, through
+     * `src/shared/shift-close.ts`. Once closed, a Shift is immutable domain
+     * fact — there is no reopen.
+     */
+    '/shifts/close': {
+      accepts: z.object({ shiftId: z.uuid() }),
+      answers: z.object({ closedAt: z.number() }),
     },
     /**
      * Records an Observation, on ADR 0010's floor: free text with an optional
@@ -1702,6 +1819,24 @@ export const contract = {
      */
     '/observations/note': {
       accepts: z.object({ observationId }),
+      answers: z.void(),
+    },
+    /**
+     * A Shift's own two remaining exits, at close: noted with no action, or
+     * curated into Shift Notes — Shift Authority's own act, and never the
+     * recorder's alone, because "close is the only moment when the person who
+     * can act on it is standing there holding the phone" (ADR 0014, #45).
+     * Curating also appends the Shift Note itself, in the Lead's own words
+     * where they differ from the Observation's.
+     */
+    '/observations/disposition': {
+      accepts: z.object({
+        shiftId: z.uuid(),
+        observationId,
+        disposition: z.enum(['noted_no_action', 'curated_into_shift_notes']),
+        /** Required by `curated_into_shift_notes`; ignored by `noted_no_action`. */
+        noteText: z.string().max(2000).nullish(),
+      }),
       answers: z.void(),
     },
     /**

@@ -338,14 +338,29 @@ export async function shiftList(
 export async function shiftById(
   db: OrgScopedDatabase,
   shiftId: string,
-): Promise<{ id: string; day: DayString; shiftType: AnyShiftType } | null> {
+): Promise<{
+  id: string
+  day: DayString
+  shiftType: AnyShiftType
+  closedAt: Instant | null
+} | null> {
   const [row] = await db
-    .select({ id: shifts.id, day: shifts.day, shiftType: shifts.shiftType })
+    .select({
+      id: shifts.id,
+      day: shifts.day,
+      shiftType: shifts.shiftType,
+      closedAt: shifts.closedAt,
+    })
     .from(shifts)
     .where(and(eq(shifts.id, shiftId)))
     .limit(1)
   if (row === undefined || !isAnyShiftType(row.shiftType)) return null
-  return { id: row.id, day: dayString(row.day), shiftType: row.shiftType }
+  return {
+    id: row.id,
+    day: dayString(row.day),
+    shiftType: row.shiftType,
+    closedAt: row.closedAt === null ? null : instantOfTimestamp(row.closedAt),
+  }
 }
 
 /** The week in order, read off the vocabulary rather than spelled a second time. */
