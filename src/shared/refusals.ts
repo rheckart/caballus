@@ -58,6 +58,9 @@ const REFUSALS: Record<string, string> = {
   category_invalid: 'Pick a category for the visit.',
   already_signed_in: 'Already signed in and not yet signed out.',
   not_signed_in: 'Nothing open to sign out of.',
+  announcement_not_found: 'That announcement is gone.',
+  contact_not_found: 'That contact is gone.',
+  standing_rule_not_found: 'That rule is gone.',
 }
 
 /** What a failed call says when the server never answered at all. */

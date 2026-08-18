@@ -75,6 +75,17 @@ export interface ShiftAuthorization {
 export type Authorization =
   | { readonly kind: 'scope'; readonly scope: DomainScope }
   | { readonly kind: 'any-scope'; readonly scopes: readonly DomainScope[] }
+  /**
+   * Holds any Domain Scope at all, named rather than enumerated (ADR 0018).
+   *
+   * A genuinely different shape from `any-scope` above, which still names its
+   * list: posting an Announcement is legitimate for the Treasurer, whose scope
+   * guards nothing else in v1, and for every officer scope the rescue adds
+   * after this ships. Enumerating here would need editing on every new Scope,
+   * which is the drift ADR 0018 names as the reason this exists as its own
+   * check rather than a growing `any-scope` list.
+   */
+  | { readonly kind: 'holds-any-scope' }
   | ShiftAuthorization
   | { readonly kind: 'floor'; readonly because: FloorReason }
   | { readonly kind: 'read-everything' }
@@ -136,6 +147,20 @@ export function domainScope(required: DomainScope): AnywhereAuthorization {
  */
 export function anyDomainScope(scopes: readonly DomainScope[]): AnywhereAuthorization {
   return { kind: 'any-scope', scopes }
+}
+
+/**
+ * This endpoint requires holding **any** Domain Scope, unnamed (ADR 0018).
+ *
+ * Posting to a wall sixty people read is not ADR 0010's floor — it is not
+ * *telling the app the truth about yourself*, the property the floor's four
+ * cases share — so it needs a Scope. Which one is deliberately not this
+ * check's business: the Treasurer and the Head of Horse Welfare both post
+ * Announcements, about different things, and enumerating the pair (or the
+ * seven) would be a list somebody has to remember to widen.
+ */
+export function anyScopeHolder(): AnywhereAuthorization {
+  return { kind: 'holds-any-scope' }
 }
 
 /**
@@ -265,6 +290,14 @@ export function authorize(required: Authorization, asking: Principal): Decision 
         : { outcome: 'refused', status: 403, wanted }
     }
 
+    case 'holds-any-scope':
+      if (actor === null) {
+        return { outcome: 'refused', status: 401, wanted: 'any domain scope' }
+      }
+      return actor.domainScopes.length > 0
+        ? { outcome: 'allowed' }
+        : { outcome: 'refused', status: 403, wanted: 'any domain scope' }
+
     case 'shift-authority':
       // Half the answer. Being signed in is settled here, and so is a Domain
       // Scope the endpoint named as reaching the same act; the position on the
@@ -287,6 +320,8 @@ export function describeAuthorization(required: Authorization): string {
       return required.scope
     case 'any-scope':
       return required.scopes.join(' or ')
+    case 'holds-any-scope':
+      return 'any domain scope'
     case 'shift-authority':
       return required.alsoScopes.length === 0
         ? 'shift authority'

@@ -243,6 +243,8 @@ export function Board() {
 
       <Weather reading={grid.weather} today={grid.today} />
 
+      <Announcements announcements={grid.announcements} />
+
       {grid.sections.map((section) => (
         <section key={section.heading}>
           <table className="board-grid">
@@ -289,6 +291,30 @@ export function Board() {
 
       {grid.sections.length === 0 && <p>No horses on the board yet.</p>}
     </main>
+  )
+}
+
+/**
+ * The wall's own panel: unexpired Announcements, exactly as the home screen
+ * carries them (#46, ADR 0018).
+ *
+ * Rendered only when there is something to show, the same rule the home
+ * screen follows — permanent furniture for something empty most of the time
+ * teaches people not to look (ADR 0011). No action anywhere on it: the Board
+ * records nothing and credits nobody (ADR 0022), and posting or editing one
+ * happens on the home screen, by a signed-in person.
+ */
+function Announcements({ announcements }: { announcements: BoardGrid['announcements'] }) {
+  if (announcements.length === 0) return null
+
+  return (
+    <section className="board-announcements" aria-label="Announcements">
+      <ul>
+        {announcements.map((announcement) => (
+          <li key={announcement.id}>{announcement.text}</li>
+        ))}
+      </ul>
+    </section>
   )
 }
 
@@ -589,6 +615,8 @@ const STYLE = `
 .board-lines li[data-kind='supplement'] { color: #1b3f8f; }
 .board-lines li[data-kind='medication'] { color: #a3122a; font-weight: 700; }
 .board-route { font-style: italic; }
+.board-announcements { margin: 0 0 1rem; padding: 0.5rem 0.75rem; border: 2px dashed #b9c3d0; border-radius: 6px; }
+.board-announcements ul { margin: 0; padding-left: 1.2rem; }
 .board-weather { margin: 0 0 1rem; padding: 0.5rem 0.75rem; border: 2px solid #b9c3d0; border-radius: 6px; }
 .board-weather p { margin: 0.15rem 0; }
 .board-weather-holds { font-size: 1.5rem; font-weight: 700; letter-spacing: 0.04em; }
@@ -611,6 +639,7 @@ const STYLE = `
   .board-lines li[data-kind='supplement'] { color: #86adff; }
   .board-lines li[data-kind='medication'] { color: #ff7385; }
   .board-new { color: #86adff; }
+  .board-announcements { border-color: #39424e; }
   .board-weather { border-color: #39424e; }
   .board-weather-holding { color: #e5a63f; }
   .board-weather-reading { color: #a2adbc; }

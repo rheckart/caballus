@@ -103,6 +103,7 @@ function resolution(
 const GRID = {
   today: '2026-08-18',
   weather: null,
+  announcements: [],
   sections: [
     {
       heading: 'Main barn',
@@ -151,6 +152,7 @@ describe('the Board', () => {
       '/board': {
         today: '2026-08-18',
         weather: null,
+        announcements: [],
         sections: [
           {
             heading: 'Main barn',
@@ -181,6 +183,7 @@ describe('the Board', () => {
       '/board': {
         today: '2026-08-18',
         weather: null,
+        announcements: [],
         sections: [
           {
             heading: 'Main barn',
@@ -237,6 +240,40 @@ describe('the Board', () => {
     await screen.findByText('Main barn')
     expect(screen.queryAllByRole('button')).toEqual([])
     expect(screen.queryAllByRole('textbox')).toEqual([])
+  })
+
+  it('shows unexpired Announcements, the whiteboard’s missing panel (#46)', async () => {
+    stubApi({
+      '/board': {
+        ...GRID,
+        announcements: [
+          {
+            id: 'a1',
+            text: 'The hay comes Thursday.',
+            expiresOn: '2026-08-25',
+            authoredBy: 'v1',
+            authoredByName: 'Lori',
+            authoredAt: 1_768_366_800_000,
+            lastEditedBy: null,
+            lastEditedByName: null,
+            lastEditedAt: null,
+          },
+        ],
+      },
+    })
+    renderBoard()
+
+    expect(await screen.findByText('The hay comes Thursday.')).toBeTruthy()
+    // Read-only, like the rest of the Board (ADR 0022).
+    expect(screen.queryAllByRole('button')).toEqual([])
+  })
+
+  it('shows no Announcements section when there is nothing posted', async () => {
+    stubApi({ '/board': GRID })
+    renderBoard()
+
+    await screen.findByText('Main barn')
+    expect(screen.queryByLabelText('Announcements')).toBeNull()
   })
 
   it('drills down to a horse profile from a row, on a phone', async () => {

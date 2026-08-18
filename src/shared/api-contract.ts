@@ -330,6 +330,28 @@ export const supplier = z.object({
 export const supplierList = z.object({ suppliers: z.array(supplier) })
 
 /**
+ * A posted number: who to phone, the hours it is answered, and what it is for
+ * (`CONTEXT.md`'s Contacts; ADR 0014). It carries no field that could let an
+ * Escalation resolve to it — the app never dials or routes to this screen.
+ */
+export const contact = z.object({
+  id: z.string(),
+  name: z.string(),
+  number: z.string(),
+  /** Display text a person reads at 2am, not a modelled availability window (ADR 0014). */
+  hours: z.string().nullable(),
+  purpose: z.string(),
+})
+
+/** A rescue-wide safety rule belonging to no Task and no Space (ADR 0018). */
+export const standingRule = z.object({ id: z.string(), text: z.string() })
+
+export const contactsPage = z.object({
+  contacts: z.array(contact),
+  standingRules: z.array(standingRule),
+})
+
+/**
  * The catalogue (ADR 0019, `CONTEXT.md`'s Product). `supplierName` rides along
  * so a list renders without a second read; the id is what a Feed Schedule line
  * names.
@@ -575,6 +597,31 @@ export const weather = z.object({
   reading: reading.nullable(),
 })
 
+/**
+ * News about the rescue, belonging to no Shift and no horse (`CONTEXT.md`'s
+ * Announcement; ADR 0018). **No subject field exists**, on either the read or
+ * the write below — the type is the refusal ADR 0018 asks for.
+ */
+export const announcement = z.object({
+  id: z.string(),
+  text: z.string(),
+  expiresOn: dayOfTheOrganisation,
+  authoredBy: z.string(),
+  authoredByName: z.string(),
+  /** Epoch milliseconds. */
+  authoredAt: z.number(),
+  lastEditedBy: z.string().nullable(),
+  lastEditedByName: z.string().nullable(),
+  /** Epoch milliseconds, or null before the first edit. */
+  lastEditedAt: z.number().nullable(),
+})
+
+export const announcementList = z.object({
+  today: dayOfTheOrganisation,
+  /** Unexpired only, newest posted first — what has already left the wall is not here (ADR 0018). */
+  announcements: z.array(announcement),
+})
+
 /** The stalls in stall order, then each barn that holds horses without one. */
 const boardSection = z.object({ heading: z.string(), rows: z.array(boardRow) })
 
@@ -597,6 +644,12 @@ export const board = z.object({
    * screen are the same fact read at two distances.
    */
   weather: reading.nullable(),
+  /**
+   * Unexpired Announcements, the whiteboard's missing panel (#46, ADR 0018) —
+   * the same shape and the same read `/announcements` answers with, because
+   * the Board and the home screen are the same wall read at two distances.
+   */
+  announcements: z.array(announcement),
 })
 
 /** The day of the week a Shift Pattern recurs on — a word, never a number (ADR 0001). */
@@ -904,6 +957,10 @@ const attendanceRecord = z.object({
  */
 export const attendanceLedger = z.object({ entries: z.array(attendanceRecord) })
 
+const announcementId = z.uuid()
+const contactId = z.uuid()
+const standingRuleId = z.uuid()
+
 export const contract = {
   reads: {
     '/day': { answers: day },
@@ -917,6 +974,10 @@ export const contract = {
     '/horses/:horseId': { answers: horseProfile },
     '/suppliers': { answers: supplierList },
     '/products': { answers: productList },
+    /** The read-only screen of posted numbers, and the rescue's standing rules (ADR 0014). */
+    '/contacts': { answers: contactsPage },
+    /** Unexpired Announcements, newest posted first — the home screen's own read (#46, ADR 0018). */
+    '/announcements': { answers: announcementList },
     /**
      * The Board. The one endpoint the barn's tablet may read, and the only one
      * whose authorization is not a person (ADR 0022).
@@ -1099,6 +1160,68 @@ export const contract = {
         reason,
       }),
       answers: z.void(),
+    },
+    /** Posts a Contact, under `roster` (ADR 0014). */
+    '/contacts': {
+      accepts: z.object({
+        name: z.string().min(1).max(200),
+        number: z.string().min(1).max(50),
+        hours: z.string().max(200).nullish(),
+        purpose: z.string().min(1).max(500),
+      }),
+      answers: z.object({ contactId: z.string() }),
+    },
+    /** A partial edit, the same discipline `/products/edit` follows (ADR 0003). */
+    '/contacts/edit': {
+      accepts: z.object({
+        contactId,
+        name: z.string().min(1).max(200).optional(),
+        number: z.string().min(1).max(50).optional(),
+        hours: z.string().max(200).nullish(),
+        purpose: z.string().min(1).max(500).optional(),
+        reason,
+      }),
+      answers: z.void(),
+    },
+    /** Adds a standing rule — the Reminders panel's residue, under `roster` (ADR 0018). */
+    '/standing-rules': {
+      accepts: z.object({ text: z.string().min(1).max(500) }),
+      answers: z.object({ standingRuleId: z.string() }),
+    },
+    /** Edits a standing rule's text in place. */
+    '/standing-rules/edit': {
+      accepts: z.object({ standingRuleId, text: z.string().min(1).max(500), reason }),
+      answers: z.void(),
+    },
+    /**
+     * Posts an Announcement. Any single Domain Scope, and there is no field
+     * here that could name a subject — anything about one horse already has a
+     * better home (ADR 0018).
+     *
+     * **`neverQueued`**, under ADR 0018's restated rule: an Announcement is not
+     * true until it arrives, because the app is the medium here rather than the
+     * ledger. An author who sees their own phone say *posted* while the wall
+     * never got it is the same failure shape as two volunteers each believing
+     * they have Thursday covered.
+     */
+    '/announcements': {
+      accepts: z.object({ text: z.string().min(1).max(2000), expiresOn: dayOfTheOrganisation }),
+      answers: z.object({ announcementId: z.string() }),
+      neverQueued: true,
+    },
+    /**
+     * Edits an Announcement in place — by the author or any Domain Scope
+     * holder, which is the same check as posting: ADR 0010 has no authorship
+     * axis for this to lean on (ADR 0018).
+     */
+    '/announcements/edit': {
+      accepts: z.object({
+        announcementId,
+        text: z.string().min(1).max(2000).optional(),
+        expiresOn: dayOfTheOrganisation.optional(),
+      }),
+      answers: z.void(),
+      neverQueued: true,
     },
     /**
      * Publishes a new Feed Schedule version for one horse at one Shift Type
