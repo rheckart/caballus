@@ -285,6 +285,22 @@ export default [
     },
   },
   {
+    // The installable shell's service worker (public/sw.js, ADR 0004, #48)
+    // runs in its own worker global scope, served as-is rather than bundled —
+    // it is a static asset Vite copies verbatim, not TypeScript, so it is
+    // linted with the worker's own globals rather than exempted from the
+    // guardrails' `**/*.ts(x)` scope it was never in to begin with.
+    files: ['public/sw.js'],
+    languageOptions: {
+      globals: {
+        self: 'readonly',
+        caches: 'readonly',
+        fetch: 'readonly',
+        URL: 'readonly',
+      },
+    },
+  },
+  {
     files: ['**/*.ts', '**/*.tsx'],
     rules: {
       '@typescript-eslint/consistent-type-imports': 'error',
