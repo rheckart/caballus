@@ -371,6 +371,41 @@ export const product = z.object({
 
 export const productList = z.object({ products: z.array(product) })
 
+/**
+ * One count against a Product — a date, an actor and a number of days, ADR
+ * 0003's measurement-series tier: appended, never edited, no reason field
+ * (ADR 0019, #47).
+ */
+const suppliesReading = z.object({
+  daysRemaining: z.number(),
+  countedOn: dayOfTheOrganisation,
+  recordedBy: z.string(),
+  recordedByName: z.string(),
+})
+
+/**
+ * One Product's forecast: the last count, decremented by the days elapsed
+ * since it was taken and floored at zero (ADR 0019). `latestReading` null is
+ * a Product nobody has ever counted — never a reading of zero standing in for
+ * *nobody knows*. `atOrBelowReorderPoint` is the one fact this ticket
+ * surfaces to `supplies` holders, never as an email.
+ */
+export const productSupply = z.object({
+  productId: z.string(),
+  productName: z.string(),
+  productKind,
+  reorderPointDays: z.number().nullable(),
+  latestReading: suppliesReading.nullable(),
+  projectedDaysRemaining: z.number().nullable(),
+  atOrBelowReorderPoint: z.boolean(),
+})
+
+/** Every Product's forecast, whole — the Supplies screen's own read (ADR 0019). */
+export const suppliesForecast = z.object({
+  today: dayOfTheOrganisation,
+  products: z.array(productSupply),
+})
+
 /** One Feed Schedule line: a Product, an amount and a Route (`CONTEXT.md`'s Feed Schedule). */
 const feedScheduleLine = z.object({
   productId: z.string(),
@@ -1087,11 +1122,55 @@ export const escalation = z.object({
 
 export const escalationList = z.object({ escalations: z.array(escalation) })
 
+/**
+ * One entry in a Reorder's thread — where the dates go, ordered, chased,
+ * arrived (ADR 0019, #47). Unlike the Escalation's own thread, this one is
+ * writable by `supplies` holders alone: a Reorder has no reporter with
+ * standing the way an Observation does, and the linked Escalation's thread —
+ * still floor-writable — is where the floor keeps its voice.
+ */
+const reorderComment = z.object({
+  id: z.string(),
+  text: z.string(),
+  authoredBy: z.string(),
+  authoredByName: z.string(),
+  /** Epoch milliseconds. */
+  authoredAt: z.number(),
+})
+
+/**
+ * One Reorder: Open or Closed, against exactly one Product, carrying no
+ * quantity and naming no horse (`CONTEXT.md`'s Reorder; ADR 0019). It borrows
+ * the Escalation's shape — two states, closed with a note, an append-only
+ * thread — and may be created from one, `escalationId` linking back with no
+ * shared state: the Escalation closes when answered, this Reorder when the
+ * feed arrives. `closedAt` null is Open; there is no reopen.
+ */
+export const reorder = z.object({
+  id: z.string(),
+  productId: z.string(),
+  productName: z.string(),
+  escalationId: z.string().nullable(),
+  openedBy: z.string(),
+  openedByName: z.string(),
+  /** Epoch milliseconds. */
+  openedAt: z.number(),
+  /** Epoch milliseconds, or null while Open. */
+  closedAt: z.number().nullable(),
+  closedBy: z.string().nullable(),
+  closedByName: z.string().nullable(),
+  closingNote: z.string().nullable(),
+  comments: z.array(reorderComment),
+})
+
+export const reorderList = z.object({ reorders: z.array(reorder) })
+
 const announcementId = z.uuid()
 const contactId = z.uuid()
 const standingRuleId = z.uuid()
 const observationId = z.uuid()
 const escalationId = z.uuid()
+const reorderId = z.uuid()
 
 export const contract = {
   reads: {
@@ -1135,6 +1214,10 @@ export const contract = {
     '/observations/:attendanceId': { answers: observationList },
     /** Every Escalation, on the floor — a holder's open ones are this same read, filtered (ADR 0014). */
     '/escalations': { answers: escalationList },
+    /** Every Product's days-of-supply forecast, whole (ADR 0019, #47). */
+    '/supplies': { answers: suppliesForecast },
+    /** Every Reorder, on the floor — a holder's own open ones are this same read, filtered (ADR 0019). */
+    '/reorders': { answers: reorderList },
   },
   writes: {
     /**
@@ -1868,6 +1951,46 @@ export const contract = {
      */
     '/escalations/close': {
       accepts: z.object({ escalationId, note: z.string().min(1).max(2000) }),
+      answers: z.void(),
+    },
+    /**
+     * Appends a Days-of-Supply reading (ADR 0019, #47). Written by holders of
+     * `supplies` from anywhere, or by Shift Authority over the Shift named in
+     * `shiftId` — the person standing in the feed room. `shiftId` is optional,
+     * so — the same reason `/observations` and `/escalations` check theirs
+     * inside the domain function rather than declaring it — this can never be
+     * `MutationAuthorization`'s Shift-Authority type (`src/server/api/route.ts`);
+     * `src/server/supplies/records.ts` runs the actual check.
+     */
+    '/supplies/readings': {
+      accepts: z.object({
+        productId,
+        daysRemaining: z.number().nonnegative(),
+        countedOn: dayOfTheOrganisation,
+        shiftId: z.uuid().nullish(),
+      }),
+      answers: z.object({ readingId: z.string() }),
+    },
+    /**
+     * Opens a Reorder against one Product, under `supplies` — `escalationId`
+     * links it back to the Escalation it may have been created from, sharing
+     * no state with it (ADR 0019).
+     */
+    '/reorders': {
+      accepts: z.object({ productId, escalationId: escalationId.nullish() }),
+      answers: z.object({ reorderId: z.string() }),
+    },
+    /**
+     * Appends to a Reorder's thread, under `supplies` — unlike the
+     * Escalation's own thread, never floor-writable (ADR 0019).
+     */
+    '/reorders/comments': {
+      accepts: z.object({ reorderId, text: z.string().min(1).max(2000) }),
+      answers: z.object({ commentId: z.string() }),
+    },
+    /** Closes a Reorder with a note, under `supplies` — there is no reopen (ADR 0019). */
+    '/reorders/close': {
+      accepts: z.object({ reorderId, note: z.string().min(1).max(2000) }),
       answers: z.void(),
     },
   },
