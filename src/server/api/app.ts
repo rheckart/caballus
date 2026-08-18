@@ -109,6 +109,7 @@ import {
 import { createTask, editTask } from '../checklist/records'
 import { checklistForShift, materializeDayFor, type Checklist } from '../checklist/materialize'
 import type { Refusal as ChecklistRefusal } from '../checklist/outcome'
+import { tickItemDone, type Refusal as TickRefusal } from '../checklist/tick'
 import { shiftById } from '../shifts/list'
 import type { ShiftType } from '../../shared/feed-schedule'
 import { attendanceLedger } from '../attendance/list'
@@ -256,6 +257,17 @@ export function buildApi(
   function checklistRefusal(because: ChecklistRefusal) {
     const missing =
       because === 'task_not_found' || because === 'horse_not_found' || because === 'space_not_found'
+    return json({ error: because }, missing ? 404 : 409)
+  }
+
+  /**
+   * And again for ticking an Item — *not rostered* and *needs Medication
+   * Authority* are both conflicts, because neither becomes true by retrying
+   * under the same key; the phone's queue has to stop and say so rather than
+   * hold the claim forever (ADR 0013, #42).
+   */
+  function tickRefusal(because: TickRefusal) {
+    const missing = because === 'shift_not_found' || because === 'item_not_found'
     return json({ error: because }, missing ? 404 : 409)
   }
 
@@ -1285,6 +1297,28 @@ export function buildApi(
     async (_input, { context, db }) => {
       const clock = await clockHere(db)
       return json(await materializeDayFor(db, context.orgId, clock.today, clock.timeZone), 200)
+    },
+  )
+
+  /**
+   * Ticks an Item Done, on the floor: any Volunteer rostered on the Shift
+   * named may complete any Item it shows (ADR 0013) — never Shift Authority,
+   * which #34 already refused as a third axis past ADR 0010's two. The roster
+   * join and the Medication Authority check both live in `tickItemDone`,
+   * because they are facts about this Shift's rows and this Item, not about
+   * the caller in general.
+   */
+  api.mutation(
+    '/items/done',
+    floor('work-on-a-shift-you-are-rostered-on'),
+    async (input, { context, db }) => {
+      const actor = actorOf(context)
+      const outcome = await tickItemDone(db, context.orgId, actor.volunteerId, {
+        shiftId: input.shiftId,
+        itemId: input.itemId,
+      })
+      if (!outcome.ok) return tickRefusal(outcome.because)
+      return json({ itemOutcomeId: outcome.value.id }, 201)
     },
   )
 
