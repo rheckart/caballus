@@ -19,6 +19,13 @@
  * words; a stall with no horse says OPEN. An unanswered question must never
  * look answered (#32).
  *
+ * **The weather is on the wall, in words.** Today's Reading rides in with the
+ * grid: what it resolved to — *staying in*, and which horses are in sheets or
+ * blankets — with the provider named, because the rescue has no single
+ * authoritative source today and a Board saying 96 while a volunteer's phone
+ * says 89 has to be able to say whose number it is showing (ADR 0015). A
+ * Condition the forecast could not answer says so rather than reading as *no*.
+ *
  * **It polls, and it says how old it is.** A fetch that fails leaves the last
  * grid on the wall with its age against it, rather than blanking a screen
  * people across a barn are reading.
@@ -39,6 +46,8 @@ export const Route = createFileRoute('/board')({
 type BoardGrid = Answers<typeof contract, '/board'>
 type BoardHorse = NonNullable<BoardGrid['sections'][number]['rows'][number]['horse']>
 type Feeding = BoardHorse['feedings'][number]
+type Reading = NonNullable<BoardGrid['weather']>
+type Resolution = Reading['conditions'][number]
 
 /**
  * How often the wall repaints. #37 asks for 30–60 seconds: often enough that a
@@ -60,6 +69,27 @@ const TOKEN_KEY = 'caballus.board-token'
  * the order the vocabulary is declared in.
  */
 const COLUMNS: readonly Feeding['shiftType'][] = ['feed_am', 'lunch', 'feed_pm']
+
+/** What the barn calls each Condition when it holds. */
+const CONDITION_HOLDS: Record<Resolution['condition'], string> = {
+  staying_in: 'Staying in',
+  fly_sheet_weather: 'Fly sheets',
+  cold_and_wet: 'Cold and wet',
+  sheet_weather: 'Sheet',
+  blanket_weather: 'Blanket',
+}
+
+/** Why a Condition has no answer, in the words a volunteer can act on. */
+const UNRESOLVED_TEXT: Record<NonNullable<Resolution['unresolved']>, string> = {
+  no_hours: 'no forecast for the hours it covers',
+  no_metric: 'the forecast carried no such reading',
+  no_threshold: 'the rescue has not set the number',
+}
+
+const PROVIDER_NAME: Record<Reading['provider'], string> = {
+  open_meteo: 'Open-Meteo',
+  nws: 'the National Weather Service',
+}
 
 const SHIFT_TYPE_LABEL: Record<Feeding['shiftType'], string> = {
   feed_am: 'Feed AM',
@@ -211,6 +241,8 @@ export function Board() {
         </p>
       </header>
 
+      <Weather reading={grid.weather} today={grid.today} />
+
       {grid.sections.map((section) => (
         <section key={section.heading}>
           <table className="board-grid">
@@ -241,7 +273,12 @@ export function Board() {
                       OPEN
                     </td>
                   ) : (
-                    <HorseRow horse={row.horse} linked={token === null} />
+                    <HorseRow
+                      horse={row.horse}
+                      linked={token === null}
+                      wearing={garmentFor(grid.weather, row.horse.id)}
+                      garmentUnknown={garmentUnknown(grid.weather, row.horse.id)}
+                    />
                   )}
                 </tr>
               ))}
@@ -255,8 +292,159 @@ export function Board() {
   )
 }
 
+/**
+ * The day's weather, as the barn reads it across the room.
+ *
+ * The Conditions that hold come first and in words — *Staying in* changes the
+ * hay plan and the turnout, so it is the sentence this panel exists for. What
+ * could not be resolved is stated too, because an unanswered question must
+ * never look like a no (ADR 0015).
+ */
+function Weather({ reading, today }: { reading: BoardGrid['weather']; today: BoardGrid['today'] }) {
+  if (reading === null) {
+    return (
+      <p className="board-weather board-weather-none">
+        <Blank>no weather read for today yet</Blank>
+      </p>
+    )
+  }
+
+  const rescueWide = reading.conditions.filter((resolution) => resolution.horseId === null)
+  const holding = rescueWide.filter((resolution) => resolution.holds === true)
+  // Every Condition with no answer, per-horse ones included and counted rather
+  // than listed twelve times: a per-horse Condition nobody could resolve would
+  // otherwise render exactly like a horse that needs nothing, which is the one
+  // thing this screen may never do (ADR 0015, #32).
+  const unresolved = unansweredOf(reading)
+  // **Today's** hours, not the whole series. A Reading stores tomorrow's early
+  // hours too, because a night window runs past midnight — and a panel headed
+  // *today* that quietly included tomorrow's 99 ° would be the Board wrong in
+  // the direction people act on.
+  const hoursToday = reading.hours.filter((hour) => hour.day === today)
+  const air = hoursToday.map((hour) => hour.airTempF).filter((value) => value !== null)
+  const apparent = hoursToday.map((hour) => hour.apparentTempF).filter((value) => value !== null)
+
+  return (
+    <section className="board-weather" aria-label="Today’s weather">
+      <p className="board-weather-holds">
+        {holding.length === 0 ? (
+          <Blank>no weather rule in force today</Blank>
+        ) : (
+          holding.map((resolution) => (
+            <span key={resolution.condition} className="board-weather-holding">
+              {CONDITION_HOLDS[resolution.condition]}
+            </span>
+          ))
+        )}
+      </p>
+
+      <p className="board-weather-reading">
+        {air.length > 0 && (
+          <>
+            {Math.min(...air)}–{Math.max(...air)} °F
+            {apparent.length > 0 && <> · real feel to {Math.max(...apparent)} °F</>}
+            {' · '}
+          </>
+        )}
+        as {PROVIDER_NAME[reading.provider]} read it
+        {reading.fellBackFrom !== null && (
+          <> — {PROVIDER_NAME[reading.fellBackFrom]} did not answer</>
+        )}
+        {reading.stale && <> — reused an earlier forecast for today</>}
+      </p>
+
+      {unresolved.length > 0 && (
+        <p className="board-weather-unresolved" role="alert">
+          {unresolved.map((each) => (
+            <span key={each.condition}>
+              {CONDITION_HOLDS[each.condition]} could not be answered
+              {each.horses > 0 && (
+                <>
+                  {' '}
+                  for {each.horses} horse{each.horses === 1 ? '' : 's'}
+                </>
+              )}
+              : {UNRESOLVED_TEXT[each.because]}.{' '}
+            </span>
+          ))}
+        </p>
+      )}
+    </section>
+  )
+}
+
+/** One Condition the Reading could not answer, and how many horses it covers. */
+interface Unanswered {
+  readonly condition: Resolution['condition']
+  readonly because: NonNullable<Resolution['unresolved']>
+  /** Zero for a rescue-wide Condition; a count for a per-horse one. */
+  readonly horses: number
+}
+
+/**
+ * Every Condition with no answer, one line each.
+ *
+ * Grouped by Condition rather than listed per subject: twelve horses with no
+ * sheet answer is one problem — usually one number nobody set — and twelve
+ * identical sentences across a barn wall is a panel nobody reads.
+ */
+function unansweredOf(reading: Reading): readonly Unanswered[] {
+  const grouped = new Map<string, Unanswered>()
+  for (const resolution of reading.conditions) {
+    if (resolution.holds !== null || resolution.unresolved === null) continue
+    const at = `${resolution.condition}:${resolution.unresolved}`
+    const held = grouped.get(at)
+    grouped.set(at, {
+      condition: resolution.condition,
+      because: resolution.unresolved,
+      horses: (held?.horses ?? 0) + (resolution.horseId === null ? 0 : 1),
+    })
+  }
+  return [...grouped.values()]
+}
+
+/**
+ * Whether this horse's garment is an open question — a sheet rule the forecast
+ * or the numbers could not answer. It is not *no garment*, and the row says so.
+ */
+function garmentUnknown(reading: BoardGrid['weather'], horseId: string): boolean {
+  if (reading === null) return false
+  return reading.conditions.some(
+    (resolution) =>
+      resolution.horseId === horseId &&
+      resolution.holds === null &&
+      (resolution.condition === 'sheet_weather' || resolution.condition === 'blanket_weather'),
+  )
+}
+
+/**
+ * What this horse is wearing tonight, if anything — one garment or none, ever,
+ * because Sheet and Blanket are mutually exclusive by construction (ADR 0015).
+ */
+function garmentFor(reading: BoardGrid['weather'], horseId: string): Resolution | null {
+  if (reading === null) return null
+  return (
+    reading.conditions.find(
+      (resolution) =>
+        resolution.horseId === horseId &&
+        resolution.holds === true &&
+        (resolution.condition === 'sheet_weather' || resolution.condition === 'blanket_weather'),
+    ) ?? null
+  )
+}
+
 /** The cells of a row with a horse in it. */
-function HorseRow({ horse, linked }: { horse: BoardHorse; linked: boolean }) {
+function HorseRow({
+  horse,
+  linked,
+  wearing,
+  garmentUnknown: unknown,
+}: {
+  horse: BoardHorse
+  linked: boolean
+  wearing: Resolution | null
+  garmentUnknown: boolean
+}) {
   const feedings = new Map(horse.feedings.map((feeding) => [feeding.shiftType, feeding]))
 
   return (
@@ -278,6 +466,25 @@ function HorseRow({ horse, linked }: { horse: BoardHorse; linked: boolean }) {
           <Blank>no halter colour</Blank>
         ) : (
           <span className="board-halter">{horse.halterColour}</span>
+        )}
+        {wearing === null && unknown && (
+          // An unanswered question, never a blank row: a horse whose sheet
+          // rule could not be resolved must not look like a horse that needs
+          // nothing (ADR 0015).
+          <Blank>sheet or blanket not known</Blank>
+        )}
+        {wearing !== null && (
+          // The number that decided it rides with it, so the tag explains
+          // itself instead of looking arbitrary — *38 °F, sheets under 50°*.
+          <span className="board-garment" data-garment={wearing.condition}>
+            {CONDITION_HOLDS[wearing.condition]}
+            {wearing.readingValue !== null && wearing.thresholdValue !== null && (
+              <span className="board-garment-why">
+                {' '}
+                {wearing.readingValue}°, under {wearing.thresholdValue}°
+              </span>
+            )}
+          </span>
         )}
       </td>
       <td>{horse.field === null ? <Blank>no field</Blank> : horse.field.name}</td>
@@ -382,6 +589,16 @@ const STYLE = `
 .board-lines li[data-kind='supplement'] { color: #1b3f8f; }
 .board-lines li[data-kind='medication'] { color: #a3122a; font-weight: 700; }
 .board-route { font-style: italic; }
+.board-weather { margin: 0 0 1rem; padding: 0.5rem 0.75rem; border: 2px solid #b9c3d0; border-radius: 6px; }
+.board-weather p { margin: 0.15rem 0; }
+.board-weather-holds { font-size: 1.5rem; font-weight: 700; letter-spacing: 0.04em; }
+.board-weather-holding { margin-right: 1rem; text-transform: uppercase; color: #8a3b00; }
+.board-weather-reading { font-size: 0.95rem; color: #555; }
+.board-weather-unresolved { font-size: 0.95rem; color: #8a3b00; font-weight: 700; }
+.board-garment { display: inline-block; margin-left: 0.4rem; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+.board-garment[data-garment='blanket_weather'] { color: #1b3f8f; }
+.board-garment[data-garment='sheet_weather'] { color: #0f5d55; }
+.board-garment-why { font-weight: 400; text-transform: none; letter-spacing: 0; color: #555; }
 .board-new { font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #1b57c4; }
 @media (prefers-color-scheme: dark) {
   .board { background: #14171b; color: #e8ecf2; }
@@ -394,5 +611,12 @@ const STYLE = `
   .board-lines li[data-kind='supplement'] { color: #86adff; }
   .board-lines li[data-kind='medication'] { color: #ff7385; }
   .board-new { color: #86adff; }
+  .board-weather { border-color: #39424e; }
+  .board-weather-holding { color: #e5a63f; }
+  .board-weather-reading { color: #a2adbc; }
+  .board-weather-unresolved { color: #e5a63f; }
+  .board-garment[data-garment='blanket_weather'] { color: #86adff; }
+  .board-garment[data-garment='sheet_weather'] { color: #45d6c2; }
+  .board-garment-why { color: #a2adbc; }
 }
 `

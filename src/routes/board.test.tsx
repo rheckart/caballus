@@ -43,8 +43,66 @@ function horse(
   }
 }
 
+/** A Reading, as the wire carries one — hours read, and what they resolved to. */
+function reading(
+  extra: Partial<{
+    provider: string
+    fellBackFrom: string | null
+    stale: boolean
+    hours: unknown[]
+    conditions: unknown[]
+  }> = {},
+) {
+  return {
+    id: 'reading-1',
+    day: '2026-08-18',
+    provider: extra.provider ?? 'open_meteo',
+    fellBackFrom: extra.fellBackFrom ?? null,
+    fellBackBecause: extra.fellBackFrom === undefined ? null : 'the network said no',
+    stale: extra.stale ?? false,
+    fetchedAt: 1_768_366_800_000,
+    hours: extra.hours ?? [
+      {
+        at: 1_768_366_800_000,
+        day: '2026-08-18',
+        hour: 6,
+        airTempF: 38,
+        apparentTempF: 33,
+        precipitation: false,
+      },
+    ],
+    conditions: extra.conditions ?? [],
+  }
+}
+
+function resolution(
+  condition: string,
+  extra: Partial<{
+    horseId: string | null
+    holds: boolean | null
+    unresolved: string | null
+    thresholdValue: number | null
+    readingValue: number | null
+  }> = {},
+) {
+  return {
+    condition,
+    horseId: extra.horseId ?? null,
+    horseName: null,
+    scope: condition === 'staying_in' ? 'day' : 'shift',
+    holds: 'holds' in extra ? extra.holds : true,
+    unresolved: extra.unresolved ?? null,
+    metric: condition === 'staying_in' ? 'apparent_temp' : 'air_temp',
+    thresholdValue: 'thresholdValue' in extra ? extra.thresholdValue : 50,
+    thresholdSource: 'override',
+    readingValue: 'readingValue' in extra ? extra.readingValue : 38,
+    atHour: 6,
+  }
+}
+
 const GRID = {
   today: '2026-08-18',
+  weather: null,
   sections: [
     {
       heading: 'Main barn',
@@ -92,6 +150,7 @@ describe('the Board', () => {
     stubApi({
       '/board': {
         today: '2026-08-18',
+        weather: null,
         sections: [
           {
             heading: 'Main barn',
@@ -121,6 +180,7 @@ describe('the Board', () => {
     stubApi({
       '/board': {
         today: '2026-08-18',
+        weather: null,
         sections: [
           {
             heading: 'Main barn',
@@ -226,6 +286,121 @@ describe('the Board', () => {
     const [, init] = vi.mocked(fetch).mock.calls[0] ?? []
     const headers = (init as RequestInit | undefined)?.headers as Record<string, string> | undefined
     expect(headers?.[BOARD_TOKEN_HEADER]).toBe('the-tablet-token')
+  })
+
+  it('puts what the weather resolved to on the wall, in words', async () => {
+    stubApi({
+      '/board': {
+        ...GRID,
+        weather: reading({
+          conditions: [
+            resolution('staying_in'),
+            resolution('sheet_weather', { horseId: 'dawson-1' }),
+          ],
+        }),
+      },
+    })
+    renderBoard()
+
+    // The sentence the panel exists for: *staying in* changes the hay plan and
+    // the turnout, and it is read across a barn (ADR 0015).
+    expect(await screen.findByText('Staying in')).toBeTruthy()
+    // And the provider is named, because the rescue has no single
+    // authoritative source today.
+    expect(screen.getByText(/Open-Meteo read it/)).toBeTruthy()
+    // The horse's garment cites the number that decided it, so a tag on the
+    // wall explains itself.
+    expect(screen.getByText(/38°, under 50°/)).toBeTruthy()
+  })
+
+  it('says a Condition could not be answered rather than showing it as a no', async () => {
+    stubApi({
+      '/board': {
+        ...GRID,
+        weather: reading({
+          provider: 'nws',
+          fellBackFrom: 'open_meteo',
+          conditions: [
+            resolution('staying_in', {
+              holds: null,
+              unresolved: 'no_metric',
+              readingValue: null,
+              thresholdValue: 85,
+            }),
+          ],
+        }),
+      },
+    })
+    renderBoard()
+
+    expect(await screen.findByText(/could not be answered/)).toBeTruthy()
+    expect(screen.getByText(/Open-Meteo did not answer/)).toBeTruthy()
+  })
+
+  it('says nothing has read the weather yet rather than showing a calm day', async () => {
+    stubApi({ '/board': GRID })
+    renderBoard()
+
+    expect(await screen.findByText('no weather read for today yet')).toBeTruthy()
+  })
+
+  it('reads today’s hours only, though a Reading carries tomorrow’s as well', async () => {
+    stubApi({
+      '/board': {
+        ...GRID,
+        weather: reading({
+          hours: [
+            {
+              at: 1_768_366_800_000,
+              day: '2026-08-18',
+              hour: 6,
+              airTempF: 58,
+              apparentTempF: 56,
+              precipitation: false,
+            },
+            {
+              // Tomorrow's, stored because a night window runs past midnight.
+              at: 1_768_453_200_000,
+              day: '2026-08-19',
+              hour: 6,
+              airTempF: 99,
+              apparentTempF: 104,
+              precipitation: false,
+            },
+          ],
+        }),
+      },
+    })
+    renderBoard()
+
+    expect(await screen.findByText(/58–58 °F/)).toBeTruthy()
+    // Tomorrow's 99 is on the Reading and must not be on a panel headed today.
+    expect(screen.queryByText(/99/)).toBeNull()
+  })
+
+  it('says a horse’s garment is not known rather than showing an empty row', async () => {
+    stubApi({
+      '/board': {
+        ...GRID,
+        weather: reading({
+          conditions: [
+            resolution('sheet_weather', {
+              horseId: 'dawson-1',
+              holds: null,
+              unresolved: 'no_threshold',
+              readingValue: null,
+              thresholdValue: null,
+            }),
+          ],
+        }),
+      },
+    })
+    renderBoard()
+
+    // The row says the question is open…
+    expect(await screen.findByText('sheet or blanket not known')).toBeTruthy()
+    // …and the panel says why, once, however many horses it covers.
+    expect(screen.getByText(/Sheet could not be answered for 1 horse:/)).toBeTruthy()
   })
 
   it('says how fresh it is', async () => {

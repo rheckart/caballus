@@ -43,6 +43,13 @@
       "when": 1787016708921,
       "tag": "0005_striped_invisible_woman",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787061706936,
+      "tag": "0006_white_typhoid_mary",
+      "breakpoints": true
     }
   ]
 }

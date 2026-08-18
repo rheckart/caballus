@@ -17,6 +17,7 @@ import { Route as AdminHorsesRouteImport } from './routes/admin/horses'
 import { Route as AdminProductsRouteImport } from './routes/admin/products'
 import { Route as AdminReleaseVersionsRouteImport } from './routes/admin/release-versions'
 import { Route as AdminSpacesRouteImport } from './routes/admin/spaces'
+import { Route as AdminThresholdsRouteImport } from './routes/admin/thresholds'
 import { Route as AdminVolunteersRouteImport } from './routes/admin/volunteers'
 import { Route as ApiSplatRouteImport } from './routes/api.$'
 import { Route as HorsesIndexRouteImport } from './routes/horses/index'
@@ -62,6 +63,11 @@ const AdminSpacesRoute = AdminSpacesRouteImport.update({
   path: '/admin/spaces',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminThresholdsRoute = AdminThresholdsRouteImport.update({
+  id: '/admin/thresholds',
+  path: '/admin/thresholds',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminVolunteersRoute = AdminVolunteersRouteImport.update({
   id: '/admin/volunteers',
   path: '/admin/volunteers',
@@ -92,6 +98,7 @@ export interface FileRoutesByFullPath {
   '/admin/products': typeof AdminProductsRoute
   '/admin/release-versions': typeof AdminReleaseVersionsRoute
   '/admin/spaces': typeof AdminSpacesRoute
+  '/admin/thresholds': typeof AdminThresholdsRoute
   '/admin/volunteers': typeof AdminVolunteersRoute
   '/api/$': typeof ApiSplatRoute
   '/horses/$horseId': typeof HorsesHorseIdRoute
@@ -106,6 +113,7 @@ export interface FileRoutesByTo {
   '/admin/products': typeof AdminProductsRoute
   '/admin/release-versions': typeof AdminReleaseVersionsRoute
   '/admin/spaces': typeof AdminSpacesRoute
+  '/admin/thresholds': typeof AdminThresholdsRoute
   '/admin/volunteers': typeof AdminVolunteersRoute
   '/api/$': typeof ApiSplatRoute
   '/horses/$horseId': typeof HorsesHorseIdRoute
@@ -121,6 +129,7 @@ export interface FileRoutesById {
   '/admin/products': typeof AdminProductsRoute
   '/admin/release-versions': typeof AdminReleaseVersionsRoute
   '/admin/spaces': typeof AdminSpacesRoute
+  '/admin/thresholds': typeof AdminThresholdsRoute
   '/admin/volunteers': typeof AdminVolunteersRoute
   '/api/$': typeof ApiSplatRoute
   '/horses/$horseId': typeof HorsesHorseIdRoute
@@ -137,6 +146,7 @@ export interface FileRouteTypes {
     | '/admin/products'
     | '/admin/release-versions'
     | '/admin/spaces'
+    | '/admin/thresholds'
     | '/admin/volunteers'
     | '/api/$'
     | '/horses/$horseId'
@@ -151,6 +161,7 @@ export interface FileRouteTypes {
     | '/admin/products'
     | '/admin/release-versions'
     | '/admin/spaces'
+    | '/admin/thresholds'
     | '/admin/volunteers'
     | '/api/$'
     | '/horses/$horseId'
@@ -165,6 +176,7 @@ export interface FileRouteTypes {
     | '/admin/products'
     | '/admin/release-versions'
     | '/admin/spaces'
+    | '/admin/thresholds'
     | '/admin/volunteers'
     | '/api/$'
     | '/horses/$horseId'
@@ -180,6 +192,7 @@ export interface RootRouteChildren {
   AdminProductsRoute: typeof AdminProductsRoute
   AdminReleaseVersionsRoute: typeof AdminReleaseVersionsRoute
   AdminSpacesRoute: typeof AdminSpacesRoute
+  AdminThresholdsRoute: typeof AdminThresholdsRoute
   AdminVolunteersRoute: typeof AdminVolunteersRoute
   ApiSplatRoute: typeof ApiSplatRoute
   HorsesHorseIdRoute: typeof HorsesHorseIdRoute
@@ -244,6 +257,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminSpacesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/thresholds': {
+      id: '/admin/thresholds'
+      path: '/admin/thresholds'
+      fullPath: '/admin/thresholds'
+      preLoaderRoute: typeof AdminThresholdsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/volunteers': {
       id: '/admin/volunteers'
       path: '/admin/volunteers'
@@ -284,6 +304,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminProductsRoute: AdminProductsRoute,
   AdminReleaseVersionsRoute: AdminReleaseVersionsRoute,
   AdminSpacesRoute: AdminSpacesRoute,
+  AdminThresholdsRoute: AdminThresholdsRoute,
   AdminVolunteersRoute: AdminVolunteersRoute,
   ApiSplatRoute: ApiSplatRoute,
   HorsesHorseIdRoute: HorsesHorseIdRoute,

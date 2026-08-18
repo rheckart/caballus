@@ -20,6 +20,10 @@ export function isTimeZone(timeZone: string): boolean {
   return IANAZone.isValidZone(timeZone)
 }
 
+function zonedName(timeZone: string): string {
+  return zoned(timeZone).zone
+}
+
 function zoned(timeZone: string): { zone: string } {
   if (!isTimeZone(timeZone)) {
     throw new RangeError(`Unknown timezone: ${timeZone}`)
@@ -74,4 +78,64 @@ function parse(day: DayString, timeZone: string): DateTime<true> {
     throw new RangeError(`Not a day in ${timeZone}: ${day} (${parsed.invalidReason})`)
   }
   return parsed as DateTime<true>
+}
+
+/**
+ * The hour of the day an instant fell in, in the organisation's timezone.
+ *
+ * *85 real feel at or before noon* is a question about the barn's clock
+ * (ADR 0015), and a forecast hour arrives from a provider as an instant. This
+ * is the conversion, and it lives here for the same reason `dayOf` does.
+ */
+export function hourOf(at: Instant, timeZone: string): number {
+  const zoned = DateTime.fromMillis(at, { zone: zonedName(timeZone) })
+  if (!zoned.isValid) throw new RangeError(`Not a representable instant: ${String(at)}`)
+  return zoned.hour
+}
+
+/**
+ * An ISO timestamp from outside — a forecast hour off a weather provider —
+ * as an instant.
+ *
+ * Here rather than in the provider module because parsing a timestamp with an
+ * offset is calendar arithmetic, and this is the only module that does any
+ * (ADR 0016). The provider knows the URL; the calendar knows the clock.
+ */
+export function instantOfIso(iso: string): Instant {
+  const parsed = DateTime.fromISO(iso, { setZone: true })
+  if (!parsed.isValid) throw new RangeError(`Not an ISO timestamp: ${iso}`)
+  return instant(parsed.toMillis())
+}
+
+/**
+ * An instant as the driver hands it to a `timestamptz` column, and back.
+ *
+ * The two exist so that no other module constructs a `Date` to write one:
+ * ADR 0016 bans the global everywhere but here, and a Reading has two
+ * timestamps a caller genuinely chooses — when the forecast was fetched, and
+ * which hour of it a row is. Neither is a day boundary, which is what the ban
+ * is about, and neither is an excuse to open one.
+ */
+export function timestampOf(at: Instant): Date {
+  return new Date(at)
+}
+
+export function instantOfTimestamp(value: Date): Instant {
+  return instant(value.getTime())
+}
+
+/**
+ * An instant as an ISO timestamp in the organisation's timezone — the other
+ * direction of `instantOfIso`.
+ *
+ * Paired with it deliberately: a provider hands us ISO strings and something
+ * has to be able to hand one back, and both halves of that conversion belong
+ * in the module that owns the calendar rather than either being done by hand
+ * beside a URL.
+ */
+export function isoOf(at: Instant, timeZone: string): string {
+  const zoned = DateTime.fromMillis(at, { zone: zonedName(timeZone) })
+  const iso = zoned.toISO()
+  if (iso === null) throw new RangeError(`Not a representable instant: ${String(at)}`)
+  return iso
 }

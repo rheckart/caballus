@@ -871,3 +871,188 @@ export const horseMeasurements = pgTable(
     inScope('horse_measurements_in_scope'),
   ],
 ).enableRLS()
+
+/**
+ * One version of a Threshold (ADR 0015; `CONTEXT.md`'s Threshold; ADR 0003's
+ * versioned tier). A `horseId` of null is the **rescue-wide default** — a real
+ * record rather than the absence of one, because copying the default onto
+ * twelve horses gives eight rows of identical numbers that drift apart the
+ * first time somebody edits one.
+ *
+ * **Three-valued per horse, and the third state is the absence of a row.**
+ * `stance` says `overridden` — with a number of its own — or `follows_default`,
+ * which is a horse deliberately on the rescue's number and carries none. A
+ * horse with no row at all is *not yet decided*, which is an unanswered
+ * question rather than agreement with the default, and rendering one as the
+ * other converts a gap into a rule nobody made (ADR 0015, ADR 0013).
+ *
+ * **Every row carries its metric and the provider it was calibrated against.**
+ * Cold is written in air temperature and heat in real feel, and measured
+ * divergence between two providers' apparent temperature at the same
+ * coordinates ran from −11.5 to +9.6 °F (#6) — so a provider swap without the
+ * stamp silently re-calibrates every horse in the barn.
+ *
+ * **No audit entry**, the discipline `release_versions` and
+ * `feed_schedule_versions` follow: a versioned-tier change *is* a version.
+ */
+export const thresholdVersions = pgTable(
+  'threshold_versions',
+  {
+    id: uuid('id').primaryKey(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id),
+    /** Null is the rescue-wide default — the board's *Rest of Horses*. */
+    horseId: uuid('horse_id').references(() => horses.id),
+    /** One of `THRESHOLD_KINDS` in `src/shared/weather.ts`. */
+    kind: text('kind').notNull(),
+    /** One of `STANCES`; the rescue default is always `overridden`, since it is the number. */
+    stance: text('stance').notNull(),
+    /** Null exactly when the stance is `follows_default`. */
+    valueF: numeric('value_f', { mode: 'number' }),
+    /** One of `METRICS` — what this number is measured in. */
+    metric: text('metric').notNull(),
+    /** One of `WEATHER_PROVIDERS` — whose scale it was set against. */
+    provider: text('provider').notNull(),
+    validFrom: date('valid_from').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdBy: uuid('created_by').references(() => volunteers.id),
+  },
+  (table) => [
+    // The read every evaluation makes: the latest row per (horse, kind), with
+    // the rescue default beside it.
+    index('threshold_versions_current').on(table.orgId, table.kind, table.horseId, table.validFrom),
+    inScope('threshold_versions_in_scope'),
+  ],
+).enableRLS()
+
+/**
+ * A Reading: the weather as it stood when the Conditions were evaluated
+ * (`CONTEXT.md`'s Reading; ADR 0015).
+ *
+ * Kept **whole** rather than as the decision it produced — the provider, the
+ * metric, the hours it read, when it was fetched and whether it was stale —
+ * because *why was this horse blanketed* is answered by the conditions as read
+ * at the time, and a re-fetch tomorrow answers a different question (#6's
+ * implementation note, which is unambiguous about persisting the raw fields).
+ *
+ * One per day per org today. When Shifts exist, a Shift points at the Reading
+ * its list was fixed against, and the day-scoped resolutions here are the ones
+ * every Shift that day shares.
+ */
+export const weatherReadings = pgTable(
+  'weather_readings',
+  {
+    id: uuid('id').primaryKey(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id),
+    day: date('day').notNull(),
+    /** One of `WEATHER_PROVIDERS` — who actually answered. */
+    provider: text('provider').notNull(),
+    /**
+     * The provider that was asked first and did not answer, where the fallback
+     * was used. Null on the ordinary path. *A failed primary falls back and
+     * says so* is this column plus `stale` below.
+     */
+    fellBackFrom: text('fell_back_from'),
+    /** Why the primary did not answer, in one line, for the log and the panel. */
+    fellBackBecause: text('fell_back_because'),
+    /** True where no provider answered and an earlier Reading was reused (ADR 0015). */
+    stale: boolean('stale').notNull().default(false),
+    fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull(),
+    recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull().defaultNow(),
+    recordedBy: uuid('recorded_by').references(() => volunteers.id),
+  },
+  (table) => [
+    // The Board's read: today's Reading for this organisation, newest first.
+    index('weather_readings_day').on(table.orgId, table.day, table.recordedAt),
+    inScope('weather_readings_in_scope'),
+  ],
+).enableRLS()
+
+/**
+ * One hour of the forecast a Reading read — the raw series, not the derived
+ * recommendation (#6, ADR 0015).
+ *
+ * `at` is the instant and `day` and `hour` are that instant in the
+ * organisation's timezone, resolved on the way in: *85 real feel at or before
+ * noon* is a question about the barn's clock, and re-deriving it later in
+ * whatever zone the reader is in is exactly the day-boundary bug ADR 0007
+ * exists against.
+ *
+ * Every value is nullable because a provider may not carry it: the fallback
+ * has air temperature and no apparent temperature, and a null says so where a
+ * zero would lie.
+ */
+export const weatherReadingHours = pgTable(
+  'weather_reading_hours',
+  {
+    id: uuid('id').primaryKey(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id),
+    readingId: uuid('reading_id')
+      .notNull()
+      .references(() => weatherReadings.id),
+    at: timestamp('at', { withTimezone: true }).notNull(),
+    day: date('day').notNull(),
+    /** Hour of the day, 0–23, in the organisation's timezone. */
+    hour: integer('hour').notNull(),
+    airTempF: numeric('air_temp_f', { mode: 'number' }),
+    apparentTempF: numeric('apparent_temp_f', { mode: 'number' }),
+    precipitation: boolean('precipitation'),
+  },
+  (table) => [
+    index('weather_reading_hours_reading').on(table.readingId, table.at),
+    inScope('weather_reading_hours_in_scope'),
+  ],
+).enableRLS()
+
+/**
+ * What a Reading resolved to: one row per (Condition, subject), which is
+ * ADR 0015's correction to ADR 0013 in the table — *Staying In* is one row and
+ * *Sheet Weather* is one per horse.
+ *
+ * `holds` is nullable on purpose. A Condition the forecast could not answer is
+ * **not a false one**: defaulting to false on a 90 ° day is horses going out
+ * and getting the normal hay, so an unresolved Condition says which of
+ * `UNRESOLVED_REASONS` stopped it and waits for somebody to resolve it by hand.
+ *
+ * The number and the threshold that decided it are kept beside the answer, so
+ * an item card can state *Sheet — Dawson: 38 °F, sheets under 50°* instead of
+ * looking arbitrary a month later.
+ */
+export const weatherConditionResolutions = pgTable(
+  'weather_condition_resolutions',
+  {
+    id: uuid('id').primaryKey(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id),
+    readingId: uuid('reading_id')
+      .notNull()
+      .references(() => weatherReadings.id),
+    /** One of `CONDITIONS` in `src/shared/weather.ts`. */
+    condition: text('condition').notNull(),
+    /** The horse it is about, or null for the barn's own answer. */
+    horseId: uuid('horse_id').references(() => horses.id),
+    /** One of `CONDITION_SCOPES` — which window it was read over. */
+    scope: text('scope').notNull(),
+    /** Null where it could not be resolved; `unresolved` then says why. */
+    holds: boolean('holds'),
+    /** One of `UNRESOLVED_REASONS`, or null where it resolved. */
+    unresolved: text('unresolved'),
+    metric: text('metric').notNull(),
+    thresholdValueF: numeric('threshold_value_f', { mode: 'number' }),
+    /** One of `THRESHOLD_SOURCES` — override, default, or a horse nobody decided for. */
+    thresholdSource: text('threshold_source'),
+    readingValueF: numeric('reading_value_f', { mode: 'number' }),
+    /** The hour of the day that decided it, in the organisation's timezone. */
+    atHour: integer('at_hour'),
+  },
+  (table) => [
+    index('weather_condition_resolutions_reading').on(table.readingId, table.condition),
+    inScope('weather_condition_resolutions_in_scope'),
+  ],
+).enableRLS()

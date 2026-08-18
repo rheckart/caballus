@@ -26,6 +26,16 @@ import { PRODUCT_KINDS } from './products'
 import { ROLES } from './roles'
 import { ROSTER_GAPS } from './rostering'
 import { SPACE_KINDS } from './spaces'
+import {
+  CONDITIONS,
+  CONDITION_SCOPES,
+  METRICS,
+  STANCES,
+  THRESHOLD_KINDS,
+  THRESHOLD_SOURCES,
+  UNRESOLVED_REASONS,
+  WEATHER_PROVIDERS,
+} from './weather'
 import { isDayString, type DayString } from './time'
 
 /**
@@ -421,6 +431,111 @@ const boardRow = z.object({
   horse: boardHorse.nullable(),
 })
 
+/** What a number is measured in, and whose scale it was set against (ADR 0015). */
+const metric = z.enum(METRICS)
+const weatherProvider = z.enum(WEATHER_PROVIDERS)
+const thresholdKind = z.enum(THRESHOLD_KINDS)
+
+/**
+ * One Threshold in force: the number, and where it came from.
+ *
+ * `value` is null exactly when the stance is `follows_default` — a horse
+ * deliberately on the rescue's number holds no number of its own, because one
+ * copied here would stop moving when the default did (ADR 0015).
+ */
+const thresholdRecord = z.object({
+  kind: thresholdKind,
+  stance: z.enum(STANCES),
+  value: z.number().nullable(),
+  metric,
+  provider: weatherProvider,
+  validFrom: dayOfTheOrganisation,
+  /** Derived from `validFrom` against today, and ageing out on its own (`CONTEXT.md`'s New). */
+  isNew: z.boolean(),
+})
+
+/**
+ * One horse's numbers, and what is still owed on it.
+ *
+ * `undecided` is the third state made visible: a per-horse kind with no record
+ * is an unanswered question rather than agreement with the default, and the
+ * screen has to be able to say so (ADR 0015).
+ */
+const horseThresholds = z.object({
+  horseId: z.string(),
+  horseName: z.string(),
+  records: z.array(thresholdRecord),
+  undecided: z.array(thresholdKind),
+})
+
+export const thresholds = z.object({
+  today: dayOfTheOrganisation,
+  /** The rescue-wide numbers — the board's *Rest of Horses*, as a real record. */
+  defaults: z.array(thresholdRecord),
+  horses: z.array(horseThresholds),
+})
+
+/** One hour of the series a Reading read, kept raw (#6, ADR 0015). */
+const readingHour = z.object({
+  /** Epoch milliseconds. A day belongs to the organisation, and this is not one. */
+  at: z.number(),
+  day: dayOfTheOrganisation,
+  /** Hour of the day, 0–23, in the organisation's timezone. */
+  hour: z.number(),
+  airTempF: z.number().nullable(),
+  /** Null where the provider carried none — the fallback carries no apparent temperature. */
+  apparentTempF: z.number().nullable(),
+  precipitation: z.boolean().nullable(),
+})
+
+/**
+ * What a Reading resolved to, per (Condition, subject).
+ *
+ * `holds` is nullable and that is the point: a Condition the forecast could not
+ * answer is **not a false one**, and `unresolved` says which of the three
+ * reasons stopped it (ADR 0015).
+ */
+const conditionResolution = z.object({
+  condition: z.enum(CONDITIONS),
+  horseId: z.string().nullable(),
+  horseName: z.string().nullable(),
+  scope: z.enum(CONDITION_SCOPES),
+  holds: z.boolean().nullable(),
+  unresolved: z.enum(UNRESOLVED_REASONS).nullable(),
+  metric,
+  thresholdValue: z.number().nullable(),
+  thresholdSource: z.enum(THRESHOLD_SOURCES).nullable(),
+  /** The number off the forecast that decided it — *Dawson: 38 °F, sheets under 50°*. */
+  readingValue: z.number().nullable(),
+  atHour: z.number().nullable(),
+})
+
+/**
+ * The weather as it stood when the day was fixed (`CONTEXT.md`'s Reading).
+ *
+ * Carried whole rather than as the decision it produced, and **the provider is
+ * named**: the rescue has no single authoritative source today, so a Board that
+ * says 96 while a volunteer's phone says 89 has to be able to say whose number
+ * it is showing (ADR 0015).
+ */
+export const reading = z.object({
+  id: z.string(),
+  day: dayOfTheOrganisation,
+  provider: weatherProvider,
+  fellBackFrom: weatherProvider.nullable(),
+  fellBackBecause: z.string().nullable(),
+  stale: z.boolean(),
+  fetchedAt: z.number(),
+  hours: z.array(readingHour),
+  conditions: z.array(conditionResolution),
+})
+
+export const weather = z.object({
+  day: dayOfTheOrganisation,
+  /** Null where nothing has fixed today's weather yet — an unanswered question, not a calm day. */
+  reading: reading.nullable(),
+})
+
 /** The stalls in stall order, then each barn that holds horses without one. */
 const boardSection = z.object({ heading: z.string(), rows: z.array(boardRow) })
 
@@ -436,6 +551,13 @@ const boardSection = z.object({ heading: z.string(), rows: z.array(boardRow) })
 export const board = z.object({
   today: dayOfTheOrganisation,
   sections: z.array(boardSection),
+  /**
+   * Today's Reading and what it resolved to, so *staying in* is visible across
+   * the barn (#38). The whole Reading rather than a shape of its own, for the
+   * reason the grid carries `feedSchedule` itself: the panel and the weather
+   * screen are the same fact read at two distances.
+   */
+  weather: reading.nullable(),
 })
 
 /** An optional note on a grant, a revocation or a correction (ADR 0010). */
@@ -465,6 +587,10 @@ export const contract = {
      * whose authorization is not a person (ADR 0022).
      */
     '/board': { answers: board },
+    /** The numbers the rescue owns, and the decisions still owed (ADR 0015). */
+    '/thresholds': { answers: thresholds },
+    /** Today's Reading, whole — the hours it read as well as what they resolved to. */
+    '/weather': { answers: weather },
   },
   writes: {
     /**
@@ -640,6 +766,46 @@ export const contract = {
         lines: z.array(z.object({ productId, amount: z.string().min(1).max(200), route })),
       }),
       answers: z.object({ feedScheduleVersionId: z.string() }),
+    },
+    /**
+     * Publishes a Threshold version — the rescue default with a null
+     * `horseId`, a horse's own otherwise (ADR 0015, ADR 0003's versioned tier).
+     *
+     * `metric` and `provider` are optional because the kind already knows them:
+     * cold is air temperature and heat is real feel, and a screen asking a
+     * volunteer to restate that is a screen inviting the one answer that
+     * silently re-calibrates the barn. A caller may still state them, which is
+     * what a rescue recalibrating against a different provider would do.
+     */
+    '/thresholds': {
+      accepts: z.object({
+        horseId: horseId.nullable(),
+        kind: thresholdKind,
+        stance: z.enum(STANCES),
+        /** Required by `overridden`; a `follows_default` row carries none. */
+        value: z.number().nullish(),
+        metric: metric.optional(),
+        provider: weatherProvider.optional(),
+        validFrom: dayOfTheOrganisation,
+      }),
+      answers: z.object({ thresholdVersionId: z.string() }),
+    },
+    /**
+     * Fixes today's weather: fetches the forecast, evaluates every Condition
+     * against it and records the whole thing as one Reading.
+     *
+     * A write rather than a read with a side effect, and a queueable one like
+     * every other: it is the act the day's plan is built on. It becomes the
+     * daily job's first step when there is a daily job; until then a person at
+     * a desk does it, which is the same act with a different hand on it.
+     */
+    '/weather/readings': {
+      accepts: z.object({}),
+      answers: z.object({
+        readingId: z.string(),
+        provider: weatherProvider,
+        stale: z.boolean(),
+      }),
     },
     /**
      * Appends a weight or body-condition entry. On the floor — any signed-in
