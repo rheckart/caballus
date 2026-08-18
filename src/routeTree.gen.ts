@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as BoardRouteImport } from './routes/board'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AdminAuditRouteImport } from './routes/admin/audit'
 import { Route as AdminHorsesRouteImport } from './routes/admin/horses'
@@ -24,6 +25,11 @@ import { Route as HorsesHorseIdRouteImport } from './routes/horses/$horseId'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BoardRoute = BoardRouteImport.update({
+  id: '/board',
+  path: '/board',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -79,6 +85,7 @@ const HorsesHorseIdRoute = HorsesHorseIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/board': typeof BoardRoute
   '/login': typeof LoginRoute
   '/admin/audit': typeof AdminAuditRoute
   '/admin/horses': typeof AdminHorsesRoute
@@ -92,6 +99,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/board': typeof BoardRoute
   '/login': typeof LoginRoute
   '/admin/audit': typeof AdminAuditRoute
   '/admin/horses': typeof AdminHorsesRoute
@@ -106,6 +114,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/board': typeof BoardRoute
   '/login': typeof LoginRoute
   '/admin/audit': typeof AdminAuditRoute
   '/admin/horses': typeof AdminHorsesRoute
@@ -121,6 +130,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/board'
     | '/login'
     | '/admin/audit'
     | '/admin/horses'
@@ -134,6 +144,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/board'
     | '/login'
     | '/admin/audit'
     | '/admin/horses'
@@ -147,6 +158,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/board'
     | '/login'
     | '/admin/audit'
     | '/admin/horses'
@@ -161,6 +173,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  BoardRoute: typeof BoardRoute
   LoginRoute: typeof LoginRoute
   AdminAuditRoute: typeof AdminAuditRoute
   AdminHorsesRoute: typeof AdminHorsesRoute
@@ -180,6 +193,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/board': {
+      id: '/board'
+      path: '/board'
+      fullPath: '/board'
+      preLoaderRoute: typeof BoardRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -257,6 +277,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  BoardRoute: BoardRoute,
   LoginRoute: LoginRoute,
   AdminAuditRoute: AdminAuditRoute,
   AdminHorsesRoute: AdminHorsesRoute,

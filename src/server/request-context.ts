@@ -13,6 +13,7 @@
  */
 import type { OrgId } from '../db/for-org'
 import { actorFrom } from './auth/actor'
+import { isKiosk } from './auth/kiosk'
 import type { DomainScope } from './api/authorization'
 
 export interface Actor {
@@ -32,6 +33,14 @@ export interface RequestContext {
    * and no handler ever sees it.
    */
   readonly actor: Actor | null
+  /**
+   * Whether this request is the barn's tablet rather than a person (ADR 0022).
+   *
+   * Deliberately not an `Actor`: the Board credits nobody, so the kiosk resolves
+   * to a fact about the request and never to a person the care record could
+   * end up naming. It authorizes one read and, structurally, no write.
+   */
+  readonly kiosk: boolean
 }
 
 /**
@@ -59,6 +68,10 @@ export function anonymousContext(request: Request): RequestContext {
     orgId: currentOrgId(),
     requestId: request.headers.get('x-request-id') ?? crypto.randomUUID(),
     actor: null,
+    // Resolved here rather than beside the actor, because it needs no database
+    // and the log line for a request rejected before any handler ran is
+    // entitled to know whether it came from the tablet (ADR 0022).
+    kiosk: isKiosk(request),
   }
 }
 
