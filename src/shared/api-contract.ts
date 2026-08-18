@@ -21,6 +21,13 @@ import { z } from 'zod'
 
 import { DOMAIN_SCOPES } from './domain-scopes'
 import { ROUTES, SHIFT_TYPES } from './feed-schedule'
+import {
+  ITEM_KINDS,
+  TASK_ASSIGNMENT_STANCES,
+  TASK_PERIODS,
+  TASK_PRIORITIES,
+  TASK_SUBJECT_KINDS,
+} from './materialization'
 import { MEASUREMENT_KINDS, MEASUREMENT_METHODS } from './measurements'
 import { PRODUCT_KINDS } from './products'
 import { ROLES } from './roles'
@@ -721,6 +728,115 @@ export const shiftList = z.object({
   shifts: z.array(shift),
 })
 
+/** Who a Task or an Item is about — a horse, a Space, or the rescue as a whole (ADR 0013). */
+const taskSubjectKind = z.enum(TASK_SUBJECT_KINDS)
+const taskPriority = z.enum(TASK_PRIORITIES)
+const taskPeriod = z.enum(TASK_PERIODS)
+const taskAssignmentStance = z.enum(TASK_ASSIGNMENT_STANCES)
+const itemKind = z.enum(ITEM_KINDS)
+const conditionName = z.enum(CONDITIONS)
+
+/**
+ * A Task, exactly as the rescue may edit it (ADR 0013). What it may choose
+ * among is fixed — subject kind, priority, period, whether it needs
+ * Medication Authority, an optional Condition gate, an optional Prep target, a
+ * nullable tolerance, the closing flag, and instruction text — and this is
+ * the whole of it; there is no ninth field to invent.
+ */
+export const task = z.object({
+  id: z.string(),
+  subjectKind: taskSubjectKind,
+  priority: taskPriority,
+  period: taskPeriod,
+  requiresMedicationAuthority: z.boolean(),
+  conditionName: conditionName.nullable(),
+  prepForShiftType: shiftType.nullable(),
+  /** Nullable, in this Task's own `period` unit — null means never overdue. */
+  toleranceCount: z.number().nullable(),
+  closing: z.boolean(),
+  instructionText: z.string(),
+})
+
+export const taskList = z.object({ tasks: z.array(task) })
+
+/** One Subject a Task Assignment may name — a horse or a Space, carrying its name for a screen to render. */
+const taskAssignmentSubject = z.object({
+  horseId: z.string().nullable(),
+  spaceId: z.string().nullable(),
+  name: z.string(),
+})
+
+/** One Task Assignment in force: which Shift Type normally does a Task for one Subject (ADR 0013, ADR 0015's tri-state). */
+const taskAssignmentRecord = taskAssignmentSubject.extend({
+  stance: taskAssignmentStance,
+  /** Set exactly when `stance` is `assigned`. */
+  shiftType: shiftType.nullable(),
+  /** Subject-specific instruction text, shown second on the Item. */
+  instructionText: z.string().nullable(),
+  validFrom: dayOfTheOrganisation,
+})
+
+/**
+ * One Task's Assignments, and the Subjects nobody has decided for yet.
+ *
+ * `undecided` is the unanswered question rendered as one — never as no work
+ * (ADR 0013) — the same discipline `HorseThresholds.undecided` follows for a
+ * Threshold nobody has set.
+ */
+const taskAssignmentsForTask = z.object({
+  taskId: z.string(),
+  assignments: z.array(taskAssignmentRecord),
+  undecided: z.array(taskAssignmentSubject),
+})
+
+export const taskAssignmentList = z.object({
+  today: dayOfTheOrganisation,
+  tasks: z.array(taskAssignmentsForTask),
+})
+
+/**
+ * One materialized Item, as a Shift's checklist carries it (ADR 0013): the
+ * frozen decision, with the Subject's name carried along so a card renders
+ * without a second read.
+ */
+const checklistItem = z.object({
+  id: z.string(),
+  kind: itemKind,
+  subjectKind: taskSubjectKind,
+  horseId: z.string().nullable(),
+  horseName: z.string().nullable(),
+  spaceId: z.string().nullable(),
+  spaceName: z.string().nullable(),
+  priority: taskPriority,
+  requiresMedicationAuthority: z.boolean(),
+  instructionText: z.string(),
+  /** A hint for grouping — which Shift Type normally does this — never a gate (ADR 0013). */
+  assignedShiftType: shiftType.nullable(),
+  /** True where nobody has decided which Shift Type normally does this — an unanswered question, never no work. */
+  assignmentUndecided: z.boolean(),
+  prepForShiftType: shiftType.nullable(),
+  closing: z.boolean(),
+  conditionName: conditionName.nullable(),
+})
+
+/**
+ * The checklist a Shift shows on opening (ADR 0013): its own Items, plus the
+ * day's per-Day ones, and the Prep this Shift Type is owed from earlier today
+ * or the day before.
+ *
+ * `materialized: false` with an empty `items` is a Shift whose day nothing has
+ * fixed yet — an honest state rather than a live preview this ticket does not
+ * build.
+ */
+export const shiftChecklist = z.object({
+  shiftId: z.string(),
+  day: dayOfTheOrganisation,
+  shiftType,
+  materialized: z.boolean(),
+  items: z.array(checklistItem),
+  prepOwed: z.array(checklistItem),
+})
+
 /** An optional note on a grant, a revocation or a correction (ADR 0010). */
 const reason = z.string().max(500).nullish()
 
@@ -752,10 +868,16 @@ export const contract = {
     '/shift-patterns': { answers: shiftPatternList },
     /** The schedule: every Shift from today to the end of the horizon, rosters and all. */
     '/shifts': { answers: shiftList },
+    /** One dated Shift's checklist — its own Items, the day's, and its Prep owed (ADR 0013). */
+    '/shifts/:shiftId': { answers: shiftChecklist },
     /** The numbers the rescue owns, and the decisions still owed (ADR 0015). */
     '/thresholds': { answers: thresholds },
     /** Today's Reading, whole — the hours it read as well as what they resolved to. */
     '/weather': { answers: weather },
+    /** The Task catalogue (ADR 0013). */
+    '/tasks': { answers: taskList },
+    /** Which Shift Type normally does which Task, and the decisions still owed (ADR 0013). */
+    '/task-assignments': { answers: taskAssignmentList },
   },
   writes: {
     /**
@@ -1097,6 +1219,75 @@ export const contract = {
         sent: z.number(),
         shifts: z.number(),
       }),
+    },
+    /**
+     * Adds a Task to the catalogue (ADR 0013). What the rescue may choose
+     * among is fixed — this is the whole of it, and there is no ninth field.
+     */
+    '/tasks': {
+      accepts: z.object({
+        subjectKind: taskSubjectKind,
+        priority: taskPriority,
+        period: taskPeriod,
+        requiresMedicationAuthority: z.boolean(),
+        conditionName: conditionName.nullish(),
+        prepForShiftType: shiftType.nullish(),
+        toleranceCount: z.number().int().positive().nullish(),
+        closing: z.boolean(),
+        instructionText: z.string().min(1).max(2000),
+      }),
+      answers: z.object({ taskId: z.string() }),
+    },
+    /**
+     * A partial edit, the same discipline `/products/edit` follows. `subjectKind`
+     * and `period` are not editable — either changes what every Item this Task
+     * has already produced meant, which is bigger than a catalogue correction.
+     */
+    '/tasks/edit': {
+      accepts: z.object({
+        taskId: z.uuid(),
+        priority: taskPriority.optional(),
+        requiresMedicationAuthority: z.boolean().optional(),
+        conditionName: conditionName.nullish(),
+        prepForShiftType: shiftType.nullish(),
+        toleranceCount: z.number().int().positive().nullish(),
+        closing: z.boolean().optional(),
+        instructionText: z.string().min(1).max(2000).optional(),
+        reason,
+      }),
+      answers: z.void(),
+    },
+    /**
+     * Publishes a Task Assignment version — which Shift Type normally does
+     * one Task for one Subject (ADR 0013, ADR 0015's tri-state, reused). A
+     * Subject is a horse, a Space, or the rescue: exactly the fields that
+     * match the Task's own `subjectKind`, checked on the server.
+     */
+    '/task-assignments': {
+      accepts: z.object({
+        taskId: z.uuid(),
+        horseId: horseId.nullable(),
+        spaceId: spaceId.nullable(),
+        stance: taskAssignmentStance,
+        /** Required by `assigned`; null for `deliberately_none`. */
+        shiftType: shiftType.nullable(),
+        instructionText: z.string().max(2000).nullish(),
+        validFrom: dayOfTheOrganisation,
+      }),
+      answers: z.object({ taskAssignmentId: z.string() }),
+    },
+    /**
+     * Materializes today's Items (ADR 0013): resolves the catalogue, the Feed
+     * Schedules, the Task Assignments and the day's Reading into the Items
+     * every Shift today shows on opening.
+     *
+     * A write with a deliberate trigger, exactly like `/shifts/generation` and
+     * `/weather/readings` — never at boot, and safe to run twice: the same
+     * discipline that makes generation idempotent makes this idempotent too.
+     */
+    '/items/materialization': {
+      accepts: z.object({}),
+      answers: z.object({ day: dayOfTheOrganisation, created: z.number() }),
     },
     /**
      * Publishes a Threshold version — the rescue default with a null

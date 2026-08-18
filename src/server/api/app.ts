@@ -99,6 +99,17 @@ import { currentThresholds, publishThreshold } from '../weather/thresholds'
 import { readingFor, recordReading } from '../weather/readings'
 import type { Refusal as WeatherRefusal } from '../weather/outcome'
 import { THRESHOLD_SPECS } from '../../shared/weather'
+import {
+  currentTaskAssignments,
+  publishTaskAssignment,
+  subjectsFor,
+  taskList,
+} from '../checklist/assignments'
+import { createTask, editTask } from '../checklist/records'
+import { checklistForShift, materializeDayFor, type Checklist } from '../checklist/materialize'
+import type { Refusal as ChecklistRefusal } from '../checklist/outcome'
+import { shiftById } from '../shifts/list'
+import type { ShiftType } from '../../shared/feed-schedule'
 
 // The server's one entry point, so this is where reporting starts. It is a
 // no-op without a DSN, which is the state of every machine until one is set.
@@ -224,6 +235,13 @@ export function buildApi(
       because === 'pattern_not_found' ||
       because === 'shift_not_found' ||
       because === 'volunteer_not_found'
+    return json({ error: because }, missing ? 404 : 409)
+  }
+
+  /** And again for Tasks and Task Assignments (ADR 0013). */
+  function checklistRefusal(because: ChecklistRefusal) {
+    const missing =
+      because === 'task_not_found' || because === 'horse_not_found' || because === 'space_not_found'
     return json({ error: because }, missing ? 404 : 409)
   }
 
@@ -612,6 +630,47 @@ export function buildApi(
   })
 
   /**
+   * One dated Shift's checklist, on opening (ADR 0013): its own Items, the
+   * day's per-Day ones, and the Prep it is owed.
+   *
+   * `readEverything()`: a volunteer opening a Shift is reading a checklist
+   * that already hangs on the barn wall.
+   */
+  api.route('GET', '/shifts/:shiftId', readEverything(), async ({ context, params }) => {
+    interface Found {
+      readonly id: string
+      readonly day: DayString
+      readonly shiftType: ShiftType
+      readonly checklist: Checklist
+    }
+
+    const found: Found | null = await forOrg(context.orgId).run(
+      async (db): Promise<Found | null> => {
+        const clock = await clockHere(db)
+        const shift = await shiftById(db, params.shiftId ?? '')
+        if (shift === null || shift.shiftType === 'pop_up') return null
+        const shiftType = shift.shiftType
+        const checklist = await checklistForShift(
+          db,
+          { id: shift.id, day: shift.day, shiftType },
+          clock.timeZone,
+        )
+        return { id: shift.id, day: shift.day, shiftType, checklist }
+      },
+    )
+    if (found === null) return json({ error: 'shift_not_found' }, 404)
+
+    return json({
+      shiftId: found.id,
+      day: found.day,
+      shiftType: found.shiftType,
+      materialized: found.checklist.materialized,
+      items: found.checklist.items.map((item) => ({ ...item })),
+      prepOwed: found.checklist.prepOwed.map((item) => ({ ...item })),
+    })
+  })
+
+  /**
    * The numbers the rescue owns, and the decisions still owed on them.
    *
    * `readEverything()`, because a volunteer standing in a barn at 38 ° has
@@ -657,6 +716,59 @@ export function buildApi(
               hours: [...answered.reading.hours],
               conditions: [...answered.reading.conditions],
             },
+    })
+  })
+
+  /**
+   * The Task catalogue (ADR 0013). `readEverything()`: what a checklist Item
+   * is made of is barn knowledge, the same reason `/thresholds` is on the
+   * floor. Editing is `horse_care`.
+   */
+  api.route('GET', '/tasks', readEverything(), async ({ context }) => {
+    const listed = await forOrg(context.orgId).run((db) => taskList(db))
+    return json({ tasks: listed.map((each) => ({ ...each })) })
+  })
+
+  /**
+   * Which Shift Type normally does which Task, and the decisions still owed —
+   * the tri-state ADR 0015 gave Thresholds, generalized (ADR 0013).
+   */
+  api.route('GET', '/task-assignments', readEverything(), async ({ context }) => {
+    const answered = await forOrg(context.orgId).run(async (db) => {
+      const on = await dayHere(db)
+      const [catalog, assignments] = await Promise.all([
+        taskList(db),
+        currentTaskAssignments(db, on),
+      ])
+      const tasks = await Promise.all(
+        catalog.map(async (item) => {
+          const subjects = await subjectsFor(db, item.subjectKind)
+          const forTask = assignments.filter((row) => row.taskId === item.id)
+          const known = (row: (typeof subjects)[number]) =>
+            forTask.some((each) => each.horseId === row.horseId && each.spaceId === row.spaceId)
+          return {
+            taskId: item.id,
+            assignments: forTask.flatMap((row) => {
+              const subject = subjects.find(
+                (each) => each.horseId === row.horseId && each.spaceId === row.spaceId,
+              )
+              if (subject === undefined) return []
+              return [{ ...row, name: subject.name }]
+            }),
+            undecided: subjects.filter((row) => !known(row)),
+          }
+        }),
+      )
+      return { on, tasks }
+    })
+
+    return json({
+      today: answered.on,
+      tasks: answered.tasks.map((entry) => ({
+        ...entry,
+        assignments: [...entry.assignments],
+        undecided: [...entry.undecided],
+      })),
     })
   })
 
@@ -987,6 +1099,50 @@ export function buildApi(
   api.mutation('/shifts/digest', domainScope('roster'), async (_input, { db }) => {
     return json(await sendStaffingDigest(db, await clockHere(db)), 200)
   })
+
+  /**
+   * Adding a Task to the catalogue, under `horse_care` — the scope that owns
+   * care instructions, the same reason it edits Thresholds and Feed Schedules
+   * (ADR 0013).
+   */
+  api.mutation('/tasks', domainScope('horse_care'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await createTask(db, context.orgId, actor.volunteerId, input)
+    if (!outcome.ok) return checklistRefusal(outcome.because)
+    return json({ taskId: outcome.value.id }, 201)
+  })
+
+  api.mutation('/tasks/edit', domainScope('horse_care'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await editTask(db, context.orgId, actor.volunteerId, input)
+    return outcome.ok ? noContent() : checklistRefusal(outcome.because)
+  })
+
+  /**
+   * Publishing a Task Assignment — which Shift Type normally does one Task
+   * for one Subject, the `GROOM` column generalized (ADR 0013). Under
+   * `horse_care`, the same scope that owns the catalogue behind it.
+   */
+  api.mutation('/task-assignments', domainScope('horse_care'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await publishTaskAssignment(db, context.orgId, actor.volunteerId, input)
+    if (!outcome.ok) return checklistRefusal(outcome.because)
+    return json({ taskAssignmentId: outcome.value.id }, 201)
+  })
+
+  /**
+   * Materializes today's Items — deliberate, like `/shifts/generation` and
+   * `/weather/readings`, and safe to run twice (ADR 0013). Under `horse_care`:
+   * it resolves care instructions the same scope owns.
+   */
+  api.mutation(
+    '/items/materialization',
+    domainScope('horse_care'),
+    async (_input, { context, db }) => {
+      const clock = await clockHere(db)
+      return json(await materializeDayFor(db, context.orgId, clock.today, clock.timeZone), 200)
+    },
+  )
 
   /**
    * Publishing a Threshold version — the rescue default or one horse's own.
