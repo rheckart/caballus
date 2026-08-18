@@ -15,6 +15,18 @@
  * **A Cover is never refused for what somebody lacks.** A Shift that needs
  * medication still takes a volunteer who cannot give it, and says what it still
  * needs (ADR 0011).
+ *
+ * **What a Shift is missing is shown as the fact itself.** *No Lead*, *nobody
+ * who can give medication*, *1 of 3 wanted* — never the phrase *staffing gap*,
+ * which ADR 0011 keeps as an internal term precisely because a category name is
+ * not something anybody can act on. And Short, where a person declared it, is
+ * named as somebody's judgement rather than as another thing the app worked out.
+ *
+ * **Acting Lead is claimed, never assigned.** A Shift with nobody leading it
+ * offers the claim to whoever is rostered on it, with the suggested person's
+ * button saying so — a suggestion and not a restriction, because restricting it
+ * leaves a Shift leaderless exactly when the suggested person did not show
+ * (ADR 0010).
  */
 import { createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useState } from 'react'
@@ -22,6 +34,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { client } from '../shared/api-client'
 import { refusalText } from '../shared/refusals'
 import type { AssignablePosition } from '../shared/shifts'
+import { carriesShiftAuthority } from '../shared/shifts'
+import { staffingFacts } from '../shared/staffing'
+import { daysBetween } from '../shared/time'
 import type { Answers, contract } from '../shared/api-contract'
 
 export const Route = createFileRoute('/shifts')({
@@ -44,6 +59,40 @@ const POSITION_LABEL: Record<AssignablePosition | 'acting_lead', string> = {
   co_lead: 'Co-Lead',
   acting_lead: 'Acting Lead',
   volunteer: 'Volunteer',
+}
+
+/**
+ * How far out a volunteer sees what a Shift is missing.
+ *
+ * ADR 0011: the gaps are computed across the whole horizon **for holders of
+ * `roster`**, and are "prominent to everyone else only inside roughly the next
+ * 48 hours". A fortnight of *no Lead* on a phone is a wall of red about Shifts
+ * nobody can do anything about yet, and a screen that shouts every day is a
+ * screen people stop reading — the same argument the four-gap list is shaped
+ * by, pointed at distance instead of at count. Beyond the window the Shift is
+ * still listed and still coverable; the headcount beside it still says how
+ * thin it is.
+ */
+const PROMINENT_DAYS = 2
+
+/**
+ * What this Shift is missing, in words. `staffingFacts` is the one place those
+ * sentences live, so the phone, the desk and the digest cannot describe
+ * Thursday differently.
+ */
+function WhatIsMissing({ shift, within }: { shift: Shift; within: boolean }) {
+  const facts = within ? staffingFacts(shift) : []
+
+  if (facts.length === 0 && shift.short === null) return null
+
+  return (
+    <>
+      {facts.length > 0 && <strong> — needs: {facts.join(', ')}</strong>}
+      {/* Shown at any distance, because it is not arithmetic: somebody decided
+          this, and the app neither declares Short nor withdraws it (ADR 0011). */}
+      {shift.short !== null && <strong> — somebody has called this shift short</strong>}
+    </>
+  )
 }
 
 function MyShifts() {
@@ -98,6 +147,12 @@ function MyShifts() {
   const standing = (shift: Shift) =>
     shift.roster.find((member) => member.volunteerId === me.volunteerId && member.endedAs === null)
 
+  // `daysBetween` counts days between two `DayString`s the server already
+  // resolved in the barn's zone, so nothing here derives a day boundary of its
+  // own — which is the ADR 0007 rule, and why this is the shared clock rather
+  // than the browser's.
+  const soon = (shift: Shift) => daysBetween(schedule.today, shift.day) <= PROMINENT_DAYS
+
   const mine = schedule.shifts.filter((shift) => standing(shift) !== undefined)
   const open = schedule.shifts.filter(
     (shift) => standing(shift) === undefined && shift.staffingMode === 'sign_up',
@@ -123,6 +178,44 @@ function MyShifts() {
                   {member !== undefined && <> — {POSITION_LABEL[member.position]}</>}
                   {shift.purpose !== null && <> — {shift.purpose}</>}
                   {shift.state === 'in_progress' && <em> — under way</em>}
+                  <WhatIsMissing shift={shift} within={soon(shift)} />
+                  {/* Short is declared and cleared by whoever carries Shift
+                      Authority here, which is what the Lead needs at 5am on
+                      the screen they are already looking at (ADR 0011). The
+                      server refuses anybody else, and the button is shown only
+                      to somebody it will take. */}
+                  {member !== undefined && carriesShiftAuthority(member.position) && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        void act(() =>
+                          client.post('/shifts/short', {
+                            shiftId: shift.id,
+                            short: shift.short === null,
+                          }),
+                        )
+                      }}
+                    >
+                      {shift.short === null ? 'Call it short' : 'Clear short'}
+                    </button>
+                  )}
+                  {/* Offered to anybody rostered on a leaderless Shift, and to
+                      the suggested person with the suggestion said out loud —
+                      a claim nobody made silently is the point (ADR 0010). */}
+                  {shift.staffing.gaps.includes('no_lead') && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        void act(() => client.post('/shifts/acting-lead', { shiftId: shift.id }))
+                      }}
+                    >
+                      {shift.staffing.suggestedActingLead === me.volunteerId
+                        ? 'Take charge as acting lead (suggested)'
+                        : 'Take charge as acting lead'}
+                    </button>
+                  )}
                   <button
                     type="button"
                     disabled={busy}
@@ -169,6 +262,12 @@ function MyShifts() {
                   {shift.roster.filter((member) => member.endedAs === null).length} of{' '}
                   {shift.targetHeadcount} so far
                 </span>
+                {/* What it still needs, beside the button that takes you
+                    anyway. A Shift needing medication takes somebody who
+                    cannot give it — turning away a volunteer who is offering
+                    to come is the worst thing this surface could do
+                    (ADR 0011). */}
+                <WhatIsMissing shift={shift} within={soon(shift)} />
                 <button
                   type="button"
                   disabled={busy}

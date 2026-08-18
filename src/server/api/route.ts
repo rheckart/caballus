@@ -1,5 +1,5 @@
 /**
- * Registration for the `/api/v1` layer, and the place four of ADR 0016's
+ * Registration for the `/api/v1` layer, and the place six of ADR 0016's
  * invariants are types rather than lint rules — because the type checker runs
  * on every keystroke and lint runs when something invokes it.
  *
@@ -18,6 +18,11 @@
  * 5. Every write's authorization names a person. `mutation` takes
  *    `PersonAuthorization`, so the Board's — which resolves to the barn's
  *    tablet and to no actor — cannot be spelled on one (ADR 0022).
+ * 6. Every read's authorization is settled by the session alone. `route` takes
+ *    `ReadAuthorization`, so Shift Authority — half of which is a join against
+ *    the `shiftId` a *payload* names — cannot be spelled on one (ADR 0010).
+ *    And a write that does declare it must accept a `shiftId`, which the
+ *    `auth` parameter's type below makes a condition of the path.
  *
  * The key is also *acted on* here rather than in handlers. `mutation` opens
  * the transaction, records the key inside it and hands the handler the scoped
@@ -27,7 +32,7 @@
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
 
-import type { OrgScopedDatabase } from '../../db/for-org'
+import type { OrgId, OrgScopedDatabase } from '../../db/for-org'
 import { postgresIdempotency, type Idempotency, type Outcome } from '../../db/idempotency'
 import {
   API_BASE,
@@ -46,13 +51,21 @@ import {
   type WritePath,
 } from '../../shared/api-contract'
 import { log, report } from '../observability'
-import { anonymousContext, requestContext, type RequestContext } from '../request-context'
+import {
+  anonymousContext,
+  requestContext,
+  type Actor,
+  type RequestContext,
+} from '../request-context'
+import { holdsShiftAuthority } from '../shifts/authority'
 import { json, rebuild, type ApiResponse } from './answer'
 import {
   authorize,
   describeAuthorization,
   type Authorization,
+  type AnywhereAuthorization,
   type PersonAuthorization,
+  type ReadAuthorization,
 } from './authorization'
 import { fingerprint } from './fingerprint'
 
@@ -116,6 +129,18 @@ export type MutationHandler<TInput, TAnswer> = (
  */
 const idempotencyKey = z.uuid()
 
+/**
+ * What a given write may declare.
+ *
+ * `PersonAuthorization` on a path whose payload carries a `shiftId`, and
+ * everything except Shift Authority on a path that does not — because half of
+ * that check is a join against the Shift the payload names, and a write
+ * declaring it without one would be a write nothing could resolve. ADR 0016's
+ * rule again: an invariant is a type where it can be, and this one can be.
+ */
+export type MutationAuthorization<C extends Contract, P extends WritePath<C>> =
+  Received<C, P> extends { readonly shiftId: string } ? PersonAuthorization : AnywhereAuthorization
+
 /** The request schema for a write: what its contract accepts, and the key. */
 function queueable<TShape extends z.ZodRawShape>(
   shape: TShape,
@@ -137,7 +162,7 @@ export interface Api<C extends Contract> {
   route<P extends ReadPath<C>>(
     method: Method,
     path: P,
-    auth: Authorization,
+    auth: ReadAuthorization,
     handler: Handler<Sends<C, P>>,
   ): Api<C>
 
@@ -150,7 +175,7 @@ export interface Api<C extends Contract> {
    */
   mutation<P extends WritePath<C>>(
     path: P,
-    auth: PersonAuthorization,
+    auth: MutationAuthorization<C, P>,
     handler: MutationHandler<Received<C, P>, SendsWrite<C, P>>,
   ): Api<C>
 
@@ -391,6 +416,21 @@ export interface ApiOptions<C extends Contract> {
    * binds one of its own rather than putting its fixtures in the real one.
    */
   readonly contract?: C
+
+  /**
+   * The second half of a Shift Authority check: does this actor hold `lead`,
+   * `co_lead` or `acting_lead` on the Shift the payload names, or `roster`
+   * (ADR 0010)?
+   *
+   * Injectable for the same reason `idempotency` is — a test of this module's
+   * own decisions has no roster to join against — and defaulted to the real
+   * one, so an application that forgets to pass it is still checked.
+   */
+  readonly shiftAuthority?: (
+    orgId: OrgId,
+    actor: Actor,
+    shiftId: string,
+  ) => boolean | Promise<boolean>
 }
 
 /**
@@ -414,6 +454,7 @@ export function createApi<C extends Contract>(
 export function createApi<C extends Contract>(options: Partial<ApiOptions<C>> = {}): Api<C> {
   const contextOf = options.context ?? requestContext
   const idempotency = options.idempotency ?? postgresIdempotency()
+  const overTheShift = options.shiftAuthority ?? holdsShiftAuthority
   // Sound because of the overloads above: without a contract argument the only
   // callable signature is the one that returns the real contract's API.
   const against = options.contract ?? (contract as unknown as C)
@@ -495,25 +536,30 @@ export function createApi<C extends Contract>(options: Partial<ApiOptions<C>> = 
       // The whole context, because who is asking is a person *or* the barn's
       // tablet, and only one of those is an actor (ADR 0022).
       const decision = authorize(auth, ctx)
-      if (!decision.allowed) {
-        // A denial is a structured log, not an audit row (ADR 0010).
-        //
-        // The pattern here, where `mutation` writes the path that was sent: a
-        // denial is decided before anything authenticated the caller, and the
-        // segments of a matched path are still a stranger's string. What joins
-        // this line to the rest of its request is `requestId`, which every line
-        // carries, and not the route.
-        log('warn', 'denied', {
-          route: `${method} ${path}`,
-          wanted: decision.wanted,
-          requestId: ctx.requestId,
-          orgId: ctx.orgId,
-        })
-        return json({ error: 'not_authorized', wanted: decision.wanted }, decision.status)
+      if (decision.outcome === 'refused') {
+        return deny(`${method} ${path}`, ctx, decision.wanted, decision.status)
       }
       return handler({ request: c.req.raw, params: c.req.param(), context: ctx })
     })
     return api
+  }
+
+  /**
+   * The one refusal, and the one line it leaves behind.
+   *
+   * A denial is a structured log and never an audit row (ADR 0010): a table of
+   * things that did not happen is a table nobody reads, and *why couldn't Terry
+   * do that* wants to be a grep over SSH.
+   *
+   * The route is the pattern that was registered rather than the path that was
+   * sent — a denial is decided before anything authenticated the caller, and
+   * the segments of a matched path are still a stranger's string. What joins
+   * this line to the rest of its request is `requestId`, which every line
+   * carries.
+   */
+  function deny(route: string, ctx: RequestContext, wanted: string, status: 401 | 403) {
+    log('warn', 'denied', { route, wanted, requestId: ctx.requestId, orgId: ctx.orgId })
+    return json({ error: 'not_authorized', wanted }, status)
   }
 
   /** The paths that have a handler, for `sealed` to check the contract against. */
@@ -531,7 +577,7 @@ export function createApi<C extends Contract>(options: Partial<ApiOptions<C>> = 
 
   function mutation<P extends WritePath<C>>(
     path: P,
-    auth: Authorization,
+    auth: PersonAuthorization,
     handler: MutationHandler<Received<C, P>, SendsWrite<C, P>>,
   ): Api<C> {
     served.add(path)
@@ -552,6 +598,28 @@ export function createApi<C extends Contract>(options: Partial<ApiOptions<C>> = 
 
       // The shape constraint guarantees the key at the call site; inside the
       // generic it has to be named.
+      // The Shift half of a Shift Authority check, resolved from the payload
+      // and before the handler — because `authorize` settles being signed in
+      // and nothing more, and a handler left to remember the join is the
+      // invariant-in-prose ADR 0016 refuses. `MutationAuthorization` is what
+      // guarantees the `shiftId` this reads is there.
+      // Asked again rather than threaded through from `register`, because the
+      // question is whether the *payload's* Shift settles what the session
+      // could not — and `authorize` is a pure function of the two, so asking it
+      // twice is cheaper than a second statement of the same rule. A scope the
+      // endpoint named has already answered `allowed` and never reaches here.
+      if (authorize(auth, ctx.context).outcome === 'over-the-shift-it-names') {
+        const asking = ctx.context.actor
+        const { shiftId } = parsed.data as { shiftId?: unknown }
+        const held =
+          asking !== null &&
+          typeof shiftId === 'string' &&
+          (await overTheShift(ctx.context.orgId, asking, shiftId))
+        if (!held) {
+          return deny(`POST ${path}`, ctx.context, describeAuthorization(auth), 403)
+        }
+      }
+
       const { idempotencyKey: key } = parsed.data as { idempotencyKey: string }
       // The path that was sent, not the pattern registered above — two
       // horses are two requests, and a digest that cannot tell them apart

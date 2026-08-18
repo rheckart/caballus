@@ -84,7 +84,7 @@ describe('a role confers Domain Scopes, and the mapping is a constant', () => {
 
 describe('a read is for a Volunteer, not for anybody who asks', () => {
   it('lets a signed-in Volunteer read everything', () => {
-    expect(authorize(readEverything(), person())).toEqual({ allowed: true })
+    expect(authorize(readEverything(), person())).toEqual({ outcome: 'allowed' })
   })
 
   it('refuses a signed-out request explicitly rather than with an empty answer', () => {
@@ -92,7 +92,7 @@ describe('a read is for a Volunteer, not for anybody who asks', () => {
     // retry queue, and the floor is *every Volunteer*, which is a person the
     // organisation knows — not the internet.
     expect(authorize(readEverything(), NOBODY)).toEqual({
-      allowed: false,
+      outcome: 'refused',
       status: 401,
       wanted: 'read',
     })
@@ -101,12 +101,12 @@ describe('a read is for a Volunteer, not for anybody who asks', () => {
 
 describe('a scope', () => {
   it('allows the holder', () => {
-    expect(authorize(domainScope('roster'), person('roster'))).toEqual({ allowed: true })
+    expect(authorize(domainScope('roster'), person('roster'))).toEqual({ outcome: 'allowed' })
   })
 
   it('refuses a signed-in Volunteer who does not hold it, and names it', () => {
     expect(authorize(domainScope('roster'), person('horse_care'))).toEqual({
-      allowed: false,
+      outcome: 'refused',
       status: 403,
       wanted: 'roster',
     })
@@ -114,7 +114,7 @@ describe('a scope', () => {
 
   it('refuses nobody with a 401, because there is nobody to have the scope', () => {
     expect(authorize(domainScope('roster'), NOBODY)).toEqual({
-      allowed: false,
+      outcome: 'refused',
       status: 401,
       wanted: 'roster',
     })
@@ -124,16 +124,16 @@ describe('a scope', () => {
 describe('any-scope, for a record two Scopes may edit', () => {
   it('allows a holder of either named scope', () => {
     expect(authorize(anyDomainScope(['horse_care', 'supplies']), person('supplies'))).toEqual({
-      allowed: true,
+      outcome: 'allowed',
     })
     expect(authorize(anyDomainScope(['horse_care', 'supplies']), person('horse_care'))).toEqual({
-      allowed: true,
+      outcome: 'allowed',
     })
   })
 
   it('refuses a Volunteer holding neither, naming both', () => {
     expect(authorize(anyDomainScope(['horse_care', 'supplies']), person('roster'))).toEqual({
-      allowed: false,
+      outcome: 'refused',
       status: 403,
       wanted: 'horse_care or supplies',
     })
@@ -141,7 +141,7 @@ describe('any-scope, for a record two Scopes may edit', () => {
 
   it('refuses nobody with a 401', () => {
     expect(authorize(anyDomainScope(['horse_care', 'supplies']), NOBODY)).toEqual({
-      allowed: false,
+      outcome: 'refused',
       status: 401,
       wanted: 'horse_care or supplies',
     })
@@ -150,30 +150,30 @@ describe('any-scope, for a record two Scopes may edit', () => {
 
 describe('the Board, which is a tablet and not a person (ADR 0022)', () => {
   it('lets the barn tablet read it, crediting nobody', () => {
-    expect(authorize(board(), TABLET)).toEqual({ allowed: true })
+    expect(authorize(board(), TABLET)).toEqual({ outcome: 'allowed' })
     // The tablet resolved to no actor, and that is the point: there is nobody
     // for anything downstream to credit.
     expect(TABLET.actor).toBe(null)
   })
 
   it('lets a signed-in Volunteer read it too, on their own phone', () => {
-    expect(authorize(board(), person())).toEqual({ allowed: true })
+    expect(authorize(board(), person())).toEqual({ outcome: 'allowed' })
   })
 
   it('refuses somebody who is neither, rather than making the grid a public URL', () => {
-    expect(authorize(board(), NOBODY)).toEqual({ allowed: false, status: 401, wanted: 'read' })
+    expect(authorize(board(), NOBODY)).toEqual({ outcome: 'refused', status: 401, wanted: 'read' })
   })
 
   it('does not let the tablet past anything else', () => {
     // The token authorizes one read. Everything the Board's rows link to is
     // behind the ordinary floor, so a kiosk cannot drill down (ADR 0022).
-    expect(authorize(readEverything(), TABLET)).toMatchObject({ allowed: false, status: 401 })
+    expect(authorize(readEverything(), TABLET)).toMatchObject({ outcome: 'refused', status: 401 })
     expect(authorize(domainScope('horse_care'), TABLET)).toMatchObject({
-      allowed: false,
+      outcome: 'refused',
       status: 401,
     })
     expect(authorize(floor('record-a-measurement'), TABLET)).toMatchObject({
-      allowed: false,
+      outcome: 'refused',
       status: 401,
     })
   })
@@ -182,17 +182,57 @@ describe('the Board, which is a tablet and not a person (ADR 0022)', () => {
 describe('the floor and shift authority', () => {
   it('needs an actor, because an unattributed tick is the paper system’s lie', () => {
     expect(authorize(floor('record-an-observation'), NOBODY)).toMatchObject({
-      allowed: false,
+      outcome: 'refused',
       status: 401,
     })
-    expect(authorize(floor('record-an-observation'), person())).toEqual({ allowed: true })
+    expect(authorize(floor('record-an-observation'), person())).toEqual({ outcome: 'allowed' })
   })
 
-  it('cannot be granted until a Shift exists to hold it over', () => {
-    expect(authorize(shiftAuthority(), person('horse_care'))).toEqual({
-      allowed: false,
-      status: 403,
+  it('refuses a signed-out request outright, and leaves the rest to the Shift', () => {
+    expect(authorize(shiftAuthority(), NOBODY)).toMatchObject({
+      outcome: 'refused',
+      status: 401,
       wanted: 'shift authority',
+    })
+  })
+
+  it('names no Domain Scope by default, so no later write inherits a Coordinator', () => {
+    // ADR 0010 gives the authority set to the *position*, and names officers as
+    // a fallback only for a Shift with no Lead. A `roster` door built into the
+    // check itself would hand a Volunteer Coordinator every Shift-Authority
+    // write there will ever be — closing the Shift included.
+    expect(authorize(shiftAuthority(), person('roster'))).toMatchObject({
+      outcome: 'over-the-shift-it-names',
+    })
+  })
+
+  it('lets a scope the endpoint named through without touching the roster', () => {
+    // ADR 0011's own list for the Short declaration: "whoever holds Shift
+    // Authority, `roster`, or an officer's scopes" — officers need no mention,
+    // because they hold every scope through the enumeration.
+    expect(authorize(shiftAuthority(['roster']), person('roster'))).toEqual({
+      outcome: 'allowed',
+    })
+    expect(authorize(shiftAuthority(['roster']), person('horse_care'))).toMatchObject({
+      outcome: 'over-the-shift-it-names',
+    })
+  })
+
+  it('names both doors in the denial, because a refusal says what it wanted', () => {
+    expect(authorize(shiftAuthority(['roster']), NOBODY)).toMatchObject({
+      outcome: 'refused',
+      status: 401,
+      wanted: 'shift authority or roster',
+    })
+  })
+
+  it('settles only being signed in; the position is a join `mutation` runs', () => {
+    // ADR 0010: "the Shift axis is a join, not a session variable". Holding
+    // `horse_care` — or any scope — decides nothing here, which is why the
+    // answer is neither true nor false. `ReadAuthorization` is what stops a
+    // read reaching a handler on this alone.
+    expect(authorize(shiftAuthority(), person('horse_care'))).toMatchObject({
+      outcome: 'over-the-shift-it-names',
     })
   })
 })

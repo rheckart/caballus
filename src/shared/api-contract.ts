@@ -26,6 +26,7 @@ import { PRODUCT_KINDS } from './products'
 import { ROLES } from './roles'
 import { ROSTER_GAPS } from './rostering'
 import { SPACE_KINDS } from './spaces'
+import { STAFFING_GAPS } from './staffing'
 import {
   ASSIGNABLE_POSITIONS,
   ROSTER_END_KINDS,
@@ -638,12 +639,51 @@ export const shiftPatternList = z.object({
 const shiftRosterMember = rosterMember.extend({
   origin: z.enum(ROSTER_ORIGINS),
   /**
+   * The qualification, which is a grant on the Volunteer and never a position
+   * on this Shift (ADR 0010). Beside the name because *nobody who can give
+   * medication* is a sentence the screen has to be able to make concrete, and
+   * because an acting Lead without it still cannot medicate.
+   */
+  medicationAuthority: z.boolean(),
+  /**
    * Null while the commitment stands. *Rostered and dropped* is not *never
    * rostered*, and the row is marked rather than removed so both stay
    * answerable (ADR 0011).
    */
   endedAs: z.enum(ROSTER_END_KINDS).nullable(),
   endedReason: z.string().nullable(),
+})
+
+/**
+ * What the app **computes** about a Shift's staffing (ADR 0011).
+ *
+ * The internal names cross the wire because the derivation is the server's;
+ * `staffingFact` in `src/shared/staffing.ts` is what a screen renders, and the
+ * phrase *staffing gap* appears on none of them.
+ */
+const shiftStaffing = z.object({
+  gaps: z.array(z.enum(STAFFING_GAPS)),
+  /**
+   * Whom to offer the Acting Lead claim to first — Medication Authority, then
+   * tenure — or null where somebody already carries Shift Authority. A
+   * suggestion and never a restriction: the endpoint takes the claim from
+   * anybody rostered (ADR 0010).
+   */
+  suggestedActingLead: z.string().nullable(),
+})
+
+/**
+ * What a person **declared** about it, which is a different thing entirely.
+ *
+ * Null until somebody says so, and null again once somebody clears it: *nobody
+ * has said this Shift is short* is not *somebody said it and took it back*, and
+ * neither is arithmetic. It carries the actor and the time because it is a
+ * judgement somebody is accountable for (ADR 0011).
+ */
+const declaredShort = z.object({
+  /** Epoch milliseconds. A day belongs to the organisation, and this is not one. */
+  declaredAt: z.number(),
+  declaredBy: z.string().nullable(),
 })
 
 /**
@@ -665,6 +705,8 @@ const shift = z.object({
   purpose: z.string().nullable(),
   state: z.enum(SHIFT_STATES),
   roster: z.array(shiftRosterMember),
+  staffing: shiftStaffing,
+  short: declaredShort.nullable(),
 })
 
 /**
@@ -997,6 +1039,64 @@ export const contract = {
       accepts: z.object({ shiftId: z.uuid(), reason }),
       answers: z.void(),
       neverQueued: true,
+    },
+    /**
+     * An Acting Lead claim: a rostered volunteer taking charge of a Shift with
+     * nobody leading it (ADR 0010). Suggested by Medication Authority then
+     * tenure, and **claimable by any** — restricting it to the suggested person
+     * leaves a Shift leaderless exactly when that person did not show.
+     *
+     * `neverQueued`, decided by **ADR 0018's restated rule** rather than by a
+     * new carve-out from ADR 0005: *the app queues when it is the ledger, and
+     * does not queue when it is the medium*. A tick is true whether or not the
+     * app knows; a claim to be in charge of Thursday is not true until it
+     * arrives, because the app is the thing doing the communicating. Two
+     * volunteers each looking at their own phone and each seeing that they are
+     * leading Thursday is character-for-character the Unsent failure that rule
+     * was restated to catch.
+     */
+    '/shifts/acting-lead': {
+      accepts: z.object({ shiftId: z.uuid() }),
+      answers: z.object({ rosterId: z.string() }),
+      neverQueued: true,
+    },
+    /**
+     * Short: declared and cleared by a person, never by the app (ADR 0011).
+     *
+     * One endpoint and a boolean rather than two, the way retiring a Pattern
+     * is: declaring and clearing are the same judgement pointed two ways.
+     *
+     * It **queues** like every other write, and deliberately so under the same
+     * rule: here the app is the ledger. *Thursday needs more people than it has*
+     * is true in the barn whether or not the app knows, the way a tick is —
+     * unlike a Cover, nobody can be misled into thinking a commitment exists —
+     * and ADR 0011 already accepts a stale Short as possible. So the queue is
+     * transport for a fact, which is exactly where ADR 0018 leaves it.
+     */
+    '/shifts/short': {
+      accepts: z.object({ shiftId: z.uuid(), short: z.boolean() }),
+      answers: z.void(),
+    },
+    /**
+     * The evening digest: the **one** thing this application sends about
+     * staffing, to holders of `roster` (ADR 0011).
+     *
+     * A write with a deliberate trigger, exactly like `/weather/readings` and
+     * generation: an in-process interval is a job that stops the next time the
+     * container restarts and nobody notices for a fortnight. It becomes the
+     * evening job's one step the day there is a scheduler.
+     *
+     * The counts come back rather than a bare acknowledgement, because a send
+     * that failed must be visible: `sent` below `recipients` is the thing a
+     * Coordinator has to be able to see (ADR 0009).
+     */
+    '/shifts/digest': {
+      accepts: z.object({}),
+      answers: z.object({
+        recipients: z.number(),
+        sent: z.number(),
+        shifts: z.number(),
+      }),
     },
     /**
      * Publishes a Threshold version — the rescue default with a null

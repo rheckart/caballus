@@ -17,6 +17,22 @@
  * assigned still appears in the list with the reason against their name — the
  * server refuses, and a person can see why rather than wondering where a name
  * went (ADR 0017).
+ *
+ * **The fortnight is where a Coordinator sees what is missing**, across the
+ * whole generation horizon rather than the next 48 hours, because #7 needs
+ * *will this Shift have Medication Authority present* answerable while a roster
+ * is being built a fortnight out (ADR 0011). Each Shift says the concrete fact —
+ * *no Lead*, *nobody who can give medication* — and never the phrase *staffing
+ * gap*, which is an internal term.
+ *
+ * **Short is one button and it is a person's**, declared and cleared from here
+ * or from the Shift itself. The arithmetic beside it never sets it and never
+ * takes it away: a Shift can sit marked Short after enough people have Covered,
+ * because the human who declared it already weighed who might turn up.
+ *
+ * **The digest is a button for the same reason generation is.** It must never be
+ * an in-process interval pretending to be durable, and until there is a
+ * scheduler the hand that sends it is a person's.
  */
 import { createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
@@ -31,6 +47,7 @@ import {
 } from '../../shared/shifts'
 import { SHIFT_TYPES, type ShiftType } from '../../shared/feed-schedule'
 import type { RosterGap } from '../../shared/rostering'
+import { staffingFacts } from '../../shared/staffing'
 import type { Answers, contract } from '../../shared/api-contract'
 
 export const Route = createFileRoute('/admin/shift-patterns')({
@@ -40,6 +57,7 @@ export const Route = createFileRoute('/admin/shift-patterns')({
 type PatternList = Answers<typeof contract, '/shift-patterns'>
 type Pattern = PatternList['patterns'][number]
 type ScheduleList = Answers<typeof contract, '/shifts'>
+type Shift = ScheduleList['shifts'][number]
 type People = Answers<typeof contract, '/volunteers'>
 
 const WEEKDAY_LABEL: Record<Weekday, string> = {
@@ -160,6 +178,30 @@ function ShiftPatterns() {
           Generate the horizon
         </button>
 
+        {/* The one thing the app sends about staffing, on a deliberate press.
+            The counts come back so a send that failed is visible rather than
+            assumed — with email as the only channel, a swallowed failure is a
+            Coordinator who thinks the roster was told (ADR 0009, ADR 0011). */}
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            void act(
+              () => client.post('/shifts/digest', {}),
+              (answer) => {
+                const { recipients, sent, shifts } = answer as {
+                  recipients: number
+                  sent: number
+                  shifts: number
+                }
+                return `Sent to ${String(sent)} of ${String(recipients)}, covering ${String(shifts)} shift${shifts === 1 ? '' : 's'}.`
+              },
+            )
+          }}
+        >
+          Send the evening digest
+        </button>
+
         {schedule.shifts.length === 0 ? (
           <p>No Shifts yet.</p>
         ) : (
@@ -170,6 +212,7 @@ function ShiftPatterns() {
                 <th scope="col">Shift</th>
                 <th scope="col">Starts</th>
                 <th scope="col">On it</th>
+                <th scope="col">Missing</th>
               </tr>
             </thead>
             <tbody>
@@ -210,6 +253,28 @@ function ShiftPatterns() {
                         ))}
                       </ul>
                     )}
+                  </td>
+                  <td>
+                    <WhatIsMissing shift={shift} />
+                    {/* Declaring and clearing are the same judgement pointed
+                        two ways, so one button whose label changes. Never
+                        disabled by the arithmetic beside it: Short is fewer
+                        people than the Essential Work needs, and the app does
+                        not know what that is (ADR 0011). */}
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        void act(() =>
+                          client.post('/shifts/short', {
+                            shiftId: shift.id,
+                            short: shift.short === null,
+                          }),
+                        )
+                      }}
+                    >
+                      {shift.short === null ? 'Call it short' : 'Clear short'}
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -313,6 +378,31 @@ function ShiftPatterns() {
         </form>
       </section>
     </main>
+  )
+}
+
+/**
+ * What a Shift is missing, in words — `staffingFacts`, the same derivation the
+ * phone and the digest read, so the desk and the barn cannot describe Thursday
+ * differently.
+ *
+ * The desk sees the whole fortnight, with no proximity rule: ADR 0011 computes
+ * the gaps "across the full two-week generation horizon for holders of
+ * `roster`", because #7 needs *will this Shift have Medication Authority
+ * present* answerable while a roster is being built a fortnight out. The
+ * phone's 48-hour window is the other half of that same sentence.
+ */
+function WhatIsMissing({ shift }: { shift: Shift }) {
+  const facts = staffingFacts(shift)
+
+  return (
+    <>
+      {facts.length === 0 ? <span>nothing</span> : <strong>{facts.join(', ')}</strong>}
+      {/* A person's call, said as one. The app neither declares Short nor
+          withdraws it, and a Coordinator reading this row needs to know which
+          of the two things on it a human decided (ADR 0011). */}
+      {shift.short !== null && <em> — called short by a person</em>}
+    </>
   )
 }
 

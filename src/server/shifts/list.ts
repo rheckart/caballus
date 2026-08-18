@@ -18,6 +18,12 @@ import type { OrgScopedDatabase } from '../../db/for-org'
 import { shiftPatternRoster, shiftPatterns, shiftRoster, shifts, volunteers } from '../../db/schema'
 import type { RosterGap } from '../../shared/rostering'
 import {
+  staffingGaps,
+  suggestedActingLead,
+  type StaffingGap,
+  type StaffingMember,
+} from '../../shared/staffing'
+import {
   asTimeOfDay,
   isAnyShiftType,
   isRosterEndKind,
@@ -34,9 +40,10 @@ import {
   type StaffingMode,
   type Weekday,
 } from '../../shared/shifts'
-import { dayString, now, type DayString } from '../../shared/time'
+import { dayString, now, type DayString, type Instant } from '../../shared/time'
 import { gatesOf } from './gates'
-import { startOfShift } from '../time'
+import { staffingInputs } from './staffing'
+import { instantOfTimestamp, startOfShift } from '../time'
 
 export interface StandingRosterMember {
   readonly volunteerId: string
@@ -120,6 +127,33 @@ export interface ShiftRosterMember extends StandingRosterMember {
   /** Null while the commitment stands; otherwise how it ended (ADR 0011). */
   readonly endedAs: RosterEndKind | null
   readonly endedReason: string | null
+  /**
+   * The qualification, which is a grant on the Volunteer and not a position
+   * here (ADR 0010) — beside the name because *nobody who can give medication*
+   * is a sentence a screen has to be able to make concrete.
+   */
+  readonly medicationAuthority: boolean
+}
+
+/**
+ * Short, as a person declared it (ADR 0011). Absent rather than false when
+ * nobody has: *nobody has said this Shift is short* and *somebody said it and
+ * then cleared it* are different facts, and the actor and time are the whole
+ * point of recording it.
+ */
+export interface DeclaredShort {
+  readonly declaredAt: Instant
+  readonly declaredBy: string | null
+}
+
+/** What the app derives about a Shift's staffing — displayed, never announced. */
+export interface ShiftStaffing {
+  readonly gaps: readonly StaffingGap[]
+  /**
+   * Whom to offer the Acting Lead claim to first, or null where there is
+   * nothing to claim. A suggestion and never a restriction (ADR 0010).
+   */
+  readonly suggestedActingLead: string | null
 }
 
 export interface ShiftRecord {
@@ -134,6 +168,10 @@ export interface ShiftRecord {
   /** Derived from the clock, not stored — Close is a later ticket (ADR 0001). */
   readonly state: ShiftState
   readonly roster: readonly ShiftRosterMember[]
+  /** Computed. Four facts, never the internal phrase (ADR 0011). */
+  readonly staffing: ShiftStaffing
+  /** Declared. Null until a person says so, and null again once one clears it. */
+  readonly short: DeclaredShort | null
 }
 
 /**
@@ -150,7 +188,7 @@ export async function shiftList(
   today: DayString,
   timeZone: string,
 ): Promise<readonly ShiftRecord[]> {
-  const [shiftRows, rosterRows, people] = await Promise.all([
+  const [shiftRows, rosterRows, people, inputs] = await Promise.all([
     db
       .select({
         id: shifts.id,
@@ -161,6 +199,9 @@ export async function shiftList(
         targetHeadcount: shifts.targetHeadcount,
         staffingMode: shifts.staffingMode,
         purpose: shifts.purpose,
+        shortDeclaredAt: shifts.shortDeclaredAt,
+        shortDeclaredBy: shifts.shortDeclaredBy,
+        shortClearedAt: shifts.shortClearedAt,
       })
       .from(shifts)
       .where(gte(shifts.day, today))
@@ -181,6 +222,7 @@ export async function shiftList(
       .where(gte(shifts.day, today))
       .orderBy(volunteers.name),
     gatesOf(db, today),
+    staffingInputs(db),
   ])
 
   const rosterBy = new Map<string, ShiftRosterMember[]>()
@@ -197,6 +239,7 @@ export async function shiftList(
       origin: row.origin,
       endedAs: row.endedKind !== null && isRosterEndKind(row.endedKind) ? row.endedKind : null,
       endedReason: row.endedReason,
+      medicationAuthority: person?.medicationAuthority ?? false,
     })
     rosterBy.set(row.shiftId, held)
   }
@@ -207,11 +250,24 @@ export async function shiftList(
     .filter((row) => isAnyShiftType(row.shiftType) && isStaffingMode(row.staffingMode))
     .map((row) => {
       const day = dayString(row.day)
+      const shiftType = isAnyShiftType(row.shiftType) ? row.shiftType : 'pop_up'
+      const roster = rosterBy.get(row.id) ?? []
+      const subject = {
+        targetHeadcount: row.targetHeadcount,
+        needsMedication: inputs.medicationShiftTypes.has(shiftType),
+        roster: roster.map((member): StaffingMember => ({
+          volunteerId: member.volunteerId,
+          position: member.position,
+          endedAs: member.endedAs,
+          medicationAuthority: member.medicationAuthority,
+          since: inputs.tenure.get(member.volunteerId) ?? null,
+        })),
+      }
       return {
         id: row.id,
         patternId: row.patternId,
         day,
-        shiftType: isAnyShiftType(row.shiftType) ? row.shiftType : 'pop_up',
+        shiftType,
         startTime: asTimeOfDay(row.startTime),
         targetHeadcount: row.targetHeadcount,
         staffingMode: isStaffingMode(row.staffingMode) ? row.staffingMode : 'standing_roster',
@@ -221,7 +277,26 @@ export async function shiftList(
         // lifecycle the app only pretends to have. A Shift whose start has
         // passed is under way; Close is what will end it (ADR 0001).
         state: startOfShift(day, row.startTime, timeZone) <= at ? 'in_progress' : 'scheduled',
-        roster: rosterBy.get(row.id) ?? [],
+        roster,
+        // The pure derivation, handed exactly what it needs and nothing else:
+        // *does this Shift's feeding need medication* is a question about Feed
+        // Schedule versions, and *how long has she been here* is a question
+        // behind `roster` — both answered before this point, so the arithmetic
+        // itself stays a table of inputs (`src/shared/staffing.ts`).
+        staffing: {
+          gaps: staffingGaps(subject),
+          suggestedActingLead: suggestedActingLead(subject),
+        },
+        // Declared and cleared by people. `clearedAt` after `declaredAt` is a
+        // Shift that is no longer Short — read here rather than sent, because
+        // *who cleared it* is not a fact any screen in this ticket shows.
+        short:
+          row.shortDeclaredAt === null || row.shortClearedAt !== null
+            ? null
+            : {
+                declaredAt: instantOfTimestamp(row.shortDeclaredAt),
+                declaredBy: row.shortDeclaredBy,
+              },
       }
     })
 }

@@ -24,6 +24,18 @@ export type Refusal =
   | 'no_orientation'
   /** At most one `lead` on a Shift or a Pattern (ADR 0010). */
   | 'lead_already_held'
+  /**
+   * Somebody already carries Shift Authority here, so there is no Acting Lead
+   * to claim.
+   *
+   * Its own refusal rather than `lead_already_held` because the two reach
+   * different people: that one answers a Coordinator, whose fix is to take the
+   * Lead off, and this one answers a volunteer standing in a barn, who has no
+   * such option and needs a sentence they can act on. On a ticket whose premise
+   * is that the copy is the design, one refusal serving both would be the
+   * vaguer of the two.
+   */
+  | 'already_led'
   /** Already on this roster, and standing — a second row would be a second person. */
   | 'already_rostered'
   /** Not on this roster at all, which is a different fact from having dropped. */
@@ -34,6 +46,14 @@ export type Refusal =
    * coarsest honest reading of that.
    */
   | 'shift_is_over'
+  /**
+   * Somebody already declared this Shift Short. Saying it twice is not a second
+   * declaration, and answering *done* would quietly overwrite whose judgement
+   * it was and when — which is the whole of what Short records (ADR 0011).
+   */
+  | 'already_short'
+  /** Clearing a Shift nobody declared Short. Nothing to take back. */
+  | 'not_short'
 
 export type Recorded<T = null> =
   { readonly ok: true; readonly value: T } | { readonly ok: false; readonly because: Refusal }
