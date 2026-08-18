@@ -25,18 +25,21 @@
  * Background Sync, so the queue drains *in the page*, while it is open. The
  * failure most worth seeing is therefore a page failure and this SDK sees it.
  * A second Sentry client inside the worker would cost a second copy of the SDK
- * in the cache for shell-fetch errors nobody acts on. Registering the worker
- * is the ticket that ships the precache; if it ever grows work of its own —
- * Background Sync arriving on iOS is the trigger — that ticket revisits this,
- * and the wrapper it must go through is `shared/observability.browser.ts`.
+ * in the cache for shell-fetch errors nobody acts on. Registration (#48) is
+ * fire-and-forget for exactly that reason; if the worker ever grows work of
+ * its own — Background Sync arriving on iOS is the trigger — that ticket
+ * revisits this, and the wrapper it must go through is
+ * `shared/observability.browser.ts`.
  */
 import { StrictMode, startTransition } from 'react'
 import { hydrateRoot } from 'react-dom/client'
 import { StartClient } from '@tanstack/react-start/client'
 
 import { startObservability } from './shared/observability.browser'
+import { registerServiceWorker } from './shared/service-worker.browser'
 
 startObservability()
+registerServiceWorker()
 
 startTransition(() => {
   hydrateRoot(
