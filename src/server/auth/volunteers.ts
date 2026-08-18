@@ -11,11 +11,12 @@
  * Everything is scoped through `forOrg`, so the policies of ADR 0007 apply to
  * every read and every write in this file.
  */
-import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm'
-import { v7 as uuidv7 } from 'uuid'
+import { and, eq, isNotNull, isNull } from 'drizzle-orm'
 
 import { forOrg, type OrgId } from '../../db/for-org'
-import { volunteerAccounts, volunteerRoles, volunteers } from '../../db/schema'
+import { volunteerAccounts, volunteers } from '../../db/schema'
+import { grantRoleIn } from '../roster/grants'
+import { createVolunteerIn, removeVolunteerIn } from '../roster/records'
 import type { Role } from '../api/authorization'
 
 export interface Volunteer {
@@ -26,18 +27,16 @@ export interface Volunteer {
 }
 
 /**
- * An address as this application stores and compares it.
+ * An address as this application stores and compares it — case-folded and
+ * trimmed once so that the unique index on the column holds.
  *
- * Case-folded and trimmed once, here, rather than at each call site: the
- * uniqueness of an email within a rescue is a plain unique index, and an index
- * only holds if everything that writes to it agrees on the spelling. Local
- * parts are case-sensitive in the RFC and case-insensitive at every mail
- * provider a volunteer will actually use, and the failure the RFC-correct
- * reading buys is two Volunteers for one person.
+ * Defined beside the insert in `src/server/roster/records.ts` and re-exported
+ * here, so the sign-in path keeps one import and there is one spelling of an
+ * address rather than two that agree today.
  */
-export function normaliseEmail(raw: string): string {
-  return raw.trim().toLowerCase()
-}
+export { normaliseEmail } from '../roster/records'
+
+import { normaliseEmail } from '../roster/records'
 
 export interface NewVolunteer {
   readonly name: string
@@ -46,31 +45,28 @@ export interface NewVolunteer {
 }
 
 /**
- * Creates a Volunteer. This is the Coordinator's act, and it needs no Account,
- * no code and no login — a name and an email address is the whole of it.
+ * Creates a Volunteer, in a transaction of its own.
+ *
+ * This is the shape the bootstrap command and the tests need: a Volunteer, with
+ * no request behind it and therefore no actor. The Coordinator's version of the
+ * same act goes through `/api/v1` and lands in `createVolunteerIn`, which is
+ * the one implementation — this only wraps it in a transaction and turns a
+ * refusal into a throw, because a caller with no user in front of it has
+ * nowhere to put one.
  */
 export async function createVolunteer(orgId: OrgId, details: NewVolunteer): Promise<Volunteer> {
   const email = normaliseEmail(details.email)
-  const [created] = await forOrg(orgId).run((db) =>
-    db
-      .insert(volunteers)
-      .values({
-        id: uuidv7(),
-        orgId,
-        name: details.name.trim(),
-        email,
-        mobile: details.mobile ?? null,
-      })
-      .returning(),
+  const outcome = await forOrg(orgId).run((db) =>
+    createVolunteerIn(db, orgId, null, { ...details, email }),
   )
-  if (created === undefined) {
-    throw new Error(`The volunteer for ${email} was not created`)
+  if (!outcome.ok) {
+    throw new Error(`The volunteer for ${email} was not created: ${outcome.because}`)
   }
   return {
-    id: created.id,
-    name: created.name,
-    email: created.email,
-    mobile: created.mobile,
+    id: outcome.value.id,
+    name: outcome.value.name,
+    email: outcome.value.email,
+    mobile: details.mobile ?? null,
   }
 }
 
@@ -128,23 +124,24 @@ export async function hasLeftTheRescue(orgId: OrgId, rawEmail: string): Promise<
 }
 
 /**
- * Confers a role, and with it the Domain Scopes the constant in
- * `src/server/api/authorization.ts` maps it to (ADR 0010).
+ * Confers a role, in a transaction of its own and with no actor behind it.
  *
- * **Grants attach to the Volunteer, never the Account**: a report addressed to
- * `maintenance` has to reach Terry whether or not Terry has ever logged in,
- * and revoking an Account does not vacate a scope.
+ * The bootstrap's shape, and the one act that legitimately grants a role
+ * without being anybody: ADR 0010's *nobody grants themselves a role* has no
+ * subject to bite on when there is nobody there yet, and shell access to the
+ * box already implies everything this could do. The audit entry it writes
+ * carries a null actor, which is what that column's nullability is for.
  *
- * Idempotent, because the primary key already says a person holds a role once.
+ * The decisions — the self-grant guard, the last-`grants`-holder guard, the
+ * upsert — are all in `src/server/roster/grants.ts`. This is the wrapper.
  */
 export async function grantRole(orgId: OrgId, volunteerId: string, role: Role): Promise<void> {
-  await forOrg(orgId).run((db) =>
-    db
-      .insert(volunteerRoles)
-      .values({ orgId, volunteerId, role })
-      .onConflictDoNothing()
-      .returning({ role: volunteerRoles.role }),
+  const outcome = await forOrg(orgId).run((db) =>
+    grantRoleIn(db, orgId, null, { volunteerId, role }),
   )
+  if (!outcome.ok) {
+    throw new Error(`${role} was not granted to ${volunteerId}: ${outcome.because}`)
+  }
 }
 
 /**
@@ -206,11 +203,5 @@ export async function claimAccount(
  * has to have a subject.
  */
 export async function removeVolunteer(orgId: OrgId, volunteerId: string): Promise<void> {
-  await forOrg(orgId).run(async (db) => {
-    await db
-      .update(volunteers)
-      .set({ removedAt: sql`now()` })
-      .where(eq(volunteers.id, volunteerId))
-    await db.delete(volunteerRoles).where(eq(volunteerRoles.volunteerId, volunteerId))
-  })
+  await forOrg(orgId).run((db) => removeVolunteerIn(db, orgId, null, { volunteerId }))
 }

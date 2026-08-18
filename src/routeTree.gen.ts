@@ -11,6 +11,9 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as AdminAuditRouteImport } from './routes/admin/audit'
+import { Route as AdminReleaseVersionsRouteImport } from './routes/admin/release-versions'
+import { Route as AdminVolunteersRouteImport } from './routes/admin/volunteers'
 import { Route as ApiSplatRouteImport } from './routes/api.$'
 
 const IndexRoute = IndexRouteImport.update({
@@ -23,6 +26,21 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminAuditRoute = AdminAuditRouteImport.update({
+  id: '/admin/audit',
+  path: '/admin/audit',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminReleaseVersionsRoute = AdminReleaseVersionsRouteImport.update({
+  id: '/admin/release-versions',
+  path: '/admin/release-versions',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminVolunteersRoute = AdminVolunteersRouteImport.update({
+  id: '/admin/volunteers',
+  path: '/admin/volunteers',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiSplatRoute = ApiSplatRouteImport.update({
   id: '/api/$',
   path: '/api/$',
@@ -32,30 +50,61 @@ const ApiSplatRoute = ApiSplatRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/admin/audit': typeof AdminAuditRoute
+  '/admin/release-versions': typeof AdminReleaseVersionsRoute
+  '/admin/volunteers': typeof AdminVolunteersRoute
   '/api/$': typeof ApiSplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/admin/audit': typeof AdminAuditRoute
+  '/admin/release-versions': typeof AdminReleaseVersionsRoute
+  '/admin/volunteers': typeof AdminVolunteersRoute
   '/api/$': typeof ApiSplatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/admin/audit': typeof AdminAuditRoute
+  '/admin/release-versions': typeof AdminReleaseVersionsRoute
+  '/admin/volunteers': typeof AdminVolunteersRoute
   '/api/$': typeof ApiSplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/api/$'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/admin/audit'
+    | '/admin/release-versions'
+    | '/admin/volunteers'
+    | '/api/$'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/api/$'
-  id: '__root__' | '/' | '/login' | '/api/$'
+  to:
+    | '/'
+    | '/login'
+    | '/admin/audit'
+    | '/admin/release-versions'
+    | '/admin/volunteers'
+    | '/api/$'
+  id:
+    | '__root__'
+    | '/'
+    | '/login'
+    | '/admin/audit'
+    | '/admin/release-versions'
+    | '/admin/volunteers'
+    | '/api/$'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LoginRoute: typeof LoginRoute
+  AdminAuditRoute: typeof AdminAuditRoute
+  AdminReleaseVersionsRoute: typeof AdminReleaseVersionsRoute
+  AdminVolunteersRoute: typeof AdminVolunteersRoute
   ApiSplatRoute: typeof ApiSplatRoute
 }
 
@@ -75,6 +124,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/audit': {
+      id: '/admin/audit'
+      path: '/admin/audit'
+      fullPath: '/admin/audit'
+      preLoaderRoute: typeof AdminAuditRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/release-versions': {
+      id: '/admin/release-versions'
+      path: '/admin/release-versions'
+      fullPath: '/admin/release-versions'
+      preLoaderRoute: typeof AdminReleaseVersionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/volunteers': {
+      id: '/admin/volunteers'
+      path: '/admin/volunteers'
+      fullPath: '/admin/volunteers'
+      preLoaderRoute: typeof AdminVolunteersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/$': {
       id: '/api/$'
       path: '/api/$'
@@ -88,6 +158,9 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LoginRoute: LoginRoute,
+  AdminAuditRoute: AdminAuditRoute,
+  AdminReleaseVersionsRoute: AdminReleaseVersionsRoute,
+  AdminVolunteersRoute: AdminVolunteersRoute,
   ApiSplatRoute: ApiSplatRoute,
 }
 export const routeTree = rootRouteImport
