@@ -27,7 +27,7 @@ import { forOrg, type OrgScopedDatabase } from '../../db/for-org'
 import { orgs, volunteers } from '../../db/schema'
 import type { contract } from '../../shared/api-contract'
 import { type DayString } from '../../shared/time'
-import { anyDomainScope, domainScope, floor, readEverything } from './authorization'
+import { anyDomainScope, board, domainScope, floor, readEverything } from './authorization'
 import { createApi, json, noContent, type Api, type ApiOptions } from './route'
 import type { Actor, RequestContext } from '../request-context'
 import { auditLog, peopleList, unstaffedScopes } from '../roster/people'
@@ -66,6 +66,7 @@ import {
 import { publishFeedSchedule } from '../horses/feed-schedules'
 import { recordMeasurement } from '../horses/measurements'
 import { productList, supplierList } from '../products/list'
+import { boardGrid } from '../board/grid'
 import { createProduct, createSupplier, editProduct } from '../products/records'
 
 // The server's one entry point, so this is where reporting starts. It is a
@@ -440,6 +441,45 @@ export function buildApi(
   api.route('GET', '/products', readEverything(), async ({ context }) => {
     const listed = await forOrg(context.orgId).run((db) => productList(db))
     return json({ products: listed.map((product) => ({ ...product })) })
+  })
+
+  /**
+   * The Board: the faithful grid, read-only, whole (#37).
+   *
+   * `board()` rather than `readEverything()` — a signed-in Volunteer, or the
+   * rescue's tablet presenting the kiosk token. The tablet is not an actor and
+   * this handler never asks for one, which is what *the Board credits nobody*
+   * means once it is a property of the code rather than of the screen
+   * (ADR 0022).
+   */
+  api.route('GET', '/board', board(), async ({ context }) => {
+    const grid = await forOrg(context.orgId).run(async (db) => {
+      const on = await dayHere(db)
+      return boardGrid(db, on)
+    })
+
+    return json({
+      today: grid.today,
+      sections: grid.sections.map((section) => ({
+        heading: section.heading,
+        rows: section.rows.map((row) => ({
+          stall: row.stall === null ? null : { ...row.stall },
+          horse:
+            row.horse === null
+              ? null
+              : {
+                  id: row.horse.id,
+                  name: row.horse.name,
+                  halterColour: row.horse.halterColour,
+                  field: row.horse.field === null ? null : { ...row.horse.field },
+                  feedings: row.horse.feedings.map((feeding) => ({
+                    ...feeding,
+                    lines: [...feeding.lines],
+                  })),
+                },
+        })),
+      })),
+    })
   })
 
   api.mutation('/spaces', domainScope('horse_care'), async (input, { context, db }) => {

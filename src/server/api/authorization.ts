@@ -44,6 +44,17 @@ export type Authorization =
   | { readonly kind: 'shift-authority' }
   | { readonly kind: 'floor'; readonly because: FloorReason }
   | { readonly kind: 'read-everything' }
+  | { readonly kind: 'board' }
+
+/**
+ * What a **write** may declare: everything above except the Board's.
+ *
+ * ADR 0022's structural half. The Board credits no actor, so a write it could
+ * authorize would be a write nobody made — and rather than leaving that to a
+ * reviewer's attention, `mutation` takes this type and a write declaring
+ * `board()` does not compile (ADR 0016).
+ */
+export type PersonAuthorization = Exclude<Authorization, { readonly kind: 'board' }>
 
 /**
  * This endpoint requires a Domain Scope.
@@ -51,7 +62,7 @@ export type Authorization =
  * Named in full, because `Scope` alone is the barn's word for which horses a
  * piece of work applies to, and CONTEXT.md keeps it for them.
  */
-export function domainScope(required: DomainScope): Authorization {
+export function domainScope(required: DomainScope): PersonAuthorization {
   return { kind: 'scope', scope: required }
 }
 
@@ -65,12 +76,12 @@ export function domainScope(required: DomainScope): Authorization {
  * Not a general mechanism to reach for; a second call site is the tripwire to
  * revisit whether this earns a wider one.
  */
-export function anyDomainScope(scopes: readonly DomainScope[]): Authorization {
+export function anyDomainScope(scopes: readonly DomainScope[]): PersonAuthorization {
   return { kind: 'any-scope', scopes }
 }
 
 /** This endpoint requires Shift Authority over the Shift it names. */
-export function shiftAuthority(): Authorization {
+export function shiftAuthority(): PersonAuthorization {
   return { kind: 'shift-authority' }
 }
 
@@ -78,7 +89,7 @@ export function shiftAuthority(): Authorization {
  * This write needs no Domain Scope. Saying so is deliberate: ADR 0010 allows
  * it in exactly the three cases `FloorReason` enumerates.
  */
-export function floor(because: FloorReason): Authorization {
+export function floor(because: FloorReason): PersonAuthorization {
   return { kind: 'floor', because }
 }
 
@@ -87,8 +98,29 @@ export function floor(because: FloorReason): Authorization {
  * barn that every volunteer walks into (ADR 0010). The two carve-outs,
  * volunteer contact details and the audit log, declare `domainScope('roster')`.
  */
-export function readEverything(): Authorization {
+export function readEverything(): PersonAuthorization {
   return { kind: 'read-everything' }
+}
+
+/**
+ * A read for the Board: a signed-in Volunteer, or the rescue's tablet
+ * presenting the kiosk token (ADR 0022).
+ *
+ * It resolves to nobody — the tablet is a fact about the request and never an
+ * `Actor` — so a handler declaring this must not need one. Today exactly one
+ * does, and `PersonAuthorization` above is why it can never be more than a read.
+ */
+export function board(): Authorization {
+  return { kind: 'board' }
+}
+
+/**
+ * Who is asking, as authorization sees them: the person the session resolved
+ * to, and whether the request is the barn's tablet. A `RequestContext` is one.
+ */
+export interface Principal {
+  readonly actor: Actor | null
+  readonly kiosk: boolean
 }
 
 export type Decision =
@@ -99,8 +131,17 @@ export type Decision =
  * A denial is explicit and names what it wanted (ADR 0010): a silent empty
  * response is indistinguishable from success to a retry queue.
  */
-export function authorize(required: Authorization, actor: Actor | null): Decision {
+export function authorize(required: Authorization, asking: Principal): Decision {
+  const { actor } = asking
+
   switch (required.kind) {
+    case 'board':
+      // A person or the tablet, and nothing else. The tablet is not an actor,
+      // so nothing downstream of this may credit one (ADR 0022).
+      return actor !== null || asking.kiosk
+        ? { allowed: true }
+        : { allowed: false, status: 401, wanted: 'read' }
+
     case 'read-everything':
       // *Every Volunteer* reads everything (ADR 0010) — a person the
       // organisation knows, not anybody who asks. The whiteboard is in a barn
@@ -160,5 +201,7 @@ export function describeAuthorization(required: Authorization): string {
       return `floor: ${required.because}`
     case 'read-everything':
       return 'read'
+    case 'board':
+      return 'board read'
   }
 }

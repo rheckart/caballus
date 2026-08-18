@@ -83,6 +83,9 @@ function Home() {
                 <Link to="/horses">Horses</Link>
               </li>
               <li>
+                <Link to="/board">Feed board</Link>
+              </li>
+              <li>
                 <Link to="/admin/volunteers">Volunteers</Link>
               </li>
               <li>

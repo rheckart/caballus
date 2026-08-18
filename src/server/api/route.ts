@@ -15,6 +15,9 @@
  * 4. Every path is one the contract declares, and every handler answers the
  *    shape it promised. A path nothing serves is a type error rather than a
  *    404 at 6am, on this side and on the phone's (#26).
+ * 5. Every write's authorization names a person. `mutation` takes
+ *    `PersonAuthorization`, so the Board's — which resolves to the barn's
+ *    tablet and to no actor — cannot be spelled on one (ADR 0022).
  *
  * The key is also *acted on* here rather than in handlers. `mutation` opens
  * the transaction, records the key inside it and hands the handler the scoped
@@ -45,7 +48,12 @@ import {
 import { log, report } from '../observability'
 import { anonymousContext, requestContext, type RequestContext } from '../request-context'
 import { json, rebuild, type ApiResponse } from './answer'
-import { authorize, describeAuthorization, type Authorization } from './authorization'
+import {
+  authorize,
+  describeAuthorization,
+  type Authorization,
+  type PersonAuthorization,
+} from './authorization'
 import { fingerprint } from './fingerprint'
 
 /**
@@ -142,7 +150,7 @@ export interface Api<C extends Contract> {
    */
   mutation<P extends WritePath<C>>(
     path: P,
-    auth: Authorization,
+    auth: PersonAuthorization,
     handler: MutationHandler<Received<C, P>, SendsWrite<C, P>>,
   ): Api<C>
 
@@ -484,7 +492,9 @@ export function createApi<C extends Contract>(options: Partial<ApiOptions<C>> = 
   ): Api<C> {
     app.on(method, path, async (c) => {
       const ctx = await contextOf(c.req.raw)
-      const decision = authorize(auth, ctx.actor)
+      // The whole context, because who is asking is a person *or* the barn's
+      // tablet, and only one of those is an actor (ADR 0022).
+      const decision = authorize(auth, ctx)
       if (!decision.allowed) {
         // A denial is a structured log, not an audit row (ADR 0010).
         //

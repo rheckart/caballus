@@ -385,6 +385,59 @@ export const horseProfile = horse.extend({
   measurements: horseMeasurements,
 })
 
+/**
+ * A horse as one row of the Board carries it (`CONTEXT.md`'s Board; #37).
+ *
+ * The feeding is `feedSchedule` itself rather than a shape of its own: the
+ * grid's cell and the profile's section are the same fact read at two
+ * distances, and two schemas for it would be two chances to disagree about
+ * what a Route is.
+ *
+ * **No Alerts field**, for the reason `horse` above has none: nothing writes an
+ * Alert yet, and the Board holds the column rather than this schema inventing a
+ * field nobody populates (#35).
+ *
+ * No blanket size and no height either, though the whiteboard's rows carry
+ * both: #37 names what this surface shows, the grid does not show them, and a
+ * promise nothing reads is a promise that goes stale unwitnessed. They are one
+ * tap away on the profile, and this schema gains them the day the Board renders
+ * them.
+ */
+const boardHorse = z.object({
+  id: z.string(),
+  name: z.string(),
+  halterColour: z.string().nullable(),
+  field: spaceRef.nullable(),
+  feedings: z.array(feedSchedule),
+})
+
+/**
+ * One row: a Stall, the horse in it, or a Stall with no horse — which is how
+ * the OPEN stall keeps its row (ADR 0002). A horse with no Stall has a row
+ * with no Stall on it, in its barn's section.
+ */
+const boardRow = z.object({
+  stall: spaceRef.nullable(),
+  horse: boardHorse.nullable(),
+})
+
+/** The stalls in stall order, then each barn that holds horses without one. */
+const boardSection = z.object({ heading: z.string(), rows: z.array(boardRow) })
+
+/**
+ * The whole screen in one read, ordered by the server.
+ *
+ * The tablet repaints all of it every minute; a grid stitched from four reads
+ * is four chances for one part of the wall to be a minute older than the rest.
+ * There is no `asOf` here on purpose — the screen times its own successful
+ * polls, which is an elapsed measurement rather than a comparison between two
+ * clocks that a barn tablet has no reason to have agreeing.
+ */
+export const board = z.object({
+  today: dayOfTheOrganisation,
+  sections: z.array(boardSection),
+})
+
 /** An optional note on a grant, a revocation or a correction (ADR 0010). */
 const reason = z.string().max(500).nullish()
 
@@ -407,6 +460,11 @@ export const contract = {
     '/horses/:horseId': { answers: horseProfile },
     '/suppliers': { answers: supplierList },
     '/products': { answers: productList },
+    /**
+     * The Board. The one endpoint the barn's tablet may read, and the only one
+     * whose authorization is not a person (ADR 0022).
+     */
+    '/board': { answers: board },
   },
   writes: {
     /**

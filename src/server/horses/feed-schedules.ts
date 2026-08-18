@@ -122,38 +122,60 @@ export async function currentFeedSchedulesFor(
   horseId: string,
   today: DayString,
 ): Promise<readonly CurrentFeedSchedule[]> {
+  const byHorse = await currentFeedSchedulesByHorse(db, today, horseId)
+  return byHorse.get(horseId) ?? []
+}
+
+/**
+ * The same, for every horse at once — what the Board reads, because a grid of
+ * eleven horses asking one query each is eleven round trips for a screen that
+ * repaints every minute (#37).
+ *
+ * `onlyHorseId` narrows it to one horse, which is what the profile wants; the
+ * resolution of *which version is current* is the same either way, and having
+ * it twice is having it drift.
+ */
+export async function currentFeedSchedulesByHorse(
+  db: OrgScopedDatabase,
+  today: DayString,
+  onlyHorseId?: string,
+): Promise<ReadonlyMap<string, readonly CurrentFeedSchedule[]>> {
   const versionRows = await db
     .select({
       id: feedScheduleVersions.id,
+      horseId: feedScheduleVersions.horseId,
       shiftType: feedScheduleVersions.shiftType,
       validFrom: feedScheduleVersions.validFrom,
       createdAt: feedScheduleVersions.createdAt,
     })
     .from(feedScheduleVersions)
-    .where(eq(feedScheduleVersions.horseId, horseId))
+    .where(onlyHorseId === undefined ? undefined : eq(feedScheduleVersions.horseId, onlyHorseId))
 
   interface VersionRow {
     readonly id: string
+    readonly horseId: string
     readonly shiftType: ShiftType
     readonly validFrom: string
     readonly createdAt: Date
   }
 
-  // The latest version per Shift Type, by valid-from and then by when it was
-  // recorded — resolved in application code rather than a window function,
-  // the same call `horseList` makes for grouping Space assignments.
-  const latest = new Map<ShiftType, VersionRow>()
+  // The latest version per horse per Shift Type, by valid-from and then by
+  // when it was recorded — resolved in application code rather than a window
+  // function, the same call `horseList` makes for grouping Space assignments.
+  const latest = new Map<string, VersionRow>()
   for (const row of versionRows) {
     if (!isShiftType(row.shiftType)) continue
     const shiftType = row.shiftType
-    const held = latest.get(shiftType)
+    const at = `${row.horseId}:${shiftType}`
+    const held = latest.get(at)
     if (
       held === undefined ||
       row.validFrom > held.validFrom ||
       (row.validFrom === held.validFrom && row.createdAt > held.createdAt)
     ) {
-      latest.set(shiftType, {
+      latest.set(at, {
         id: row.id,
+        horseId: row.horseId,
         shiftType,
         validFrom: row.validFrom,
         createdAt: row.createdAt,
@@ -161,7 +183,7 @@ export async function currentFeedSchedulesFor(
     }
   }
 
-  if (latest.size === 0) return []
+  if (latest.size === 0) return new Map()
 
   const versionIds = [...latest.values()].map((version) => version.id)
   const lineRows = await db
@@ -191,14 +213,20 @@ export async function currentFeedSchedulesFor(
     linesByVersion.set(row.versionId, held)
   }
 
-  return [...latest.values()]
-    .sort((left, right) => left.shiftType.localeCompare(right.shiftType))
-    .map((version) => ({
+  const schedules = new Map<string, CurrentFeedSchedule[]>()
+  for (const version of [...latest.values()].sort((left, right) =>
+    left.shiftType.localeCompare(right.shiftType),
+  )) {
+    const held = schedules.get(version.horseId) ?? []
+    held.push({
       shiftType: version.shiftType,
       validFrom: dayString(version.validFrom),
       isNew: isNewVersion(dayString(version.validFrom), today),
       lines: linesByVersion.get(version.id) ?? [],
-    }))
+    })
+    schedules.set(version.horseId, held)
+  }
+  return schedules
 }
 
 /**
