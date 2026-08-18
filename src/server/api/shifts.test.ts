@@ -16,7 +16,7 @@
  * then `psql -f scripts/provision-database.sql` and `npm run db:migrate`.
  */
 import postgres from 'postgres'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 import { closeDb, type OrgId } from '../../db/for-org'
 import { postgresIdempotency } from '../../db/idempotency'
@@ -25,6 +25,7 @@ import { contract, shiftList, shiftPatternList } from '../../shared/api-contract
 import type { DomainScope } from '../../shared/domain-scopes'
 import { HORIZON_DAYS } from '../../shared/shifts'
 import type { DayString } from '../../shared/time'
+import { forgetSendsForTest, setEmailTransport, type OutgoingEmail } from '../email'
 import { anonymousContext, currentOrgId } from '../request-context'
 import { addDays, today, weekdayOf } from '../time'
 import { buildApi } from './app'
@@ -110,6 +111,12 @@ describe.skipIf(!reachable)('Shift Patterns and Shifts, through the API', () => 
     await owner`delete from audit_entries where org_id = ${FIELD_BARN}`
     await owner`delete from shift_roster where org_id = ${FIELD_BARN}`
     await owner`delete from shifts where org_id = ${FIELD_BARN}`
+    await owner`delete from feed_schedule_lines where org_id = ${FIELD_BARN}`
+    await owner`delete from feed_schedule_versions where org_id = ${FIELD_BARN}`
+    await owner`delete from products where org_id = ${FIELD_BARN}`
+    await owner`delete from horses where org_id = ${FIELD_BARN}`
+    await owner`delete from medication_authority where org_id = ${FIELD_BARN}`
+    await owner`delete from volunteer_roles where org_id = ${FIELD_BARN}`
     await owner`delete from shift_pattern_roster where org_id = ${FIELD_BARN}`
     await owner`delete from shift_patterns where org_id = ${FIELD_BARN}`
     await owner`delete from release_signatures where org_id = ${FIELD_BARN}`
@@ -225,6 +232,46 @@ describe.skipIf(!reachable)('Shift Patterns and Shifts, through the API', () => 
     })
     expect(created.status).toBe(201)
     return created.body.shiftPatternId as string
+  }
+
+  /**
+   * The qualification, which is a grant on the Volunteer and not a position on
+   * a Shift (ADR 0010). Inserted directly: conferring it is `horse_care`'s act
+   * and is `roster.test.ts`'s subject, not this file's.
+   */
+  async function qualify(volunteerId: string): Promise<void> {
+    await owner`
+      insert into medication_authority (org_id, volunteer_id)
+      values (${FIELD_BARN}, ${volunteerId})
+    `
+  }
+
+  /**
+   * A Feed AM schedule with a medication Product on it — which is what makes
+   * *nobody who can give medication* a thing this Shift Type can be missing.
+   * One horse is enough: the question is about the Shift Type's whole feeding.
+   */
+  async function feedingWithMedication(): Promise<void> {
+    const [horse] = await owner`
+      insert into horses (id, org_id, name)
+      values (gen_random_uuid(), ${FIELD_BARN}, ${`Alfie ${newIdempotencyKey()}`})
+      returning id
+    `
+    const [product] = await owner`
+      insert into products (id, org_id, name, kind)
+      values (gen_random_uuid(), ${FIELD_BARN}, 'Bute', 'medication')
+      returning id
+    `
+    const [version] = await owner`
+      insert into feed_schedule_versions (id, org_id, horse_id, shift_type, valid_from)
+      values (gen_random_uuid(), ${FIELD_BARN}, ${String(horse?.id)}, 'feed_am', '2020-01-01')
+      returning id
+    `
+    await owner`
+      insert into feed_schedule_lines (id, org_id, version_id, product_id, amount, route)
+      values (gen_random_uuid(), ${FIELD_BARN}, ${String(version?.id)}, ${String(product?.id)},
+              '1 g', 'oral_syringe')
+    `
   }
 
   async function schedule(api: ReturnType<typeof apiAs>) {
@@ -846,6 +893,398 @@ describe.skipIf(!reachable)('Shift Patterns and Shifts, through the API', () => 
     })
   })
 
+  describe('what a Shift is missing, and what a person declared about it', () => {
+    /** A Shift tomorrow, generated from a Pattern wanting three people. */
+    async function aShift(extra: { targetHeadcount?: number } = {}) {
+      const desk = await coordinator()
+      await patternOn(desk.api, inHorizon(1).weekday, {
+        targetHeadcount: extra.targetHeadcount ?? 3,
+      })
+      await post(desk.api, '/shifts/generation')
+      const listed = await schedule(desk.api)
+      return { desk, shiftId: listed.shifts[0]?.id ?? '' }
+    }
+
+    async function onIt(
+      desk: Awaited<ReturnType<typeof coordinator>>,
+      shiftId: string,
+      name: string,
+      position: string,
+    ) {
+      const volunteerId = await rosterableVolunteer(name)
+      const placed = await post(desk.api, '/shifts/roster', { shiftId, volunteerId, position })
+      expect(placed.status).toBe(201)
+      return volunteerId
+    }
+
+    async function staffingOf(desk: Awaited<ReturnType<typeof coordinator>>, shiftId: string) {
+      const listed = await schedule(desk.api)
+      return listed.shifts.find((shift) => shift.id === shiftId)
+    }
+
+    it('says nobody at all, and nothing else, for an empty Shift', async () => {
+      const { desk, shiftId } = await aShift()
+      // Unstaffed is every other gap at once, and four facts about an empty
+      // Shift is one fact spelled four times (ADR 0011).
+      expect((await staffingOf(desk, shiftId))?.staffing.gaps).toEqual(['unstaffed'])
+    })
+
+    it('leaves an Unstaffed Shift on the schedule rather than removing it', async () => {
+      const { desk, shiftId } = await aShift()
+      const listed = await schedule(desk.api)
+      expect(listed.shifts.map((shift) => shift.id)).toContain(shiftId)
+    })
+
+    it('says no Lead and below target for a Shift with one volunteer on it', async () => {
+      const { desk, shiftId } = await aShift()
+      await onIt(desk, shiftId, 'Beth Ann', 'volunteer')
+
+      expect((await staffingOf(desk, shiftId))?.staffing.gaps).toEqual([
+        'no_lead',
+        'below_target_headcount',
+      ])
+    })
+
+    it('says nobody who can give medication only where the feeding needs it', async () => {
+      const { desk, shiftId } = await aShift({ targetHeadcount: 1 })
+      await onIt(desk, shiftId, 'Beth Ann', 'lead')
+      expect((await staffingOf(desk, shiftId))?.staffing.gaps).toEqual([])
+
+      await feedingWithMedication()
+      expect((await staffingOf(desk, shiftId))?.staffing.gaps).toEqual(['no_medication_authority'])
+    })
+
+    it('takes the qualification from anybody rostered, Lead or not', async () => {
+      const { desk, shiftId } = await aShift({ targetHeadcount: 1 })
+      await feedingWithMedication()
+      const valerie = await onIt(desk, shiftId, 'Valerie Okonjo', 'volunteer')
+      expect((await staffingOf(desk, shiftId))?.staffing.gaps).toContain('no_medication_authority')
+
+      await qualify(valerie)
+      expect((await staffingOf(desk, shiftId))?.staffing.gaps).not.toContain(
+        'no_medication_authority',
+      )
+    })
+
+    it('still takes a Cover from somebody who cannot give it, and still says what it needs', async () => {
+      // ADR 0011's sharpest instruction about this surface: turning away
+      // somebody who is offering to come is the worst thing it could do.
+      const { desk, shiftId } = await aShift({ targetHeadcount: 1 })
+      await feedingWithMedication()
+      const nora = await rosterableVolunteer('Nora Webb')
+
+      const covered = await post(apiAs(nora, []), '/shifts/cover', { shiftId })
+      expect(covered.status).toBe(201)
+
+      const shift = await staffingOf(desk, shiftId)
+      expect(shift?.roster[0]).toMatchObject({ origin: 'cover', medicationAuthority: false })
+      expect(shift?.staffing.gaps).toContain('no_medication_authority')
+    })
+  })
+
+  describe('Acting Lead', () => {
+    async function leaderless() {
+      const desk = await coordinator()
+      await patternOn(desk.api, inHorizon(1).weekday, { targetHeadcount: 2 })
+      await post(desk.api, '/shifts/generation')
+      const shiftId = (await schedule(desk.api)).shifts[0]?.id ?? ''
+      const beth = await rosterableVolunteer('Beth Ann')
+      await post(desk.api, '/shifts/roster', { shiftId, volunteerId: beth, position: 'volunteer' })
+      return { desk, shiftId, beth }
+    }
+
+    it('is claimed explicitly by a rostered volunteer, and stays distinct from Lead', async () => {
+      const { desk, shiftId, beth } = await leaderless()
+
+      const claimed = await post(apiAs(beth, []), '/shifts/acting-lead', { shiftId })
+      expect(claimed.status).toBe(201)
+
+      const listed = await schedule(desk.api)
+      const shift = listed.shifts.find((one) => one.id === shiftId)
+      // `acting_lead`, never `lead`: *this Shift had no real Lead* has to stay
+      // answerable afterwards (ADR 0010).
+      expect(shift?.roster[0]?.position).toBe('acting_lead')
+      expect(shift?.staffing.gaps).not.toContain('no_lead')
+    })
+
+    it('confers no Medication Authority', async () => {
+      const { desk, shiftId, beth } = await leaderless()
+      await feedingWithMedication()
+      await post(apiAs(beth, []), '/shifts/acting-lead', { shiftId })
+
+      const shift = (await schedule(desk.api)).shifts.find((one) => one.id === shiftId)
+      expect(shift?.roster[0]).toMatchObject({
+        position: 'acting_lead',
+        medicationAuthority: false,
+      })
+      expect(shift?.staffing.gaps).toContain('no_medication_authority')
+    })
+
+    it('suggests Medication Authority first, and takes the claim from anybody rostered', async () => {
+      const { desk, shiftId, beth } = await leaderless()
+      const valerie = await rosterableVolunteer('Valerie Okonjo')
+      await post(desk.api, '/shifts/roster', {
+        shiftId,
+        volunteerId: valerie,
+        position: 'volunteer',
+      })
+      await qualify(valerie)
+
+      const suggested = (await schedule(desk.api)).shifts.find((one) => one.id === shiftId)
+      expect(suggested?.staffing.suggestedActingLead).toBe(valerie)
+
+      // A suggestion and not a restriction: Beth claims it anyway, because
+      // restricting the claim leaves a Shift leaderless exactly when the
+      // suggested person did not show (ADR 0010).
+      expect((await post(apiAs(beth, []), '/shifts/acting-lead', { shiftId })).status).toBe(201)
+    })
+
+    it('refuses somebody who is not on the Shift', async () => {
+      const { shiftId } = await leaderless()
+      const stranger = await rosterableVolunteer('Nora Webb')
+      const refused = await post(apiAs(stranger, []), '/shifts/acting-lead', { shiftId })
+      expect(refused.status).toBe(409)
+      expect(refused.body.error).toBe('not_rostered')
+    })
+
+    it('refuses a claim on a Shift that already has a Lead', async () => {
+      const { desk, shiftId, beth } = await leaderless()
+      const valerie = await rosterableVolunteer('Valerie Okonjo')
+      await post(desk.api, '/shifts/roster', { shiftId, volunteerId: valerie, position: 'lead' })
+
+      const refused = await post(apiAs(beth, []), '/shifts/acting-lead', { shiftId })
+      expect(refused.status).toBe(409)
+      // Its own refusal, not the Coordinator's `lead_already_held` — whose
+      // advice is "take them off first", which a volunteer in a barn cannot do.
+      expect(refused.body.error).toBe('already_led')
+      expect((await schedule(desk.api)).shifts[0]?.staffing.suggestedActingLead).toBeNull()
+    })
+  })
+
+  describe('Short, which is declared and never derived', () => {
+    async function aShift() {
+      const desk = await coordinator()
+      await patternOn(desk.api, inHorizon(1).weekday, { targetHeadcount: 3 })
+      await post(desk.api, '/shifts/generation')
+      const shiftId = (await schedule(desk.api)).shifts[0]?.id ?? ''
+      return { desk, shiftId }
+    }
+
+    it('is recorded with actor and time, and cleared by a person', async () => {
+      const { desk, shiftId } = await aShift()
+
+      expect((await post(desk.api, '/shifts/short', { shiftId, short: true })).status).toBe(204)
+      const declared = (await schedule(desk.api)).shifts.find((one) => one.id === shiftId)
+      expect(declared?.short).toMatchObject({ declaredBy: desk.volunteerId })
+      expect(typeof declared?.short?.declaredAt).toBe('number')
+
+      expect((await post(desk.api, '/shifts/short', { shiftId, short: false })).status).toBe(204)
+      expect((await schedule(desk.api)).shifts.find((one) => one.id === shiftId)?.short).toBeNull()
+    })
+
+    it('is never declared or withdrawn by arithmetic', async () => {
+      const { desk, shiftId } = await aShift()
+      // Three of three, nothing missing — and still not Short, because the app
+      // does not have an opinion about it (ADR 0011).
+      for (const name of ['Beth Ann', 'Valerie Okonjo', 'Nora Webb']) {
+        const volunteerId = await rosterableVolunteer(name)
+        await post(desk.api, '/shifts/roster', { shiftId, volunteerId, position: 'volunteer' })
+      }
+      let shift = (await schedule(desk.api)).shifts.find((one) => one.id === shiftId)
+      expect(shift?.staffing.gaps).toEqual(['no_lead'])
+      expect(shift?.short).toBeNull()
+
+      // And once a person declares it, a fourth volunteer Covering does not
+      // take it back: the human already weighed who might turn up.
+      await post(desk.api, '/shifts/short', { shiftId, short: true })
+      const late = await rosterableVolunteer('Grace Adeyemi')
+      await post(apiAs(late, []), '/shifts/cover', { shiftId })
+
+      shift = (await schedule(desk.api)).shifts.find((one) => one.id === shiftId)
+      expect(shift?.staffing.gaps).toEqual(['no_lead'])
+      expect(shift?.short).not.toBeNull()
+    })
+
+    it('refuses a second declaration rather than overwriting whose judgement it was', async () => {
+      const { desk, shiftId } = await aShift()
+      await post(desk.api, '/shifts/short', { shiftId, short: true })
+
+      const twice = await post(desk.api, '/shifts/short', { shiftId, short: true })
+      expect(twice.status).toBe(409)
+      expect(twice.body.error).toBe('already_short')
+
+      const cleared = await post(desk.api, '/shifts/short', { shiftId, short: false })
+      expect(cleared.status).toBe(204)
+      const again = await post(desk.api, '/shifts/short', { shiftId, short: false })
+      expect(again.status).toBe(409)
+      expect(again.body.error).toBe('not_short')
+    })
+
+    describe('and who may declare it — the first Shift Authority check in the system', () => {
+      it('takes a rostered Lead, who holds no Domain Scope at all', async () => {
+        const { desk, shiftId } = await aShift()
+        const beth = await rosterableVolunteer('Beth Ann')
+        await post(desk.api, '/shifts/roster', { shiftId, volunteerId: beth, position: 'lead' })
+
+        expect(
+          (await post(apiAs(beth, []), '/shifts/short', { shiftId, short: true })).status,
+        ).toBe(204)
+      })
+
+      it('takes an acting Lead, because the claim carries the full authority set', async () => {
+        const { desk, shiftId } = await aShift()
+        const beth = await rosterableVolunteer('Beth Ann')
+        await post(desk.api, '/shifts/roster', {
+          shiftId,
+          volunteerId: beth,
+          position: 'volunteer',
+        })
+        const hers = apiAs(beth, [])
+        expect((await post(hers, '/shifts/short', { shiftId, short: true })).status).toBe(403)
+
+        await post(hers, '/shifts/acting-lead', { shiftId })
+        expect((await post(hers, '/shifts/short', { shiftId, short: true })).status).toBe(204)
+      })
+
+      it('refuses a rostered volunteer who leads nothing', async () => {
+        const { desk, shiftId } = await aShift()
+        const nora = await rosterableVolunteer('Nora Webb')
+        await post(desk.api, '/shifts/roster', {
+          shiftId,
+          volunteerId: nora,
+          position: 'volunteer',
+        })
+
+        const refused = await post(apiAs(nora, []), '/shifts/short', { shiftId, short: true })
+        expect(refused.status).toBe(403)
+        // The declaration names both doors, and the denial names what it
+        // wanted rather than answering with an empty body (ADR 0010).
+        expect(refused.body.wanted).toBe('shift authority or roster')
+      })
+
+      it('refuses a Lead whose position ended, because the row no longer authorizes', async () => {
+        const { desk, shiftId } = await aShift()
+        const beth = await rosterableVolunteer('Beth Ann')
+        await post(desk.api, '/shifts/roster', { shiftId, volunteerId: beth, position: 'lead' })
+        await post(apiAs(beth, []), '/shifts/drop', { shiftId })
+
+        expect(
+          (await post(apiAs(beth, []), '/shifts/short', { shiftId, short: true })).status,
+        ).toBe(403)
+      })
+
+      it('takes `roster`, which is how officers reach a Shift they are not on', async () => {
+        const { desk, shiftId } = await aShift()
+        expect((await post(desk.api, '/shifts/short', { shiftId, short: true })).status).toBe(204)
+      })
+    })
+  })
+
+  describe('the evening digest — the one thing the app sends about staffing', () => {
+    let posted: OutgoingEmail[] = []
+
+    beforeEach(() => {
+      posted = []
+      forgetSendsForTest()
+      setEmailTransport((message) => {
+        posted.push(message)
+        return Promise.resolve()
+      })
+    })
+
+    afterEach(() => {
+      setEmailTransport(null)
+    })
+
+    /**
+     * Somebody whose actual job is the roster — the Role row, not the faked
+     * actor scopes, because the digest resolves its recipients from the same
+     * grants the rest of the application does.
+     */
+    async function rosterHolder(name: string): Promise<string> {
+      const volunteerId = await rosterableVolunteer(name)
+      await owner`
+        insert into volunteer_roles (org_id, volunteer_id, role)
+        values (${FIELD_BARN}, ${volunteerId}, 'volunteer_coordinator')
+      `
+      return volunteerId
+    }
+
+    async function aShiftTomorrow() {
+      const desk = await coordinator()
+      await patternOn(desk.api, inHorizon(1).weekday, { targetHeadcount: 3 })
+      await post(desk.api, '/shifts/generation')
+      return { desk, shiftId: (await schedule(desk.api)).shifts[0]?.id ?? '' }
+    }
+
+    it('mails the holders of `roster` the concrete facts, and nobody else', async () => {
+      const { desk } = await aShiftTomorrow()
+      await rosterHolder('Priya Nkemelu')
+      // Somebody with no scope at all: the digest never mails the roster of
+      // sixty (ADR 0011).
+      await rosterableVolunteer('Beth Ann')
+
+      const sent = await post(desk.api, '/shifts/digest')
+      expect(sent.status).toBe(200)
+      expect(sent.body).toMatchObject({ recipients: 1, sent: 1, shifts: 1 })
+      expect(posted).toHaveLength(1)
+      expect(posted[0]?.subject).toContain('Field Barn Horse Rescue')
+      expect(posted[0]?.text).toContain('nobody at all')
+    })
+
+    it('names Short as a person’s call, beside what the app computed', async () => {
+      const { desk, shiftId } = await aShiftTomorrow()
+      await rosterHolder('Priya Nkemelu')
+      const beth = await rosterableVolunteer('Beth Ann')
+      await post(desk.api, '/shifts/roster', { shiftId, volunteerId: beth, position: 'lead' })
+      await post(desk.api, '/shifts/short', { shiftId, short: true })
+
+      await post(desk.api, '/shifts/digest')
+      expect(posted[0]?.text).toContain('1 of 3 wanted')
+      expect(posted[0]?.text).toContain('declared short by a person')
+    })
+
+    it('carries no volunteer’s name, the way the Facebook text does not', async () => {
+      const { desk, shiftId } = await aShiftTomorrow()
+      await rosterHolder('Priya Nkemelu')
+      const beth = await rosterableVolunteer('Beth Ann')
+      await post(desk.api, '/shifts/roster', { shiftId, volunteerId: beth, position: 'volunteer' })
+      await post(apiAs(beth, []), '/shifts/drop', { shiftId, reason: 'nursery run' })
+
+      await post(desk.api, '/shifts/digest')
+      // *Beth dropped, we need somebody* reads as pressure, and the digest is
+      // not where a Coordinator learns who let them down (ADR 0011).
+      expect(posted[0]?.text).not.toContain('Beth')
+      expect(posted[0]?.text).not.toContain('nursery run')
+      expect(posted[0]?.text).toContain('nobody at all')
+    })
+
+    it('goes out even when nothing is missing, so that silence is never ambiguous', async () => {
+      const desk = await coordinator()
+      await rosterHolder('Priya Nkemelu')
+
+      const sent = await post(desk.api, '/shifts/digest')
+      expect(sent.body).toMatchObject({ shifts: 0, sent: 1 })
+      expect(posted[0]?.text).toContain('Nothing is missing')
+    })
+
+    it('reports a send that failed rather than answering as though it left', async () => {
+      const { desk } = await aShiftTomorrow()
+      await rosterHolder('Priya Nkemelu')
+      setEmailTransport(() => Promise.reject(new Error('smtp is down')))
+
+      const sent = await post(desk.api, '/shifts/digest')
+      expect(sent.body).toMatchObject({ recipients: 1, sent: 0 })
+    })
+
+    it('is refused to somebody who does not hold `roster`', async () => {
+      const beth = await rosterableVolunteer('Beth Ann')
+      const refused = await post(apiAs(beth, []), '/shifts/digest')
+      expect(refused.status).toBe(403)
+      expect(posted).toHaveLength(0)
+    })
+  })
+
   describe('what the contract says about queueing', () => {
     it('marks Cover and Drop as writes the phone must never queue', () => {
       // ADR 0011's carve-out from ADR 0005, restated by ADR 0018: the app
@@ -855,6 +1294,18 @@ describe.skipIf(!reachable)('Shift Patterns and Shifts, through the API', () => 
       expect(contract.writes['/shifts/drop'].neverQueued).toBe(true)
       // And a write that *is* a statement about the past carries no such mark.
       expect('neverQueued' in contract.writes['/measurements']).toBe(false)
+    })
+
+    it('sorts the two new writes by ADR 0018’s rule rather than by a fresh carve-out', () => {
+      // "The app queues when it is the ledger, and does not queue when it is
+      // the medium." A claim to be leading Thursday is not true until it
+      // arrives — two volunteers each seeing that they are in charge is the
+      // Cover failure with a different noun.
+      expect(contract.writes['/shifts/acting-lead'].neverQueued).toBe(true)
+      // And Short is on the other side of the same line: a Shift needing more
+      // people is true in the barn whether or not the app knows, so the queue
+      // is transport for a fact and misleads nobody about a commitment.
+      expect('neverQueued' in contract.writes['/shifts/short']).toBe(false)
     })
   })
 

@@ -25,7 +25,12 @@ import { v7 as uuidv7 } from 'uuid'
 
 import type { OrgId, OrgScopedDatabase } from '../../db/for-org'
 import { shiftRoster, shifts } from '../../db/schema'
-import type { AssignablePosition, RosterOrigin } from '../../shared/shifts'
+import {
+  carriesShiftAuthority,
+  isShiftPosition,
+  type AssignablePosition,
+  type RosterOrigin,
+} from '../../shared/shifts'
 import { now, type DayString } from '../../shared/time'
 import { audit } from '../roster/audit'
 import { timestampOf } from '../time'
@@ -178,6 +183,68 @@ export async function dropFromShift(
     // more.
     notBefore: about.today,
   })
+}
+
+/**
+ * An Acting Lead claim: a rostered volunteer taking charge of a Shift with
+ * nobody leading it (ADR 0010).
+ *
+ * **Explicit, never derived.** A silently chosen "most senior volunteer" would
+ * mean nobody in the barn knows who the app decided was in charge, which is
+ * worse than nobody being in charge. The app *suggests* one — Medication
+ * Authority first, tenure breaking ties, in `src/shared/staffing.ts` — and the
+ * claim itself is available to anybody rostered, because limiting it to the
+ * suggested person leaves a Shift leaderless exactly when that person did not
+ * show, which is the case it exists for.
+ *
+ * **It may be made any time after the Shift exists**, not only on the day: a
+ * Shift three days out with no Lead should be fixable three days out.
+ *
+ * Two things it is not. It **confers no Medication Authority** — that is a
+ * grant on the Volunteer under `horse_care`, so an acting Lead without the
+ * qualification still cannot medicate and the Shift still reports the gap. And
+ * it **stays distinct from `lead` in the record**, so *this Shift had no real
+ * Lead* remains answerable afterwards.
+ */
+export async function claimActingLead(
+  db: OrgScopedDatabase,
+  actorVolunteerId: string,
+  about: { readonly shiftId: string; readonly today: DayString },
+): Promise<Recorded<{ id: string }>> {
+  const shift = await shiftAt(db, about.shiftId)
+  if (shift === null) return refused('shift_not_found')
+  // Bounded where Cover is bounded, and for the same reason: taking charge of
+  // a day that is over changes nothing about what happened on it. Close is a
+  // later ticket, so *past* is the coarsest honest reading of it (ADR 0011).
+  if (shift.day < about.today) return refused('shift_is_over')
+
+  const held = await db
+    .select({
+      id: shiftRoster.id,
+      volunteerId: shiftRoster.volunteerId,
+      position: shiftRoster.position,
+    })
+    .from(shiftRoster)
+    .where(and(eq(shiftRoster.shiftId, about.shiftId), isNull(shiftRoster.endedAt)))
+
+  // Somebody already carries the authority set — including the claimant, whose
+  // second tap is not a second claim.
+  if (held.some((row) => isShiftPosition(row.position) && carriesShiftAuthority(row.position))) {
+    return refused('already_led')
+  }
+
+  const mine = held.find((row) => row.volunteerId === actorVolunteerId)
+  // Not rostered is the one refusal here, and it is not a gate on the person:
+  // ADR 0010 says *any rostered volunteer* may claim, and somebody who is not
+  // on the Shift Covers first.
+  if (mine === undefined) return refused('not_rostered')
+
+  await db.update(shiftRoster).set({ position: 'acting_lead' }).where(eq(shiftRoster.id, mine.id))
+
+  // On the roster row, which ADR 0001 already makes a recorded fact and ADR
+  // 0010 names as where a claim lives. Not the audit log: the person who needs
+  // to see who is in charge is standing in the barn.
+  return recorded({ id: mine.id })
 }
 
 /** Removing somebody else, which is authority over the roster (ADR 0010). */

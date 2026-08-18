@@ -1170,6 +1170,31 @@ export const shifts = pgTable(
     staffingMode: text('staffing_mode').notNull(),
     /** What a Pop-up is for, in the words of whoever called it. Null on a generated Shift. */
     purpose: text('purpose'),
+    /**
+     * **Short: a person saying so** — with the actor and the time, because it
+     * is a judgement somebody is accountable for and never a number (ADR 0011).
+     *
+     * It is never derived and never auto-cleared. Short means fewer people than
+     * the **Essential Work** requires, not fewer than Target Headcount: a Feed
+     * Shift at two of three can still feed, water, medicate and muck, and the
+     * app has no idea that Valerie is fast and the new volunteer is not. So the
+     * arithmetic that fills `staffingGaps` cannot set these columns, and —
+     * symmetrically, and just as deliberately — a third volunteer Covering
+     * cannot clear them either. The human who declared Short already weighed
+     * whoever might turn up.
+     *
+     * Four columns rather than a table, on ADR 0003's current-state tier and
+     * with **no audit entry**: ADR 0011 files Short as a domain record, because
+     * the person reading it is the Lead on the Shift screen at 5am and not
+     * somebody auditing changes. Declaring again after a clear overwrites the
+     * pair, so a Shift keeps its latest declaration rather than a history of
+     * them — bounded by the Shift closing, which is hours.
+     */
+    shortDeclaredAt: timestamp('short_declared_at', { withTimezone: true }),
+    shortDeclaredBy: uuid('short_declared_by').references(() => volunteers.id),
+    /** Set when a person clears it. Never set by arithmetic, and never by a clock. */
+    shortClearedAt: timestamp('short_cleared_at', { withTimezone: true }),
+    shortClearedBy: uuid('short_cleared_by').references(() => volunteers.id),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     createdBy: uuid('created_by').references(() => volunteers.id),
   },

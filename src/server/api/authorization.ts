@@ -46,10 +46,28 @@ export type FloorReason =
    */
   | 'commit-to-or-leave-a-shift'
 
+/**
+ * A position on **one Shift** — `lead`, `co_lead` or `acting_lead` — and,
+ * optionally, Domain Scopes that reach the same act without one.
+ *
+ * `alsoScopes` is empty by default and stated per endpoint, because ADR 0010
+ * gives the authority set to the *position* and names officers as a fallback
+ * only for a Shift with no Lead. A `roster` fallback baked into every check
+ * would hand a Volunteer Coordinator every Shift-Authority write there will
+ * ever be — closing the Shift, dropping Discretionary Work — which is a much
+ * larger claim than the one ADR 0011 makes for the Short declaration alone.
+ * So each endpoint says whom else it lets in, and the diff says what somebody
+ * decided.
+ */
+export interface ShiftAuthorization {
+  readonly kind: 'shift-authority'
+  readonly alsoScopes: readonly DomainScope[]
+}
+
 export type Authorization =
   | { readonly kind: 'scope'; readonly scope: DomainScope }
   | { readonly kind: 'any-scope'; readonly scopes: readonly DomainScope[] }
-  | { readonly kind: 'shift-authority' }
+  | ShiftAuthorization
   | { readonly kind: 'floor'; readonly because: FloorReason }
   | { readonly kind: 'read-everything' }
   | { readonly kind: 'board' }
@@ -65,12 +83,36 @@ export type Authorization =
 export type PersonAuthorization = Exclude<Authorization, { readonly kind: 'board' }>
 
 /**
+ * What a **read** may declare: everything above except Shift Authority's.
+ *
+ * The mirror of `PersonAuthorization`, and the thing that makes the tri-state
+ * `Decision` below safe. Shift Authority is only half-settled by `authorize` —
+ * the rest is a join `mutation` runs against the `shiftId` in the payload — and
+ * a read has no payload to name a Shift in. So a read declaring it would be a
+ * read authorized by nothing but being signed in, and rather than leaving that
+ * to a reviewer's attention it does not compile (ADR 0016).
+ *
+ * ADR 0010's floor is why nothing is lost: every Volunteer reads everything,
+ * with two carve-outs that declare `domainScope('roster')`.
+ */
+export type ReadAuthorization = Exclude<Authorization, { readonly kind: 'shift-authority' }>
+
+/**
+ * What either may declare: the four that need neither a payload nor a tablet.
+ * Everything below returns this except the two that are one side's alone.
+ */
+export type AnywhereAuthorization = Exclude<
+  PersonAuthorization,
+  { readonly kind: 'shift-authority' }
+>
+
+/**
  * This endpoint requires a Domain Scope.
  *
  * Named in full, because `Scope` alone is the barn's word for which horses a
  * piece of work applies to, and CONTEXT.md keeps it for them.
  */
-export function domainScope(required: DomainScope): PersonAuthorization {
+export function domainScope(required: DomainScope): AnywhereAuthorization {
   return { kind: 'scope', scope: required }
 }
 
@@ -84,20 +126,28 @@ export function domainScope(required: DomainScope): PersonAuthorization {
  * Not a general mechanism to reach for; a second call site is the tripwire to
  * revisit whether this earns a wider one.
  */
-export function anyDomainScope(scopes: readonly DomainScope[]): PersonAuthorization {
+export function anyDomainScope(scopes: readonly DomainScope[]): AnywhereAuthorization {
   return { kind: 'any-scope', scopes }
 }
 
-/** This endpoint requires Shift Authority over the Shift it names. */
-export function shiftAuthority(): PersonAuthorization {
-  return { kind: 'shift-authority' }
+/**
+ * This endpoint requires Shift Authority over the Shift it names, and — where
+ * the caller names them — any of these Domain Scopes instead.
+ *
+ * `shiftAuthority(['roster'])` is ADR 0011's sentence for the Short
+ * declaration: "declared by whoever holds Shift Authority, `roster`, or an
+ * officer's scopes". Officers need no separate mention, because they hold every
+ * scope through the enumeration in `src/shared/roles.ts`.
+ */
+export function shiftAuthority(alsoScopes: readonly DomainScope[] = []): ShiftAuthorization {
+  return { kind: 'shift-authority', alsoScopes }
 }
 
 /**
  * This write needs no Domain Scope. Saying so is deliberate: ADR 0010 allows it
  * in exactly the cases `FloorReason` enumerates, and nowhere else.
  */
-export function floor(because: FloorReason): PersonAuthorization {
+export function floor(because: FloorReason): AnywhereAuthorization {
   return { kind: 'floor', because }
 }
 
@@ -106,7 +156,7 @@ export function floor(because: FloorReason): PersonAuthorization {
  * barn that every volunteer walks into (ADR 0010). The two carve-outs,
  * volunteer contact details and the audit log, declare `domainScope('roster')`.
  */
-export function readEverything(): PersonAuthorization {
+export function readEverything(): AnywhereAuthorization {
   return { kind: 'read-everything' }
 }
 
@@ -118,7 +168,7 @@ export function readEverything(): PersonAuthorization {
  * `Actor` — so a handler declaring this must not need one. Today exactly one
  * does, and `PersonAuthorization` above is why it can never be more than a read.
  */
-export function board(): Authorization {
+export function board(): ReadAuthorization {
   return { kind: 'board' }
 }
 
@@ -131,9 +181,28 @@ export interface Principal {
   readonly kiosk: boolean
 }
 
+/**
+ * Three outcomes, on a **discriminant rather than a boolean**.
+ *
+ * It was `allowed: true | false` while there were two, and the third could have
+ * been spelled as a third value of that field — which would make `!allowed`
+ * read as *refused* while being false for a request nothing has authorized yet.
+ * A field whose natural negation silently permits is exactly the shape ADR 0016
+ * exists to remove, so the field is a name and every reader has to say which of
+ * the three they mean.
+ */
 export type Decision =
-  | { readonly allowed: true }
-  | { readonly allowed: false; readonly status: 401 | 403; readonly wanted: string }
+  | { readonly outcome: 'allowed' }
+  | { readonly outcome: 'refused'; readonly status: 401 | 403; readonly wanted: string }
+  /**
+   * Signed in, and the rest of the answer is a join against one Shift's roster
+   * (ADR 0010: "the Shift axis is a join, not a session variable").
+   *
+   * `mutation` resolves it from the `shiftId` the payload names, before the
+   * handler runs; `ReadAuthorization` is what stops a read reaching a handler
+   * on this alone, because a read has no payload to name a Shift in.
+   */
+  | { readonly outcome: 'over-the-shift-it-names'; readonly required: ShiftAuthorization }
 
 /**
  * A denial is explicit and names what it wanted (ADR 0010): a silent empty
@@ -147,8 +216,8 @@ export function authorize(required: Authorization, asking: Principal): Decision 
       // A person or the tablet, and nothing else. The tablet is not an actor,
       // so nothing downstream of this may credit one (ADR 0022).
       return actor !== null || asking.kiosk
-        ? { allowed: true }
-        : { allowed: false, status: 401, wanted: 'read' }
+        ? { outcome: 'allowed' }
+        : { outcome: 'refused', status: 401, wanted: 'read' }
 
     case 'read-everything':
       // *Every Volunteer* reads everything (ADR 0010) — a person the
@@ -159,40 +228,47 @@ export function authorize(required: Authorization, asking: Principal): Decision 
       // one: a silent empty answer is indistinguishable from success to a
       // retry queue, and a phone that cannot tell *you are signed out* from
       // *there is nothing today* shows a volunteer an empty barn.
-      return actor === null ? { allowed: false, status: 401, wanted: 'read' } : { allowed: true }
+      return actor === null
+        ? { outcome: 'refused', status: 401, wanted: 'read' }
+        : { outcome: 'allowed' }
 
     case 'floor':
       // A write with no actor cannot be attributed, and an unattributed tick
       // is the confident lie the paper system already tells.
       return actor === null
-        ? { allowed: false, status: 401, wanted: `signed in (${required.because})` }
-        : { allowed: true }
+        ? { outcome: 'refused', status: 401, wanted: `signed in (${required.because})` }
+        : { outcome: 'allowed' }
 
     case 'scope':
       if (actor === null) {
-        return { allowed: false, status: 401, wanted: required.scope }
+        return { outcome: 'refused', status: 401, wanted: required.scope }
       }
       return actor.domainScopes.includes(required.scope)
-        ? { allowed: true }
-        : { allowed: false, status: 403, wanted: required.scope }
+        ? { outcome: 'allowed' }
+        : { outcome: 'refused', status: 403, wanted: required.scope }
 
     case 'any-scope': {
       const wanted = required.scopes.join(' or ')
       if (actor === null) {
-        return { allowed: false, status: 401, wanted }
+        return { outcome: 'refused', status: 401, wanted }
       }
       return required.scopes.some((scope) => actor.domainScopes.includes(scope))
-        ? { allowed: true }
-        : { allowed: false, status: 403, wanted }
+        ? { outcome: 'allowed' }
+        : { outcome: 'refused', status: 403, wanted }
     }
 
     case 'shift-authority':
-      // Shift Authority is held over one Shift and expires when it closes, so
-      // the check is a join against that Shift's roster. The Shift model
-      // arrives with the checklist; until then this cannot be granted.
-      return actor === null
-        ? { allowed: false, status: 401, wanted: 'shift authority' }
-        : { allowed: false, status: 403, wanted: 'shift authority' }
+      // Half the answer. Being signed in is settled here, and so is a Domain
+      // Scope the endpoint named as reaching the same act; the position on the
+      // Shift the payload names is `src/server/shifts/authority.ts`, run by
+      // `mutation` before the handler. Authority expires when the Shift closes,
+      // which is why it is read at the moment of the write and never cached.
+      if (actor === null) {
+        return { outcome: 'refused', status: 401, wanted: describeAuthorization(required) }
+      }
+      return required.alsoScopes.some((scope) => actor.domainScopes.includes(scope))
+        ? { outcome: 'allowed' }
+        : { outcome: 'over-the-shift-it-names', required }
   }
 }
 
@@ -204,7 +280,9 @@ export function describeAuthorization(required: Authorization): string {
     case 'any-scope':
       return required.scopes.join(' or ')
     case 'shift-authority':
-      return 'shift authority'
+      return required.alsoScopes.length === 0
+        ? 'shift authority'
+        : `shift authority or ${required.alsoScopes.join(' or ')}`
     case 'floor':
       return `floor: ${required.because}`
     case 'read-everything':

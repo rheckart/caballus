@@ -168,3 +168,21 @@ export function asTimeOfDay(stored: string): string {
   const [hour = '00', minute = '00'] = stored.split(':')
   return `${hour}:${minute}`
 }
+
+/**
+ * The positions that carry **Shift Authority** (ADR 0010): set the start time,
+ * assign checklist Items, drop Discretionary Work, curate Shift Notes,
+ * escalate Observations, close the Shift — and, from #40, declare and clear
+ * Short.
+ *
+ * One list, read by two things that must not disagree: the staffing derivation
+ * asking *does this Shift have a Lead*, and the authorization layer asking *may
+ * this person act on it*. **No check distinguishes Lead from Co-Lead**, and
+ * `acting_lead` carries the full set, because a half-authority is a Shift that
+ * still cannot close.
+ */
+export const SHIFT_AUTHORITY_POSITIONS = ['lead', 'co_lead', 'acting_lead'] as const
+
+export function carriesShiftAuthority(position: ShiftPosition): boolean {
+  return (SHIFT_AUTHORITY_POSITIONS as readonly string[]).includes(position)
+}

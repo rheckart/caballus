@@ -27,7 +27,14 @@ import { forOrg, type OrgScopedDatabase } from '../../db/for-org'
 import { orgs, volunteers } from '../../db/schema'
 import type { contract } from '../../shared/api-contract'
 import { type DayString } from '../../shared/time'
-import { anyDomainScope, board, domainScope, floor, readEverything } from './authorization'
+import {
+  anyDomainScope,
+  board,
+  domainScope,
+  floor,
+  readEverything,
+  shiftAuthority,
+} from './authorization'
 import { createApi, json, noContent, type Api, type ApiOptions } from './route'
 import type { Actor, RequestContext } from '../request-context'
 import { auditLog, peopleList, unstaffedScopes } from '../roster/people'
@@ -79,11 +86,14 @@ import {
 import { generateHorizon } from '../shifts/generation'
 import {
   assignToShift,
+  claimActingLead,
   coverShift,
   createPopUp,
   dropFromShift,
   removeFromShift,
 } from '../shifts/roster'
+import { declareShort } from '../shifts/short'
+import { sendStaffingDigest } from '../shifts/digest'
 import type { Refusal as ShiftRefusal } from '../shifts/outcome'
 import { currentThresholds, publishThreshold } from '../weather/thresholds'
 import { readingFor, recordReading } from '../weather/readings'
@@ -138,17 +148,22 @@ export function buildApi(
   }
 
   /**
-   * The day *and* the zone it was resolved in. Two things need the zone itself
-   * — generating a fortnight of weekdays, and deciding whether a Shift has
-   * started — and re-reading the organisation for the second is a second query
-   * for a fact the first already had.
+   * The day, the zone it was resolved in, and the rescue's own name.
+   *
+   * Three things need the zone itself — generating a fortnight of weekdays,
+   * deciding whether a Shift has started, and the digest's tomorrow — and the
+   * digest also signs itself with the name. All of it comes off the one row, on
+   * the rule this function was written for: re-reading the organisation for the
+   * second fact is a second query for something the first already had.
    */
-  async function clockHere(db: OrgScopedDatabase): Promise<{ today: DayString; timeZone: string }> {
-    const [org] = await db.select({ timeZone: orgs.timeZone }).from(orgs).limit(1)
+  async function clockHere(
+    db: OrgScopedDatabase,
+  ): Promise<{ today: DayString; timeZone: string; organisation: string }> {
+    const [org] = await db.select({ name: orgs.name, timeZone: orgs.timeZone }).from(orgs).limit(1)
     if (org === undefined) {
       throw new Error('The organisation is not visible; APP_ORG_ID names one that does not exist.')
     }
-    return { today: today(org.timeZone), timeZone: org.timeZone }
+    return { today: today(org.timeZone), timeZone: org.timeZone, organisation: org.name }
   }
 
   /**
@@ -591,6 +606,7 @@ export function buildApi(
       shifts: answered.shifts.map((shift) => ({
         ...shift,
         roster: shift.roster.map((member) => ({ ...member, gaps: [...member.gaps] })),
+        staffing: { ...shift.staffing, gaps: [...shift.staffing.gaps] },
       })),
     })
   })
@@ -911,6 +927,66 @@ export function buildApi(
       return outcome.ok ? noContent() : shiftRefusal(outcome.because)
     },
   )
+
+  /**
+   * An Acting Lead claim, on the floor and about a Shift you are already on.
+   *
+   * `floor('work-on-a-shift-you-are-rostered-on')` rather than `roster` or
+   * Shift Authority, and that is ADR 0010's own arrangement: **any** rostered
+   * volunteer may claim, because restricting it to the suggested person leaves
+   * a Shift leaderless exactly when that person did not show. Being on the
+   * roster is the condition, and `claimActingLead` is where it is checked
+   * because it is a fact about this Shift's rows rather than about the caller.
+   */
+  api.mutation(
+    '/shifts/acting-lead',
+    floor('work-on-a-shift-you-are-rostered-on'),
+    async (input, { context, db }) => {
+      const actor = actorOf(context)
+      const outcome = await claimActingLead(db, actor.volunteerId, {
+        shiftId: input.shiftId,
+        today: await dayHere(db),
+      })
+      if (!outcome.ok) return shiftRefusal(outcome.because)
+      return json({ rosterId: outcome.value.id }, 201)
+    },
+  )
+
+  /**
+   * Short: declared and cleared by a person (ADR 0011).
+   *
+   * `shiftAuthority(['roster'])`, which is the **first endpoint in the system
+   * to declare it** — ADR 0010's second reason anybody may act, unresolvable
+   * until #39 made Shifts real. It resolves to a standing `lead`, `co_lead` or
+   * `acting_lead` row on this Shift, **or** `roster`, which is ADR 0011's own
+   * list for this act and is where officers come in since they hold every
+   * scope. The scope is named here rather than built into Shift Authority
+   * itself, so that a later write declaring it does not silently inherit a
+   * Coordinator. `src/server/api/route.ts` runs the join before this handler,
+   * from the `shiftId` below.
+   *
+   * The app is on neither side of the judgement. It does not declare Short and
+   * it does not withdraw it — not even when a third volunteer Covers.
+   */
+  api.mutation('/shifts/short', shiftAuthority(['roster']), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await declareShort(db, actor.volunteerId, {
+      shiftId: input.shiftId,
+      short: input.short,
+    })
+    return outcome.ok ? noContent() : shiftRefusal(outcome.because)
+  })
+
+  /**
+   * The evening digest, sent on a deliberate press (ADR 0011).
+   *
+   * Under `roster` — the people it mails are the people who may send it, which
+   * is right for the one message the app sends about staffing. The counts come
+   * back so a send that failed is visible rather than assumed.
+   */
+  api.mutation('/shifts/digest', domainScope('roster'), async (_input, { db }) => {
+    return json(await sendStaffingDigest(db, await clockHere(db)), 200)
+  })
 
   /**
    * Publishing a Threshold version — the rescue default or one horse's own.

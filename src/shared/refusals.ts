@@ -47,9 +47,13 @@ const REFUSALS: Record<string, string> = {
     'They cannot be put on a roster yet — the orientation, release or consent is missing.',
   no_orientation: 'An orientation is recorded before anyone takes a shift. Ask the coordinator.',
   lead_already_held: 'Somebody already holds Lead here. Take them off first, or use Co-Lead.',
+  already_led: 'Somebody is already leading this shift.',
   already_rostered: 'They are already on this shift.',
   not_rostered: 'They are not on this shift.',
   shift_is_over: 'That shift is over.',
+  already_short:
+    'Somebody has already called this shift short. Clear it first if that has changed.',
+  not_short: 'Nobody has called this shift short.',
 }
 
 /** What a failed call says when the server never answered at all. */

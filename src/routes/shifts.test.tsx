@@ -37,6 +37,7 @@ function member(
     origin: string
     endedAs: string | null
     endedReason: string | null
+    medicationAuthority: boolean
   }> = {},
 ) {
   return {
@@ -48,6 +49,7 @@ function member(
     origin: extra.origin ?? 'standing_roster',
     endedAs: extra.endedAs ?? null,
     endedReason: extra.endedReason ?? null,
+    medicationAuthority: extra.medicationAuthority ?? false,
   }
 }
 
@@ -61,6 +63,9 @@ function shift(
     purpose: string | null
     state: string
     roster: unknown[]
+    gaps: string[]
+    suggestedActingLead: string | null
+    short: unknown
   }> = {},
 ) {
   return {
@@ -74,6 +79,11 @@ function shift(
     purpose: extra.purpose ?? null,
     state: extra.state ?? 'scheduled',
     roster: extra.roster ?? [],
+    staffing: {
+      gaps: extra.gaps ?? [],
+      suggestedActingLead: extra.suggestedActingLead ?? null,
+    },
+    short: extra.short ?? null,
   }
 }
 
@@ -113,9 +123,170 @@ function watchPosts(schedule: unknown = SCHEDULE): { path: string; body: unknown
       posted.push({ path: '/shifts/cover', body: JSON.parse(String(init.body)) as unknown })
       return { rosterId: 'covered' }
     },
+    '/shifts/short': (init: RequestInit) => {
+      posted.push({ path: '/shifts/short', body: JSON.parse(String(init.body)) as unknown })
+      return {}
+    },
+    '/shifts/acting-lead': (init: RequestInit) => {
+      posted.push({ path: '/shifts/acting-lead', body: JSON.parse(String(init.body)) as unknown })
+      return { rosterId: 'acting' }
+    },
   })
   return posted
 }
+
+describe('what a Shift is missing, as a sentence rather than a category', () => {
+  it('says the fact, and never the words “staffing gap”', async () => {
+    watchPosts({
+      today: '2026-08-18',
+      shifts: [
+        shift('open', {
+          day: '2026-08-20',
+          staffingMode: 'sign_up',
+          gaps: ['no_lead', 'below_target_headcount', 'no_medication_authority'],
+          roster: [member('valerie', { name: 'Valerie' })],
+        }),
+      ],
+    })
+    renderShifts()
+
+    expect(
+      await screen.findByText(/no Lead, 1 of 3 wanted, nobody who can give medication/),
+    ).toBeTruthy()
+    expect(screen.queryByText(/staffing gap/i)).toBeNull()
+    // And the Cover button is still there: a Shift needing medication takes
+    // somebody who cannot give it (ADR 0011).
+    expect(screen.getByRole('button', { name: 'Cover this' })).toBeTruthy()
+  })
+
+  it('holds the facts back beyond roughly 48 hours, where nobody can act yet', async () => {
+    watchPosts({
+      today: '2026-08-18',
+      shifts: [
+        shift('open', {
+          // Ten days out. ADR 0011 computes the gaps across the fortnight for
+          // holders of `roster` and makes them prominent to everyone else only
+          // inside roughly the next 48 hours — a fortnight of *no Lead* on a
+          // phone is a screen people stop reading.
+          day: '2026-08-28',
+          staffingMode: 'sign_up',
+          gaps: ['no_lead', 'below_target_headcount'],
+          roster: [member('valerie', { name: 'Valerie' })],
+        }),
+      ],
+    })
+    renderShifts()
+
+    // Still listed, still coverable, still counted.
+    expect(await screen.findByText('2026-08-28')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Cover this' })).toBeTruthy()
+    expect(screen.getByText(/1 of 3 so far/)).toBeTruthy()
+    expect(screen.queryByText(/no Lead/)).toBeNull()
+  })
+
+  it('names Short as somebody’s call rather than as another computed fact', async () => {
+    watchPosts({
+      today: '2026-08-18',
+      shifts: [
+        shift('mine', {
+          // Ten days out, so the computed facts are held back — and Short is
+          // shown anyway, because it is not arithmetic. A person decided it.
+          day: '2026-08-28',
+          roster: [member('beth')],
+          gaps: ['below_target_headcount'],
+          short: { declaredAt: 1_755_000_000_000, declaredBy: 'priya' },
+        }),
+      ],
+    })
+    renderShifts()
+
+    expect(await screen.findByText(/somebody has called this shift short/i)).toBeTruthy()
+    expect(screen.queryByText(/wanted/)).toBeNull()
+  })
+
+  it('offers Short to a Lead on their own Shift, and to nobody else', async () => {
+    const posted = watchPosts({
+      today: '2026-08-18',
+      shifts: [
+        shift('led', { roster: [member('beth', { position: 'lead' })], gaps: [] }),
+        shift('not-led', {
+          day: '2026-08-19',
+          roster: [member('beth', { position: 'volunteer' })],
+          gaps: ['no_lead'],
+        }),
+      ],
+    })
+    renderShifts()
+
+    // One button, on the Shift she leads. The server refuses anybody else, and
+    // a button that is always there and always fails teaches people to distrust
+    // the screen (ADR 0011).
+    const buttons = await screen.findAllByRole('button', { name: 'Call it short' })
+    expect(buttons).toHaveLength(1)
+
+    fireEvent.click(buttons[0] as HTMLElement)
+    await waitFor(() => {
+      expect(posted).toHaveLength(1)
+    })
+    expect(posted[0]).toMatchObject({
+      path: '/shifts/short',
+      body: { shiftId: 'led', short: true },
+    })
+  })
+})
+
+describe('the Acting Lead claim', () => {
+  it('is offered on a leaderless Shift, and says when it is the suggestion', async () => {
+    const posted = watchPosts({
+      today: '2026-08-18',
+      shifts: [
+        shift('mine', {
+          roster: [member('beth')],
+          gaps: ['no_lead'],
+          suggestedActingLead: 'beth',
+        }),
+      ],
+    })
+    renderShifts()
+
+    const claim = await screen.findByRole('button', {
+      name: 'Take charge as acting lead (suggested)',
+    })
+    fireEvent.click(claim)
+
+    await waitFor(() => {
+      expect(posted).toHaveLength(1)
+    })
+    expect(posted[0]).toMatchObject({ path: '/shifts/acting-lead', body: { shiftId: 'mine' } })
+  })
+
+  it('is offered to somebody the app did not suggest, because it is not a restriction', async () => {
+    watchPosts({
+      today: '2026-08-18',
+      shifts: [
+        shift('mine', {
+          roster: [member('beth'), member('valerie', { name: 'Valerie' })],
+          gaps: ['no_lead'],
+          suggestedActingLead: 'valerie',
+        }),
+      ],
+    })
+    renderShifts()
+
+    expect(await screen.findByRole('button', { name: 'Take charge as acting lead' })).toBeTruthy()
+  })
+
+  it('is not offered where somebody already leads', async () => {
+    watchPosts({
+      today: '2026-08-18',
+      shifts: [shift('mine', { roster: [member('beth', { position: 'lead' })], gaps: [] })],
+    })
+    renderShifts()
+
+    expect(await screen.findByText('2026-08-18')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /acting lead/i })).toBeNull()
+  })
+})
 
 describe('a volunteer’s own Shifts', () => {
   it('shows the Shifts they are on and not the ones they are not', async () => {
