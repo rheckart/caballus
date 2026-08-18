@@ -12,10 +12,12 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as BoardRouteImport } from './routes/board'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as ShiftsRouteImport } from './routes/shifts'
 import { Route as AdminAuditRouteImport } from './routes/admin/audit'
 import { Route as AdminHorsesRouteImport } from './routes/admin/horses'
 import { Route as AdminProductsRouteImport } from './routes/admin/products'
 import { Route as AdminReleaseVersionsRouteImport } from './routes/admin/release-versions'
+import { Route as AdminShiftPatternsRouteImport } from './routes/admin/shift-patterns'
 import { Route as AdminSpacesRouteImport } from './routes/admin/spaces'
 import { Route as AdminThresholdsRouteImport } from './routes/admin/thresholds'
 import { Route as AdminVolunteersRouteImport } from './routes/admin/volunteers'
@@ -38,6 +40,11 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ShiftsRoute = ShiftsRouteImport.update({
+  id: '/shifts',
+  path: '/shifts',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminAuditRoute = AdminAuditRouteImport.update({
   id: '/admin/audit',
   path: '/admin/audit',
@@ -56,6 +63,11 @@ const AdminProductsRoute = AdminProductsRouteImport.update({
 const AdminReleaseVersionsRoute = AdminReleaseVersionsRouteImport.update({
   id: '/admin/release-versions',
   path: '/admin/release-versions',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminShiftPatternsRoute = AdminShiftPatternsRouteImport.update({
+  id: '/admin/shift-patterns',
+  path: '/admin/shift-patterns',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminSpacesRoute = AdminSpacesRouteImport.update({
@@ -93,10 +105,12 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/board': typeof BoardRoute
   '/login': typeof LoginRoute
+  '/shifts': typeof ShiftsRoute
   '/admin/audit': typeof AdminAuditRoute
   '/admin/horses': typeof AdminHorsesRoute
   '/admin/products': typeof AdminProductsRoute
   '/admin/release-versions': typeof AdminReleaseVersionsRoute
+  '/admin/shift-patterns': typeof AdminShiftPatternsRoute
   '/admin/spaces': typeof AdminSpacesRoute
   '/admin/thresholds': typeof AdminThresholdsRoute
   '/admin/volunteers': typeof AdminVolunteersRoute
@@ -108,10 +122,12 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/board': typeof BoardRoute
   '/login': typeof LoginRoute
+  '/shifts': typeof ShiftsRoute
   '/admin/audit': typeof AdminAuditRoute
   '/admin/horses': typeof AdminHorsesRoute
   '/admin/products': typeof AdminProductsRoute
   '/admin/release-versions': typeof AdminReleaseVersionsRoute
+  '/admin/shift-patterns': typeof AdminShiftPatternsRoute
   '/admin/spaces': typeof AdminSpacesRoute
   '/admin/thresholds': typeof AdminThresholdsRoute
   '/admin/volunteers': typeof AdminVolunteersRoute
@@ -124,10 +140,12 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/board': typeof BoardRoute
   '/login': typeof LoginRoute
+  '/shifts': typeof ShiftsRoute
   '/admin/audit': typeof AdminAuditRoute
   '/admin/horses': typeof AdminHorsesRoute
   '/admin/products': typeof AdminProductsRoute
   '/admin/release-versions': typeof AdminReleaseVersionsRoute
+  '/admin/shift-patterns': typeof AdminShiftPatternsRoute
   '/admin/spaces': typeof AdminSpacesRoute
   '/admin/thresholds': typeof AdminThresholdsRoute
   '/admin/volunteers': typeof AdminVolunteersRoute
@@ -141,10 +159,12 @@ export interface FileRouteTypes {
     | '/'
     | '/board'
     | '/login'
+    | '/shifts'
     | '/admin/audit'
     | '/admin/horses'
     | '/admin/products'
     | '/admin/release-versions'
+    | '/admin/shift-patterns'
     | '/admin/spaces'
     | '/admin/thresholds'
     | '/admin/volunteers'
@@ -156,10 +176,12 @@ export interface FileRouteTypes {
     | '/'
     | '/board'
     | '/login'
+    | '/shifts'
     | '/admin/audit'
     | '/admin/horses'
     | '/admin/products'
     | '/admin/release-versions'
+    | '/admin/shift-patterns'
     | '/admin/spaces'
     | '/admin/thresholds'
     | '/admin/volunteers'
@@ -171,10 +193,12 @@ export interface FileRouteTypes {
     | '/'
     | '/board'
     | '/login'
+    | '/shifts'
     | '/admin/audit'
     | '/admin/horses'
     | '/admin/products'
     | '/admin/release-versions'
+    | '/admin/shift-patterns'
     | '/admin/spaces'
     | '/admin/thresholds'
     | '/admin/volunteers'
@@ -187,10 +211,12 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BoardRoute: typeof BoardRoute
   LoginRoute: typeof LoginRoute
+  ShiftsRoute: typeof ShiftsRoute
   AdminAuditRoute: typeof AdminAuditRoute
   AdminHorsesRoute: typeof AdminHorsesRoute
   AdminProductsRoute: typeof AdminProductsRoute
   AdminReleaseVersionsRoute: typeof AdminReleaseVersionsRoute
+  AdminShiftPatternsRoute: typeof AdminShiftPatternsRoute
   AdminSpacesRoute: typeof AdminSpacesRoute
   AdminThresholdsRoute: typeof AdminThresholdsRoute
   AdminVolunteersRoute: typeof AdminVolunteersRoute
@@ -222,6 +248,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/shifts': {
+      id: '/shifts'
+      path: '/shifts'
+      fullPath: '/shifts'
+      preLoaderRoute: typeof ShiftsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/audit': {
       id: '/admin/audit'
       path: '/admin/audit'
@@ -248,6 +281,13 @@ declare module '@tanstack/react-router' {
       path: '/admin/release-versions'
       fullPath: '/admin/release-versions'
       preLoaderRoute: typeof AdminReleaseVersionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/shift-patterns': {
+      id: '/admin/shift-patterns'
+      path: '/admin/shift-patterns'
+      fullPath: '/admin/shift-patterns'
+      preLoaderRoute: typeof AdminShiftPatternsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/spaces': {
@@ -299,10 +339,12 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BoardRoute: BoardRoute,
   LoginRoute: LoginRoute,
+  ShiftsRoute: ShiftsRoute,
   AdminAuditRoute: AdminAuditRoute,
   AdminHorsesRoute: AdminHorsesRoute,
   AdminProductsRoute: AdminProductsRoute,
   AdminReleaseVersionsRoute: AdminReleaseVersionsRoute,
+  AdminShiftPatternsRoute: AdminShiftPatternsRoute,
   AdminSpacesRoute: AdminSpacesRoute,
   AdminThresholdsRoute: AdminThresholdsRoute,
   AdminVolunteersRoute: AdminVolunteersRoute,

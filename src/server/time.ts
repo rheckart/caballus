@@ -14,6 +14,7 @@
 import { DateTime, IANAZone } from 'luxon'
 
 import { dayString, instant, type DayString, type Instant } from '../shared/time'
+import { WEEKDAYS, type Weekday } from '../shared/shifts'
 
 /** True when the string names a zone this machine's ICU data knows. */
 export function isTimeZone(timeZone: string): boolean {
@@ -138,4 +139,53 @@ export function isoOf(at: Instant, timeZone: string): string {
   const iso = zoned.toISO()
   if (iso === null) throw new RangeError(`Not a representable instant: ${String(at)}`)
   return iso
+}
+
+/**
+ * What weekday a day is, in the organisation's timezone (ADR 0001's Shift
+ * Patterns recur on one).
+ *
+ * A word rather than Luxon's number, because `WEEKDAYS` is what a Pattern
+ * stores and the two libraries this application touches disagree about which
+ * day is zero. Luxon counts Monday as 1, which is the order `WEEKDAYS` is
+ * written in, and this is the one place that conversion happens.
+ */
+export function weekdayOf(day: DayString, timeZone: string): Weekday {
+  const weekday = WEEKDAYS[parse(day, timeZone).weekday - 1]
+  if (weekday === undefined) throw new RangeError(`Not a day: ${day}`)
+  return weekday
+}
+
+/**
+ * The days of a horizon, from `from` inclusive, each with its weekday — what
+ * generation reads (ADR 0001's rolling two-week window).
+ */
+export function horizonFrom(
+  from: DayString,
+  days: number,
+  timeZone: string,
+): readonly { day: DayString; weekday: Weekday }[] {
+  const horizon: { day: DayString; weekday: Weekday }[] = []
+  for (let ahead = 0; ahead < days; ahead += 1) {
+    const day = addDays(from, ahead, timeZone)
+    horizon.push({ day, weekday: weekdayOf(day, timeZone) })
+  }
+  return horizon
+}
+
+/**
+ * The instant a Shift starts: a day and a `HH:MM` on the barn's own clock.
+ *
+ * The two are stored separately because that is what they are — a Shift on the
+ * morning the clocks go forward starts at six regardless of how many hours ago
+ * that was — and this is where they become a moment.
+ */
+export function startOfShift(day: DayString, timeOfDay: string, timeZone: string): Instant {
+  const [hour, minute] = timeOfDay.split(':')
+  const started = parse(day, timeZone).set({
+    hour: Number(hour ?? ''),
+    minute: Number(minute ?? ''),
+  })
+  if (!started.isValid) throw new RangeError(`Not a time of day: ${timeOfDay}`)
+  return instant(started.toMillis())
 }

@@ -27,6 +27,17 @@ import { ROLES } from './roles'
 import { ROSTER_GAPS } from './rostering'
 import { SPACE_KINDS } from './spaces'
 import {
+  ASSIGNABLE_POSITIONS,
+  ROSTER_END_KINDS,
+  ROSTER_ORIGINS,
+  SHIFT_POSITIONS,
+  SHIFT_STATES,
+  SHIFT_TYPES_INCLUDING_POP_UP,
+  STAFFING_MODES,
+  WEEKDAYS,
+  isTimeOfDay,
+} from './shifts'
+import {
   CONDITIONS,
   CONDITION_SCOPES,
   METRICS,
@@ -87,7 +98,7 @@ export interface Read {
 }
 
 /**
- * A queueable write: what it takes, and what it answers.
+ * A write: what it takes, and what it answers.
  *
  * `accepts` is the payload *without* the idempotency key. The key is ADR 0005's
  * and belongs to every write alike, so the client adds it on the way out and
@@ -99,6 +110,25 @@ export interface Read {
 export interface Write {
   readonly accepts: z.ZodObject<z.ZodRawShape>
   readonly answers: z.ZodType
+  /**
+   * **This write must never be queued** — ADR 0011's carve-out from ADR 0005,
+   * restated by ADR 0018 as *the app queues when it is the ledger, and does not
+   * queue when it is the medium*.
+   *
+   * A tick, an Attendance, an Observation are true whether or not the app knows
+   * — the queue is transport for a fact that already exists in the world. A
+   * Cover and a Drop are **not true until they arrive**: two volunteers each
+   * looking at their own phone, each seeing that they have Thursday covered, is
+   * a Thursday with nobody on it. So they are online-only writes, and the phone
+   * says so plainly when one cannot be sent.
+   *
+   * Declared here rather than remembered by whoever builds the queue, because
+   * the queue is a later ticket and this is the contract both sides read
+   * (ADR 0021). The key still travels: it is what stops a double tap becoming
+   * two Covers, which is a different problem from replaying one from a pocket
+   * on Thursday.
+   */
+  readonly neverQueued?: true
 }
 
 /**
@@ -560,6 +590,95 @@ export const board = z.object({
   weather: reading.nullable(),
 })
 
+/** The day of the week a Shift Pattern recurs on — a word, never a number (ADR 0001). */
+const weekday = z.enum(WEEKDAYS)
+
+/** What kind of work a Shift is, Pop-up included (`CONTEXT.md`'s Shift Type). */
+const anyShiftType = z.enum(SHIFT_TYPES_INCLUDING_POP_UP)
+
+/** `HH:MM` on the barn's own clock. Not an instant: a Shift starts at six whatever the clocks did. */
+const timeOfDay = z.string().refine(isTimeOfDay, { message: 'not a HH:MM time of day' })
+
+/** What somebody may be assigned to; `acting_lead` is claimed, never assigned (ADR 0010). */
+const assignablePosition = z.enum(ASSIGNABLE_POSITIONS)
+
+/**
+ * One person on a roster, with the gate derived against today beside them.
+ *
+ * `rosterable` and `gaps` ride along because gating happens at assignment and
+ * never at generation (ADR 0011): somebody who went stale after being assigned
+ * is still on the Shift, and the screen has to be able to flag that rather than
+ * the app quietly dropping them (ADR 0017).
+ */
+const rosterMember = z.object({
+  volunteerId: z.string(),
+  name: z.string(),
+  position: z.enum(SHIFT_POSITIONS),
+  rosterable: z.boolean(),
+  gaps: z.array(z.enum(ROSTER_GAPS)),
+})
+
+/** A Shift Pattern and the Standing Roster it will copy onto every Shift it generates. */
+const shiftPattern = z.object({
+  id: z.string(),
+  weekday,
+  shiftType: anyShiftType,
+  startTime: timeOfDay,
+  targetHeadcount: z.number(),
+  retired: z.boolean(),
+  roster: z.array(rosterMember),
+})
+
+export const shiftPatternList = z.object({
+  today: dayOfTheOrganisation,
+  patterns: z.array(shiftPattern),
+})
+
+/** One person on one dated Shift: how they got there, and whether they still stand. */
+const shiftRosterMember = rosterMember.extend({
+  origin: z.enum(ROSTER_ORIGINS),
+  /**
+   * Null while the commitment stands. *Rostered and dropped* is not *never
+   * rostered*, and the row is marked rather than removed so both stay
+   * answerable (ADR 0011).
+   */
+  endedAs: z.enum(ROSTER_END_KINDS).nullable(),
+  endedReason: z.string().nullable(),
+})
+
+/**
+ * One dated Shift (`CONTEXT.md`'s Shift).
+ *
+ * `state` is derived from the clock rather than stored, and there is no
+ * `cancelled`: the property is never closed, so a Shift nobody can staff is
+ * still a Shift, still visible and escalating (ADR 0001).
+ */
+const shift = z.object({
+  id: z.string(),
+  /** Null for a Pop-up, which is an occurrence of nothing (ADR 0011). */
+  patternId: z.string().nullable(),
+  day: dayOfTheOrganisation,
+  shiftType: anyShiftType,
+  startTime: timeOfDay,
+  targetHeadcount: z.number(),
+  staffingMode: z.enum(STAFFING_MODES),
+  purpose: z.string().nullable(),
+  state: z.enum(SHIFT_STATES),
+  roster: z.array(shiftRosterMember),
+})
+
+/**
+ * The schedule, from today to the end of the horizon.
+ *
+ * One read for the Coordinator's desktop and the volunteer's phone alike: *my
+ * Thursday* and *the fortnight* are the same rows at two distances, and two
+ * reads would be two chances for the phone to disagree with the desk.
+ */
+export const shiftList = z.object({
+  today: dayOfTheOrganisation,
+  shifts: z.array(shift),
+})
+
 /** An optional note on a grant, a revocation or a correction (ADR 0010). */
 const reason = z.string().max(500).nullish()
 
@@ -587,6 +706,10 @@ export const contract = {
      * whose authorization is not a person (ADR 0022).
      */
     '/board': { answers: board },
+    /** The recurring commitments and their Standing Rosters (ADR 0001). */
+    '/shift-patterns': { answers: shiftPatternList },
+    /** The schedule: every Shift from today to the end of the horizon, rosters and all. */
+    '/shifts': { answers: shiftList },
     /** The numbers the rescue owns, and the decisions still owed (ADR 0015). */
     '/thresholds': { answers: thresholds },
     /** Today's Reading, whole — the hours it read as well as what they resolved to. */
@@ -766,6 +889,114 @@ export const contract = {
         lines: z.array(z.object({ productId, amount: z.string().min(1).max(200), route })),
       }),
       answers: z.object({ feedScheduleVersionId: z.string() }),
+    },
+    /** A recurring commitment. It generates nothing by itself (ADR 0001). */
+    '/shift-patterns': {
+      accepts: z.object({
+        weekday,
+        shiftType,
+        startTime: timeOfDay,
+        targetHeadcount: z.number().int().positive(),
+      }),
+      answers: z.object({ shiftPatternId: z.string() }),
+    },
+    /**
+     * Edits a Pattern — and, if that is the answer, the Shifts already
+     * generated from it that have not happened yet.
+     *
+     * `applyToScheduled` is **required and never defaulted**: ADR 0001 says the
+     * prompt is not optional polish, because without it the model is quietly
+     * wrong in the most common editing case — a Coordinator moves a start time
+     * and next Tuesday keeps the old one.
+     */
+    '/shift-patterns/edit': {
+      accepts: z.object({
+        shiftPatternId: z.uuid(),
+        startTime: timeOfDay.optional(),
+        targetHeadcount: z.number().int().positive().optional(),
+        applyToScheduled: z.boolean(),
+        reason,
+      }),
+      answers: z.object({ scheduledTouched: z.number() }),
+    },
+    /** Somebody onto a Standing Roster — the first door the #34 gates stand at. */
+    '/shift-patterns/roster': {
+      accepts: z.object({
+        shiftPatternId: z.uuid(),
+        volunteerId,
+        position: assignablePosition,
+        applyToScheduled: z.boolean(),
+      }),
+      answers: z.object({
+        scheduledTouched: z.number(),
+        /**
+         * How many scheduled Shifts were left alone because somebody else
+         * already holds Lead on them. At most one Lead per Shift (ADR 0010),
+         * so carrying a Pattern change forward has to be able to say *not
+         * there* rather than quietly making a second one.
+         */
+        leadHeldOn: z.number(),
+      }),
+    },
+    /**
+     * Retiring a Pattern, or bringing it back. How a rescue stops a Tuesday
+     * morning without deleting the Shifts it already made (ADR 0001).
+     */
+    '/shift-patterns/retirement': {
+      accepts: z.object({ shiftPatternId: z.uuid(), retired: z.boolean(), reason }),
+      answers: z.void(),
+    },
+    '/shift-patterns/roster-removal': {
+      accepts: z.object({
+        shiftPatternId: z.uuid(),
+        volunteerId,
+        applyToScheduled: z.boolean(),
+        reason,
+      }),
+      answers: z.object({ scheduledTouched: z.number() }),
+    },
+    /**
+     * Fills the horizon (ADR 0001). Deliberate, never at boot, and safe to run
+     * twice — the second run creates nothing.
+     */
+    '/shifts/generation': {
+      accepts: z.object({}),
+      answers: z.object({ created: z.number(), through: dayOfTheOrganisation }),
+    },
+    /** A Pop-up: a Shift with no Pattern behind it, staffed by Sign-up (ADR 0011). */
+    '/shifts': {
+      accepts: z.object({
+        day: dayOfTheOrganisation,
+        startTime: timeOfDay,
+        targetHeadcount: z.number().int().positive(),
+        purpose: z.string().min(1).max(500),
+      }),
+      answers: z.object({ shiftId: z.string() }),
+    },
+    /** The Coordinator putting somebody on one dated Shift — the gates' second door. */
+    '/shifts/roster': {
+      accepts: z.object({ shiftId: z.uuid(), volunteerId, position: assignablePosition }),
+      answers: z.object({ rosterId: z.string() }),
+    },
+    '/shifts/roster-removal': {
+      accepts: z.object({ shiftId: z.uuid(), volunteerId, reason }),
+      answers: z.void(),
+    },
+    /**
+     * A Cover: claiming a place on a Shift you were not rostered on. It lands
+     * as a volunteer and never as a Lead, and is **never refused for what the
+     * volunteer lacks** (ADR 0011).
+     */
+    '/shifts/cover': {
+      accepts: z.object({ shiftId: z.uuid() }),
+      answers: z.object({ rosterId: z.string() }),
+      neverQueued: true,
+    },
+    /** A Drop: taking yourself off one dated Shift, and never off the Pattern. */
+    '/shifts/drop': {
+      accepts: z.object({ shiftId: z.uuid(), reason }),
+      answers: z.void(),
+      neverQueued: true,
     },
     /**
      * Publishes a Threshold version — the rescue default with a null

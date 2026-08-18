@@ -50,6 +50,13 @@
       "when": 1787061706936,
       "tag": "0006_white_typhoid_mary",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1787064411433,
+      "tag": "0007_deep_rocket_racer",
+      "breakpoints": true
     }
   ]
 }

@@ -68,6 +68,23 @@ import { recordMeasurement } from '../horses/measurements'
 import { productList, supplierList } from '../products/list'
 import { boardGrid } from '../board/grid'
 import { createProduct, createSupplier, editProduct } from '../products/records'
+import { patternList, shiftList } from '../shifts/list'
+import {
+  assignToStandingRoster,
+  createPattern,
+  editPattern,
+  removeFromStandingRoster,
+  retirePattern,
+} from '../shifts/patterns'
+import { generateHorizon } from '../shifts/generation'
+import {
+  assignToShift,
+  coverShift,
+  createPopUp,
+  dropFromShift,
+  removeFromShift,
+} from '../shifts/roster'
+import type { Refusal as ShiftRefusal } from '../shifts/outcome'
 import { currentThresholds, publishThreshold } from '../weather/thresholds'
 import { readingFor, recordReading } from '../weather/readings'
 import type { Refusal as WeatherRefusal } from '../weather/outcome'
@@ -117,11 +134,21 @@ export function buildApi(
    * own would be right for most of the year and wrong at the edges that matter.
    */
   async function dayHere(db: OrgScopedDatabase): Promise<DayString> {
+    return (await clockHere(db)).today
+  }
+
+  /**
+   * The day *and* the zone it was resolved in. Two things need the zone itself
+   * — generating a fortnight of weekdays, and deciding whether a Shift has
+   * started — and re-reading the organisation for the second is a second query
+   * for a fact the first already had.
+   */
+  async function clockHere(db: OrgScopedDatabase): Promise<{ today: DayString; timeZone: string }> {
     const [org] = await db.select({ timeZone: orgs.timeZone }).from(orgs).limit(1)
     if (org === undefined) {
       throw new Error('The organisation is not visible; APP_ORG_ID names one that does not exist.')
     }
-    return today(org.timeZone)
+    return { today: today(org.timeZone), timeZone: org.timeZone }
   }
 
   /**
@@ -169,6 +196,20 @@ export function buildApi(
     if (because === 'horse_not_found') return json({ error: because }, 404)
     const deployment = because === 'coordinates_not_set' || because === 'forecast_unavailable'
     return json({ error: because }, deployment ? 503 : 409)
+  }
+
+  /**
+   * And again for the Shift domain. A thing that is not there is a 404; a gate
+   * that does not hold and a Lead somebody else already holds are conflicts,
+   * because neither becomes true by retrying — which is what a phone's queue
+   * needs to hear, on the two writes here that it may carry.
+   */
+  function shiftRefusal(because: ShiftRefusal) {
+    const missing =
+      because === 'pattern_not_found' ||
+      because === 'shift_not_found' ||
+      because === 'volunteer_not_found'
+    return json({ error: because }, missing ? 404 : 409)
   }
 
   api.route('GET', '/day', readEverything(), async ({ context }) => {
@@ -514,6 +555,47 @@ export function buildApi(
   })
 
   /**
+   * The Patterns and their Standing Rosters.
+   *
+   * `readEverything()`: a volunteer looking at Tuesday mornings is reading the
+   * rescue's own noticeboard, and the gate on each name is shown rather than
+   * the read refused (ADR 0010).
+   */
+  api.route('GET', '/shift-patterns', readEverything(), async ({ context }) => {
+    const answered = await forOrg(context.orgId).run(async (db) => {
+      const on = await dayHere(db)
+      return { on, patterns: await patternList(db, on) }
+    })
+
+    return json({
+      today: answered.on,
+      patterns: answered.patterns.map((pattern) => ({
+        ...pattern,
+        roster: pattern.roster.map((member) => ({ ...member, gaps: [...member.gaps] })),
+      })),
+    })
+  })
+
+  /**
+   * The schedule from today forward — the Coordinator's fortnight and the
+   * volunteer's own Shifts, which are the same rows read at two distances.
+   */
+  api.route('GET', '/shifts', readEverything(), async ({ context }) => {
+    const answered = await forOrg(context.orgId).run(async (db) => {
+      const clock = await clockHere(db)
+      return { clock, shifts: await shiftList(db, clock.today, clock.timeZone) }
+    })
+
+    return json({
+      today: answered.clock.today,
+      shifts: answered.shifts.map((shift) => ({
+        ...shift,
+        roster: shift.roster.map((member) => ({ ...member, gaps: [...member.gaps] })),
+      })),
+    })
+  })
+
+  /**
    * The numbers the rescue owns, and the decisions still owed on them.
    *
    * `readEverything()`, because a volunteer standing in a barn at 38 ° has
@@ -661,6 +743,174 @@ export function buildApi(
     if (!outcome.ok) return horseRefusal(outcome.because)
     return json({ feedScheduleVersionId: outcome.value.id }, 201)
   })
+
+  /**
+   * A Shift Pattern, under `roster` — the Domain Scope that owns who is on a
+   * Shift (ADR 0010). Creating one generates nothing: generation is a
+   * deliberate act of its own (ADR 0001).
+   */
+  api.mutation('/shift-patterns', domainScope('roster'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await createPattern(db, context.orgId, actor.volunteerId, input)
+    if (!outcome.ok) return shiftRefusal(outcome.because)
+    return json({ shiftPatternId: outcome.value.id }, 201)
+  })
+
+  /**
+   * Editing a Pattern, and answering ADR 0001's prompt in the same request.
+   *
+   * The prompt is the endpoint's shape rather than a screen's habit: a caller
+   * that did not decide cannot send this, which is what stops the most common
+   * editing case from being quietly wrong.
+   */
+  api.mutation('/shift-patterns/edit', domainScope('roster'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await editPattern(db, context.orgId, actor.volunteerId, {
+      patternId: input.shiftPatternId,
+      startTime: input.startTime,
+      targetHeadcount: input.targetHeadcount,
+      applyToScheduled: input.applyToScheduled,
+      reason: input.reason ?? null,
+      today: await dayHere(db),
+    })
+    if (!outcome.ok) return shiftRefusal(outcome.because)
+    return json({ scheduledTouched: outcome.value.scheduledTouched })
+  })
+
+  api.mutation('/shift-patterns/roster', domainScope('roster'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await assignToStandingRoster(db, context.orgId, actor.volunteerId, {
+      patternId: input.shiftPatternId,
+      volunteerId: input.volunteerId,
+      position: input.position,
+      applyToScheduled: input.applyToScheduled,
+      today: await dayHere(db),
+    })
+    if (!outcome.ok) return shiftRefusal(outcome.because)
+    return json({
+      scheduledTouched: outcome.value.scheduledTouched,
+      leadHeldOn: outcome.value.leadHeldOn,
+    })
+  })
+
+  /**
+   * Retiring a Pattern. It generates nothing from here on, and every Shift it
+   * already made stands (ADR 0001).
+   */
+  api.mutation(
+    '/shift-patterns/retirement',
+    domainScope('roster'),
+    async (input, { context, db }) => {
+      const actor = actorOf(context)
+      const outcome = await retirePattern(db, context.orgId, actor.volunteerId, {
+        patternId: input.shiftPatternId,
+        retired: input.retired,
+        reason: input.reason ?? null,
+      })
+      return outcome.ok ? noContent() : shiftRefusal(outcome.because)
+    },
+  )
+
+  api.mutation(
+    '/shift-patterns/roster-removal',
+    domainScope('roster'),
+    async (input, { context, db }) => {
+      const actor = actorOf(context)
+      const outcome = await removeFromStandingRoster(db, context.orgId, actor.volunteerId, {
+        patternId: input.shiftPatternId,
+        volunteerId: input.volunteerId,
+        applyToScheduled: input.applyToScheduled,
+        reason: input.reason ?? null,
+        today: await dayHere(db),
+      })
+      if (!outcome.ok) return shiftRefusal(outcome.because)
+      return json({ scheduledTouched: outcome.value.scheduledTouched })
+    },
+  )
+
+  /**
+   * Filling the horizon (ADR 0001). A write rather than a job, for now and
+   * deliberately: it must never run at boot, and until there is a scheduler the
+   * hand that runs it is the Coordinator's.
+   */
+  api.mutation('/shifts/generation', domainScope('roster'), async (_input, { context, db }) => {
+    const actor = actorOf(context)
+    const clock = await clockHere(db)
+    const outcome = await generateHorizon(db, context.orgId, actor.volunteerId, clock)
+    if (!outcome.ok) return shiftRefusal(outcome.because)
+    return json({ created: outcome.value.created, through: outcome.value.through }, 201)
+  })
+
+  /** A Pop-up, created on demand and staffed by Sign-up (ADR 0011). */
+  api.mutation('/shifts', domainScope('roster'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await createPopUp(db, context.orgId, actor.volunteerId, input)
+    if (!outcome.ok) return shiftRefusal(outcome.because)
+    return json({ shiftId: outcome.value.id }, 201)
+  })
+
+  api.mutation('/shifts/roster', domainScope('roster'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await assignToShift(db, context.orgId, actor.volunteerId, {
+      shiftId: input.shiftId,
+      volunteerId: input.volunteerId,
+      position: input.position,
+      today: await dayHere(db),
+    })
+    if (!outcome.ok) return shiftRefusal(outcome.because)
+    return json({ rosterId: outcome.value.id }, 201)
+  })
+
+  /** Taking somebody else off, which is authority over the roster (ADR 0010). */
+  api.mutation('/shifts/roster-removal', domainScope('roster'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await removeFromShift(db, context.orgId, actor.volunteerId, {
+      shiftId: input.shiftId,
+      volunteerId: input.volunteerId,
+      reason: input.reason ?? null,
+    })
+    return outcome.ok ? noContent() : shiftRefusal(outcome.because)
+  })
+
+  /**
+   * A Cover, on the floor: anybody oriented, claiming a place themselves.
+   *
+   * It credits the actor and nobody else — you cannot Cover on somebody's
+   * behalf, because a commitment made for you is not a commitment. It is
+   * refused only for a Shift that is not there or an Orientation that is not
+   * recorded, and **never for what the volunteer lacks** (ADR 0011).
+   */
+  api.mutation(
+    '/shifts/cover',
+    floor('commit-to-or-leave-a-shift'),
+    async (input, { context, db }) => {
+      const actor = actorOf(context)
+      const outcome = await coverShift(db, context.orgId, actor.volunteerId, {
+        shiftId: input.shiftId,
+        today: await dayHere(db),
+      })
+      if (!outcome.ok) return shiftRefusal(outcome.because)
+      return json({ rosterId: outcome.value.id }, 201)
+    },
+  )
+
+  /**
+   * A Drop, on the floor and about yourself: it marks the roster row on this
+   * Shift alone and never touches the Pattern behind it (ADR 0001, ADR 0011).
+   */
+  api.mutation(
+    '/shifts/drop',
+    floor('commit-to-or-leave-a-shift'),
+    async (input, { context, db }) => {
+      const actor = actorOf(context)
+      const outcome = await dropFromShift(db, context.orgId, actor.volunteerId, {
+        shiftId: input.shiftId,
+        reason: input.reason ?? null,
+        today: await dayHere(db),
+      })
+      return outcome.ok ? noContent() : shiftRefusal(outcome.because)
+    },
+  )
 
   /**
    * Publishing a Threshold version — the rescue default or one horse's own.

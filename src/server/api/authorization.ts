@@ -28,15 +28,23 @@ export { DOMAIN_SCOPES, type DomainScope }
 export { ROLES, ROLE_NAMES, ROLE_SCOPES, isRole, scopesOf, type Role } from '../../shared/roles'
 
 /**
- * The three legitimate uses of `floor` today. Stated as a type so that a
- * fourth is a deliberate act — somebody adds a member here, and the diff says
- * what they decided (ADR 0016).
+ * The legitimate uses of `floor` today. Stated as a type so that another is a
+ * deliberate act — somebody adds a member here, and the diff says what they
+ * decided (ADR 0016).
  */
 export type FloorReason =
   | 'work-on-a-shift-you-are-rostered-on'
   | 'record-an-observation'
   | 'record-your-own-presence'
   | 'record-a-measurement'
+  /**
+   * Cover and Drop. Neither needs a Domain Scope, on the principle that lets
+   * anyone record an Observation: a statement about your own availability is
+   * not authority over the roster, and an app that makes people ask permission
+   * to tell it the truth gets told less of it (ADR 0011). Removing *somebody
+   * else* is the act ADR 0010 puts under `roster`.
+   */
+  | 'commit-to-or-leave-a-shift'
 
 export type Authorization =
   | { readonly kind: 'scope'; readonly scope: DomainScope }
@@ -86,8 +94,8 @@ export function shiftAuthority(): PersonAuthorization {
 }
 
 /**
- * This write needs no Domain Scope. Saying so is deliberate: ADR 0010 allows
- * it in exactly the three cases `FloorReason` enumerates.
+ * This write needs no Domain Scope. Saying so is deliberate: ADR 0010 allows it
+ * in exactly the cases `FloorReason` enumerates, and nowhere else.
  */
 export function floor(because: FloorReason): PersonAuthorization {
   return { kind: 'floor', because }

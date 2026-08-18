@@ -41,6 +41,9 @@ export const AUDIT_ENTITIES = [
   'horse_space_assignment',
   'product',
   'supplier',
+  'shift_pattern',
+  'shift_pattern_roster',
+  'shift_roster',
 ] as const
 
 export type AuditEntity = (typeof AUDIT_ENTITIES)[number]
