@@ -39,6 +39,8 @@ export const AUDIT_ENTITIES = [
   'space',
   'horse',
   'horse_space_assignment',
+  'product',
+  'supplier',
 ] as const
 
 export type AuditEntity = (typeof AUDIT_ENTITIES)[number]

@@ -22,6 +22,7 @@ import {
   date,
   index,
   integer,
+  numeric,
   pgPolicy,
   pgTable,
   primaryKey,
@@ -688,5 +689,185 @@ export const auditEntries = pgTable(
     index('audit_entries_entity').on(table.orgId, table.entity, table.entityId),
     index('audit_entries_recorded_at').on(table.orgId, table.recordedAt),
     inScope('audit_entries_in_scope'),
+  ],
+).enableRLS()
+
+/**
+ * Where a Product comes from (ADR 0019, `CONTEXT.md`'s Supplier): a name, an
+ * optional web address, an optional note — referenced by many Products. Current
+ * state plus an audit entry (ADR 0003), the same tier as a Product: what a
+ * Supplier used to be called answers no question this rescue asks.
+ *
+ * It never points at a Contact — ADR 0014 keeps the Contacts screen outside
+ * every reference the app resolves, and this table carries no column that
+ * could.
+ */
+export const suppliers = pgTable(
+  'suppliers',
+  {
+    id: uuid('id').primaryKey(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id),
+    name: text('name').notNull(),
+    url: text('url'),
+    note: text('note'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  () => [inScope('suppliers_in_scope')],
+).enableRLS()
+
+/**
+ * Something the rescue buys and gives to a horse — a feed, a supplement or a
+ * medication (`CONTEXT.md`'s Product; ADR 0019). It is also the catalogue:
+ * Supplier, prescription status, an optional reorder point in days and a
+ * free-text ordering note hang off the same record rather than a second list,
+ * which is what makes *we're low on Senior* connectable to *these nine horses
+ * eat Senior*.
+ *
+ * Current state plus an audit entry (ADR 0003) — not versioned, because what a
+ * Product used to cost or come from answers no question here; a Feed Schedule
+ * line names one by id, so its identity outlives an edit to its fields.
+ *
+ * Editable by holders of `horse_care` **or** `supplies` (ADR 0019's one
+ * two-Scope record) — refused as field-level scoping, which ADR 0010 calls the
+ * forbidden third axis, in favour of either holder editing the whole row.
+ *
+ * Deliberately does not stretch to what the rescue buys and does not feed a
+ * horse: shavings and light bulbs stay an Observation with no subject, not a
+ * catalogue row.
+ */
+export const products = pgTable(
+  'products',
+  {
+    id: uuid('id').primaryKey(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id),
+    name: text('name').notNull(),
+    /** One of `PRODUCT_KINDS` in `src/shared/products.ts` — feed, supplement, medication. */
+    kind: text('kind').notNull(),
+    supplierId: uuid('supplier_id').references(() => suppliers.id),
+    prescription: boolean('prescription').notNull().default(false),
+    /** Optional, in days — the same unit a days-of-supply reading will use (ADR 0019). */
+    reorderPointDays: integer('reorder_point_days'),
+    orderingNote: text('ordering_note'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    // The catalogue screen's other read: every Product a given Supplier carries.
+    index('products_supplier').on(table.supplierId),
+    inScope('products_in_scope'),
+  ],
+).enableRLS()
+
+/**
+ * One version of a Feed Schedule for one horse at one Shift Type (`CONTEXT.md`'s
+ * Feed Schedule; ADR 0003's versioned tier). Immutable, carrying a valid-from
+ * date; the current one for a `(horseId, shiftType)` pair is the latest by
+ * `validFrom`. Editing creates a version rather than updating a row, so *what
+ * was she eating the week she lost thirty pounds* stays answerable.
+ *
+ * **No audit entry** — the same discipline `release_versions` follows: a
+ * versioned-tier change *is* a version, and a second copy of it in
+ * `audit_entries` would be the two-places-disagreeing failure ADR 0003 was
+ * written against.
+ *
+ * Not every horse has a version at every Shift Type — Lunch exists only for the
+ * horses that get a midday feeding — so the absence of a row is the state
+ * "this horse has no Lunch schedule" rather than a value to invent.
+ */
+export const feedScheduleVersions = pgTable(
+  'feed_schedule_versions',
+  {
+    id: uuid('id').primaryKey(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id),
+    horseId: uuid('horse_id')
+      .notNull()
+      .references(() => horses.id),
+    /** One of `SHIFT_TYPES` in `src/shared/feed-schedule.ts`. */
+    shiftType: text('shift_type').notNull(),
+    validFrom: date('valid_from').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdBy: uuid('created_by').references(() => volunteers.id),
+  },
+  (table) => [
+    // The current version for one (horse, Shift Type) is the latest row here —
+    // the read the horse profile and, later, materialization both make.
+    index('feed_schedule_versions_current').on(table.horseId, table.shiftType, table.validFrom),
+    inScope('feed_schedule_versions_in_scope'),
+  ],
+).enableRLS()
+
+/**
+ * One line of a Feed Schedule version: a Product, an amount and a Route
+ * (`CONTEXT.md`'s Feed Schedule). `amount` is free text — *1/2 sc*, *2 wells*,
+ * *6 cups water* — because no unit field exists anywhere in the settled model
+ * (ADR 0019): a sack of grain does not divide by *two wells*, and the app does
+ * not pretend otherwise.
+ */
+export const feedScheduleLines = pgTable(
+  'feed_schedule_lines',
+  {
+    id: uuid('id').primaryKey(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id),
+    versionId: uuid('version_id')
+      .notNull()
+      .references(() => feedScheduleVersions.id),
+    productId: uuid('product_id')
+      .notNull()
+      .references(() => products.id),
+    amount: text('amount').notNull(),
+    /** One of `ROUTES` in `src/shared/feed-schedule.ts` — a syringe medication is visibly not in-feed. */
+    route: text('route').notNull(),
+  },
+  (table) => [
+    index('feed_schedule_lines_version').on(table.versionId),
+    inScope('feed_schedule_lines_in_scope'),
+  ],
+).enableRLS()
+
+/**
+ * A weight or body-condition entry (`CONTEXT.md`'s Weight; ADR 0003's
+ * measurement-series tier): append-only, never edited, no reason field — the
+ * same shape a Days of Supply reading will take, for the same reason.
+ *
+ * `method` — `tape` or `scale` — is weight-only and optional. #15's own
+ * evidence is why it exists despite that ticket concluding no method field was
+ * needed: two people weighed the same horse 23 lb apart on the same day, best
+ * explained by weight-tape technique, so how a weight was taken is worth
+ * recording and awkward to backfill later.
+ *
+ * Written by any signed-in Volunteer — the floor, like an Observation — rather
+ * than a Domain Scope: recording that a horse was weighed today is not an edit
+ * to a care instruction.
+ */
+export const horseMeasurements = pgTable(
+  'horse_measurements',
+  {
+    id: uuid('id').primaryKey(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id),
+    horseId: uuid('horse_id')
+      .notNull()
+      .references(() => horses.id),
+    /** `weight` or `body_condition` — see `MEASUREMENT_KINDS`. */
+    kind: text('kind').notNull(),
+    value: numeric('value', { mode: 'number' }).notNull(),
+    /** `tape` or `scale`. Null for a body-condition entry, and for a weight nobody named a method for. */
+    method: text('method'),
+    takenOn: date('taken_on').notNull(),
+    recordedBy: uuid('recorded_by').references(() => volunteers.id),
+    recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    // The series a horse's profile renders: one horse, one kind, oldest to newest.
+    index('horse_measurements_horse').on(table.horseId, table.kind, table.takenOn),
+    inScope('horse_measurements_in_scope'),
   ],
 ).enableRLS()

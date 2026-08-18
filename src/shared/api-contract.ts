@@ -20,6 +20,9 @@
 import { z } from 'zod'
 
 import { DOMAIN_SCOPES } from './domain-scopes'
+import { ROUTES, SHIFT_TYPES } from './feed-schedule'
+import { MEASUREMENT_KINDS, MEASUREMENT_METHODS } from './measurements'
+import { PRODUCT_KINDS } from './products'
 import { ROLES } from './roles'
 import { ROSTER_GAPS } from './rostering'
 import { SPACE_KINDS } from './spaces'
@@ -258,6 +261,91 @@ export const space = z.object({
 
 export const spaceList = z.object({ spaces: z.array(space) })
 
+/** What a Product is, a fact about the Product and not about where it was written down (ADR 0019). */
+const productKind = z.enum(PRODUCT_KINDS)
+
+/** What kind of work a Shift is; only the three that carry a Feed Schedule (`CONTEXT.md`). */
+const shiftType = z.enum(SHIFT_TYPES)
+
+/** How a Product reaches the horse — a syringe medication is visibly not in-feed (`CONTEXT.md`). */
+const route = z.enum(ROUTES)
+
+/** Where a Product comes from (ADR 0019, `CONTEXT.md`'s Supplier). It never points at a Contact. */
+export const supplier = z.object({
+  id: z.string(),
+  name: z.string(),
+  url: z.string().nullable(),
+  note: z.string().nullable(),
+})
+
+export const supplierList = z.object({ suppliers: z.array(supplier) })
+
+/**
+ * The catalogue (ADR 0019, `CONTEXT.md`'s Product). `supplierName` rides along
+ * so a list renders without a second read; the id is what a Feed Schedule line
+ * names.
+ */
+export const product = z.object({
+  id: z.string(),
+  name: z.string(),
+  kind: productKind,
+  supplierId: z.string().nullable(),
+  supplierName: z.string().nullable(),
+  prescription: z.boolean(),
+  reorderPointDays: z.number().nullable(),
+  orderingNote: z.string().nullable(),
+})
+
+export const productList = z.object({ products: z.array(product) })
+
+/** One Feed Schedule line: a Product, an amount and a Route (`CONTEXT.md`'s Feed Schedule). */
+const feedScheduleLine = z.object({
+  productId: z.string(),
+  productName: z.string(),
+  productKind,
+  amount: z.string(),
+  route,
+})
+
+/**
+ * The current Feed Schedule for one horse at one Shift Type — only the Shift
+ * Types that actually have one appear, so a horse with no Lunch feeding simply
+ * has no `lunch` entry (#36's Dawson-and-Apollo case).
+ */
+const feedSchedule = z.object({
+  shiftType,
+  validFrom: dayOfTheOrganisation,
+  /** Derived from `validFrom` against today, and ageing out on its own (`CONTEXT.md`'s New). */
+  isNew: z.boolean(),
+  lines: z.array(feedScheduleLine),
+})
+
+const measurementKind = z.enum(MEASUREMENT_KINDS)
+const measurementMethod = z.enum(MEASUREMENT_METHODS)
+
+/** One weight entry — append-only, and carrying the noise floor's own field: how it was taken. */
+const weightEntry = z.object({
+  id: z.string(),
+  value: z.number(),
+  method: measurementMethod.nullable(),
+  takenOn: dayOfTheOrganisation,
+  recordedBy: z.string().nullable(),
+})
+
+/** One body-condition entry — the same shape, minus the weight-only method. */
+const bodyConditionEntry = z.object({
+  id: z.string(),
+  value: z.number(),
+  takenOn: dayOfTheOrganisation,
+  recordedBy: z.string().nullable(),
+})
+
+/** Both measurement series for one horse, oldest first (ADR 0003's measurement tier). */
+const horseMeasurements = z.object({
+  weights: z.array(weightEntry),
+  bodyConditions: z.array(bodyConditionEntry),
+})
+
 /**
  * A horse, as ADR 0003's current-state tier and #32's stories carry it for
  * this ticket. `photoUrl` is where the photo is hosted, not the photo itself —
@@ -284,12 +372,27 @@ export const horse = z.object({
 
 export const horseList = z.object({ horses: z.array(horse) })
 
+/**
+ * The single-horse read, carrying what the list does not: the current Feed
+ * Schedule per Shift Type and both measurement series, in one round trip
+ * rather than three on a connection that mostly works (#36). The list stays
+ * `horse` above — a directory of sixty rows has no use for another horse's
+ * feed lines, and the phone's list screen never asked for them.
+ */
+export const horseProfile = horse.extend({
+  /** Only the Shift Types this horse currently has a schedule for (#36). */
+  feedSchedules: z.array(feedSchedule),
+  measurements: horseMeasurements,
+})
+
 /** An optional note on a grant, a revocation or a correction (ADR 0010). */
 const reason = z.string().max(500).nullish()
 
 const volunteerId = z.uuid()
 const horseId = z.uuid()
 const spaceId = z.uuid()
+const supplierId = z.uuid()
+const productId = z.uuid()
 
 export const contract = {
   reads: {
@@ -301,7 +404,9 @@ export const contract = {
     '/spaces': { answers: spaceList },
     '/horses': { answers: horseList },
     /** The first parameterised path — see `PathParamNames` above. */
-    '/horses/:horseId': { answers: horse },
+    '/horses/:horseId': { answers: horseProfile },
+    '/suppliers': { answers: supplierList },
+    '/products': { answers: productList },
   },
   writes: {
     /**
@@ -430,6 +535,68 @@ export const contract = {
     '/horses/departure': {
       accepts: z.object({ horseId, departedOn: dayOfTheOrganisation.nullable(), reason }),
       answers: z.void(),
+    },
+    '/suppliers': {
+      accepts: z.object({
+        name: z.string().min(1).max(200),
+        url: z.string().max(2000).nullish(),
+        note: z.string().max(2000).nullish(),
+      }),
+      answers: z.object({ supplierId: z.string() }),
+    },
+    '/products': {
+      accepts: z.object({
+        name: z.string().min(1).max(200),
+        kind: productKind,
+        supplierId: supplierId.nullish(),
+        prescription: z.boolean(),
+        reorderPointDays: z.number().int().positive().nullish(),
+        orderingNote: z.string().max(2000).nullish(),
+      }),
+      answers: z.object({ productId: z.string() }),
+    },
+    /** A partial edit, the same discipline `/horses/attributes` follows (ADR 0003, ADR 0019). */
+    '/products/edit': {
+      accepts: z.object({
+        productId,
+        name: z.string().min(1).max(200).optional(),
+        kind: productKind.optional(),
+        supplierId: supplierId.nullish(),
+        prescription: z.boolean().optional(),
+        reorderPointDays: z.number().int().positive().nullish(),
+        orderingNote: z.string().max(2000).nullish(),
+        reason,
+      }),
+      answers: z.void(),
+    },
+    /**
+     * Publishes a new Feed Schedule version for one horse at one Shift Type
+     * (ADR 0003). An empty `lines` array is legal — it is how a horse_care
+     * holder retires a schedule, as a version rather than a deletion.
+     */
+    '/feed-schedules': {
+      accepts: z.object({
+        horseId,
+        shiftType,
+        validFrom: dayOfTheOrganisation,
+        lines: z.array(z.object({ productId, amount: z.string().min(1).max(200), route })),
+      }),
+      answers: z.object({ feedScheduleVersionId: z.string() }),
+    },
+    /**
+     * Appends a weight or body-condition entry. On the floor — any signed-in
+     * Volunteer, not a Domain Scope — because recording that a horse was
+     * weighed today is not an edit to a care instruction (`CONTEXT.md`'s Weight).
+     */
+    '/measurements': {
+      accepts: z.object({
+        horseId,
+        kind: measurementKind,
+        value: z.number().positive(),
+        method: measurementMethod.nullish(),
+        takenOn: dayOfTheOrganisation,
+      }),
+      answers: z.object({ measurementId: z.string() }),
     },
   },
 } as const satisfies Contract

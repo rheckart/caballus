@@ -92,6 +92,9 @@ function Home() {
                 <Link to="/admin/spaces">Spaces</Link>
               </li>
               <li>
+                <Link to="/admin/products">Products and Suppliers</Link>
+              </li>
+              <li>
                 <Link to="/admin/release-versions">Release versions</Link>
               </li>
               <li>

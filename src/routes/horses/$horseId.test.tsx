@@ -28,6 +28,8 @@ const PROFILE = {
   photoUrl: null,
   departedOn: null,
   spaces: { stall: { id: 'stall-4', name: 'Stall 4' }, field: null, barn: null },
+  feedSchedules: [],
+  measurements: { weights: [], bodyConditions: [] },
 }
 
 describe('the horse profile', () => {
@@ -88,5 +90,76 @@ describe('the horse profile', () => {
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: 'Apollo' })).toBeTruthy()
     })
+  })
+
+  it('shows the current feeding per Shift Type, with the New marker on a recently changed one', async () => {
+    stubApi({
+      '/horses/apollo-1': {
+        ...PROFILE,
+        feedSchedules: [
+          {
+            shiftType: 'feed_am',
+            validFrom: '2024-01-01',
+            isNew: false,
+            lines: [
+              {
+                productId: 'senior-1',
+                productName: 'Senior',
+                productKind: 'feed',
+                amount: '2 scoops',
+                route: 'in_feed',
+              },
+              {
+                productId: 'bute-1',
+                productName: 'Bute',
+                productKind: 'medication',
+                amount: '1 dose',
+                route: 'oral_syringe',
+              },
+            ],
+          },
+          { shiftType: 'lunch', validFrom: '2024-06-01', isNew: true, lines: [] },
+        ],
+      },
+    })
+    renderProfileAt('apollo-1')
+
+    expect(await screen.findByRole('heading', { name: 'Feed AM' })).toBeTruthy()
+    expect(screen.getByText('2 scoops of Senior — in feed')).toBeTruthy()
+    // A syringe medication is visibly not in-feed.
+    expect(screen.getByText('1 dose of Bute — oral syringe')).toBeTruthy()
+
+    const lunch = screen.getByRole('heading', { name: /Lunch/ })
+    expect(lunch.textContent).toContain('New')
+    const feedAm = screen.getByRole('heading', { name: 'Feed AM' })
+    expect(feedAm.textContent).not.toContain('New')
+  })
+
+  it('shows no feed schedule for a Shift Type this horse has never had one for', async () => {
+    stubApi({ '/horses/apollo-1': PROFILE })
+    renderProfileAt('apollo-1')
+
+    expect(await screen.findByText('No feed schedule recorded.')).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Lunch' })).toBeNull()
+  })
+
+  it('renders the weight and body-condition series', async () => {
+    stubApi({
+      '/horses/apollo-1': {
+        ...PROFILE,
+        measurements: {
+          weights: [
+            { id: 'w1', value: 950, method: 'tape', takenOn: '2024-01-01', recordedBy: 'v1' },
+            { id: 'w2', value: 973, method: null, takenOn: '2024-02-01', recordedBy: 'v1' },
+          ],
+          bodyConditions: [{ id: 'b1', value: 5, takenOn: '2024-01-01', recordedBy: 'v1' }],
+        },
+      },
+    })
+    renderProfileAt('apollo-1')
+
+    expect(await screen.findByText('950 lb (tape) — 2024-01-01')).toBeTruthy()
+    expect(screen.getByText('973 lb — 2024-02-01')).toBeTruthy()
+    expect(screen.getByText('5 — 2024-01-01')).toBeTruthy()
   })
 })
