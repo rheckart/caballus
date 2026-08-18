@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AdminAuditRouteImport } from './routes/admin/audit'
 import { Route as AdminHorsesRouteImport } from './routes/admin/horses'
+import { Route as AdminProductsRouteImport } from './routes/admin/products'
 import { Route as AdminReleaseVersionsRouteImport } from './routes/admin/release-versions'
 import { Route as AdminSpacesRouteImport } from './routes/admin/spaces'
 import { Route as AdminVolunteersRouteImport } from './routes/admin/volunteers'
@@ -38,6 +39,11 @@ const AdminAuditRoute = AdminAuditRouteImport.update({
 const AdminHorsesRoute = AdminHorsesRouteImport.update({
   id: '/admin/horses',
   path: '/admin/horses',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminProductsRoute = AdminProductsRouteImport.update({
+  id: '/admin/products',
+  path: '/admin/products',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminReleaseVersionsRoute = AdminReleaseVersionsRouteImport.update({
@@ -76,6 +82,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/admin/audit': typeof AdminAuditRoute
   '/admin/horses': typeof AdminHorsesRoute
+  '/admin/products': typeof AdminProductsRoute
   '/admin/release-versions': typeof AdminReleaseVersionsRoute
   '/admin/spaces': typeof AdminSpacesRoute
   '/admin/volunteers': typeof AdminVolunteersRoute
@@ -88,6 +95,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/admin/audit': typeof AdminAuditRoute
   '/admin/horses': typeof AdminHorsesRoute
+  '/admin/products': typeof AdminProductsRoute
   '/admin/release-versions': typeof AdminReleaseVersionsRoute
   '/admin/spaces': typeof AdminSpacesRoute
   '/admin/volunteers': typeof AdminVolunteersRoute
@@ -101,6 +109,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/admin/audit': typeof AdminAuditRoute
   '/admin/horses': typeof AdminHorsesRoute
+  '/admin/products': typeof AdminProductsRoute
   '/admin/release-versions': typeof AdminReleaseVersionsRoute
   '/admin/spaces': typeof AdminSpacesRoute
   '/admin/volunteers': typeof AdminVolunteersRoute
@@ -115,6 +124,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/admin/audit'
     | '/admin/horses'
+    | '/admin/products'
     | '/admin/release-versions'
     | '/admin/spaces'
     | '/admin/volunteers'
@@ -127,6 +137,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/admin/audit'
     | '/admin/horses'
+    | '/admin/products'
     | '/admin/release-versions'
     | '/admin/spaces'
     | '/admin/volunteers'
@@ -139,6 +150,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/admin/audit'
     | '/admin/horses'
+    | '/admin/products'
     | '/admin/release-versions'
     | '/admin/spaces'
     | '/admin/volunteers'
@@ -152,6 +164,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   AdminAuditRoute: typeof AdminAuditRoute
   AdminHorsesRoute: typeof AdminHorsesRoute
+  AdminProductsRoute: typeof AdminProductsRoute
   AdminReleaseVersionsRoute: typeof AdminReleaseVersionsRoute
   AdminSpacesRoute: typeof AdminSpacesRoute
   AdminVolunteersRoute: typeof AdminVolunteersRoute
@@ -188,6 +201,13 @@ declare module '@tanstack/react-router' {
       path: '/admin/horses'
       fullPath: '/admin/horses'
       preLoaderRoute: typeof AdminHorsesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/products': {
+      id: '/admin/products'
+      path: '/admin/products'
+      fullPath: '/admin/products'
+      preLoaderRoute: typeof AdminProductsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/release-versions': {
@@ -240,6 +260,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   AdminAuditRoute: AdminAuditRoute,
   AdminHorsesRoute: AdminHorsesRoute,
+  AdminProductsRoute: AdminProductsRoute,
   AdminReleaseVersionsRoute: AdminReleaseVersionsRoute,
   AdminSpacesRoute: AdminSpacesRoute,
   AdminVolunteersRoute: AdminVolunteersRoute,

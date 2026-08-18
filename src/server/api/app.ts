@@ -27,7 +27,7 @@ import { forOrg, type OrgScopedDatabase } from '../../db/for-org'
 import { orgs, volunteers } from '../../db/schema'
 import type { contract } from '../../shared/api-contract'
 import { type DayString } from '../../shared/time'
-import { domainScope, readEverything } from './authorization'
+import { anyDomainScope, domainScope, floor, readEverything } from './authorization'
 import { createApi, json, noContent, type Api, type ApiOptions } from './route'
 import type { Actor, RequestContext } from '../request-context'
 import { auditLog, peopleList, unstaffedScopes } from '../roster/people'
@@ -63,6 +63,10 @@ import {
   recordHorseDeparture,
   type Refusal as HorseRefusal,
 } from '../horses/records'
+import { publishFeedSchedule } from '../horses/feed-schedules'
+import { recordMeasurement } from '../horses/measurements'
+import { productList, supplierList } from '../products/list'
+import { createProduct, createSupplier, editProduct } from '../products/records'
 
 // The server's one entry point, so this is where reporting starts. It is a
 // no-op without a DSN, which is the state of every machine until one is set.
@@ -135,7 +139,11 @@ export function buildApi(
 
   /** The same shape as `refusal`, for the horses-and-Spaces domain's own outcome union. */
   function horseRefusal(because: HorseRefusal) {
-    const missing = because === 'horse_not_found' || because === 'space_not_found'
+    const missing =
+      because === 'horse_not_found' ||
+      because === 'space_not_found' ||
+      because === 'product_not_found' ||
+      because === 'supplier_not_found'
     return json({ error: because }, missing ? 404 : 409)
   }
 
@@ -397,11 +405,41 @@ export function buildApi(
     return json({ horses: listed.map((horse) => ({ ...horse })) })
   })
 
-  /** One horse's profile — the first parameterised path (ADR 0021). */
+  /**
+   * One horse's profile — the first parameterised path (ADR 0021). Carries
+   * the current Feed Schedule per Shift Type and both measurement series in
+   * the same read, so the phone gets the whole profile in one round trip
+   * (#36).
+   */
   api.route('GET', '/horses/:horseId', readEverything(), async ({ context, params }) => {
-    const found = await forOrg(context.orgId).run((db) => horseById(db, params.horseId ?? ''))
+    const found = await forOrg(context.orgId).run(async (db) => {
+      const on = await dayHere(db)
+      return horseById(db, params.horseId ?? '', on)
+    })
     if (found === null) return json({ error: 'horse_not_found' }, 404)
-    return json({ ...found })
+    return json({
+      ...found,
+      feedSchedules: found.feedSchedules.map((schedule) => ({
+        ...schedule,
+        lines: [...schedule.lines],
+      })),
+      measurements: {
+        weights: [...found.measurements.weights],
+        bodyConditions: [...found.measurements.bodyConditions],
+      },
+    })
+  })
+
+  /** Every Supplier, referenced by many Products (ADR 0019). */
+  api.route('GET', '/suppliers', readEverything(), async ({ context }) => {
+    const listed = await forOrg(context.orgId).run((db) => supplierList(db))
+    return json({ suppliers: listed.map((supplier) => ({ ...supplier })) })
+  })
+
+  /** The Product catalogue, every Supplier's name carried along (ADR 0019). */
+  api.route('GET', '/products', readEverything(), async ({ context }) => {
+    const listed = await forOrg(context.orgId).run((db) => productList(db))
+    return json({ products: listed.map((product) => ({ ...product })) })
   })
 
   api.mutation('/spaces', domainScope('horse_care'), async (input, { context, db }) => {
@@ -446,6 +484,80 @@ export function buildApi(
     const actor = actorOf(context)
     const outcome = await recordHorseDeparture(db, context.orgId, actor.volunteerId, input)
     return outcome.ok ? noContent() : horseRefusal(outcome.because)
+  })
+
+  api.mutation(
+    '/suppliers',
+    anyDomainScope(['horse_care', 'supplies']),
+    async (input, { context, db }) => {
+      const actor = actorOf(context)
+      const outcome = await createSupplier(db, context.orgId, actor.volunteerId, {
+        name: input.name,
+        url: input.url ?? null,
+        note: input.note ?? null,
+      })
+      if (!outcome.ok) return horseRefusal(outcome.because)
+      return json({ supplierId: outcome.value.id }, 201)
+    },
+  )
+
+  /** ADR 0019's one two-Scope record: writable by `horse_care` or `supplies`. */
+  api.mutation(
+    '/products',
+    anyDomainScope(['horse_care', 'supplies']),
+    async (input, { context, db }) => {
+      const actor = actorOf(context)
+      const outcome = await createProduct(db, context.orgId, actor.volunteerId, {
+        name: input.name,
+        kind: input.kind,
+        supplierId: input.supplierId ?? null,
+        prescription: input.prescription,
+        reorderPointDays: input.reorderPointDays ?? null,
+        orderingNote: input.orderingNote ?? null,
+      })
+      if (!outcome.ok) return horseRefusal(outcome.because)
+      return json({ productId: outcome.value.id }, 201)
+    },
+  )
+
+  api.mutation(
+    '/products/edit',
+    anyDomainScope(['horse_care', 'supplies']),
+    async (input, { context, db }) => {
+      const actor = actorOf(context)
+      const outcome = await editProduct(db, context.orgId, actor.volunteerId, input)
+      return outcome.ok ? noContent() : horseRefusal(outcome.because)
+    },
+  )
+
+  /**
+   * Publishing a Feed Schedule version. Under `horse_care` — a care
+   * instruction, not a catalogue fact, so `supplies` does not reach it even
+   * though it reaches the Product a line names (ADR 0003, ADR 0019).
+   */
+  api.mutation('/feed-schedules', domainScope('horse_care'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await publishFeedSchedule(db, context.orgId, actor.volunteerId, input)
+    if (!outcome.ok) return horseRefusal(outcome.because)
+    return json({ feedScheduleVersionId: outcome.value.id }, 201)
+  })
+
+  /**
+   * A weight or body-condition entry, on the floor: any signed-in Volunteer
+   * may record one, because it is not an edit to a care instruction
+   * (`CONTEXT.md`'s Weight).
+   */
+  api.mutation('/measurements', floor('record-a-measurement'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await recordMeasurement(db, context.orgId, actor.volunteerId, {
+      horseId: input.horseId,
+      kind: input.kind,
+      value: input.value,
+      method: input.method ?? null,
+      takenOn: input.takenOn,
+    })
+    if (!outcome.ok) return horseRefusal(outcome.because)
+    return json({ measurementId: outcome.value.id }, 201)
   })
 
   // Every path the contract declares now has a handler, or this throws and the

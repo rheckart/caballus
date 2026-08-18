@@ -4,6 +4,7 @@ import type { Actor } from '../request-context'
 import {
   DOMAIN_SCOPES,
   ROLES,
+  anyDomainScope,
   authorize,
   domainScope,
   floor,
@@ -105,6 +106,33 @@ describe('a scope', () => {
       allowed: false,
       status: 401,
       wanted: 'roster',
+    })
+  })
+})
+
+describe('any-scope, for a record two Scopes may edit', () => {
+  it('allows a holder of either named scope', () => {
+    expect(authorize(anyDomainScope(['horse_care', 'supplies']), actor('supplies'))).toEqual({
+      allowed: true,
+    })
+    expect(authorize(anyDomainScope(['horse_care', 'supplies']), actor('horse_care'))).toEqual({
+      allowed: true,
+    })
+  })
+
+  it('refuses a Volunteer holding neither, naming both', () => {
+    expect(authorize(anyDomainScope(['horse_care', 'supplies']), actor('roster'))).toEqual({
+      allowed: false,
+      status: 403,
+      wanted: 'horse_care or supplies',
+    })
+  })
+
+  it('refuses nobody with a 401', () => {
+    expect(authorize(anyDomainScope(['horse_care', 'supplies']), null)).toEqual({
+      allowed: false,
+      status: 401,
+      wanted: 'horse_care or supplies',
     })
   })
 })

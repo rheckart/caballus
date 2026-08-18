@@ -15,6 +15,8 @@ import type { OrgScopedDatabase } from '../../db/for-org'
 import { horseSpaceAssignments, horses, spaces } from '../../db/schema'
 import { isSpaceKind, type SpaceKind } from '../../shared/spaces'
 import { dayString, type DayString } from '../../shared/time'
+import { currentFeedSchedulesFor, type CurrentFeedSchedule } from './feed-schedules'
+import { measurementsFor, type HorseMeasurements } from './measurements'
 
 export interface SpaceRef {
   readonly id: string
@@ -100,8 +102,22 @@ export async function horseList(db: OrgScopedDatabase): Promise<readonly Horse[]
   }))
 }
 
-/** One horse, or `null` — the profile the phone reads by id (ADR 0021's parameterised path). */
-export async function horseById(db: OrgScopedDatabase, horseId: string): Promise<Horse | null> {
+export interface HorseProfile extends Horse {
+  readonly feedSchedules: readonly CurrentFeedSchedule[]
+  readonly measurements: HorseMeasurements
+}
+
+/**
+ * One horse, or `null` — the profile the phone reads by id (ADR 0021's
+ * parameterised path). Carries the current Feed Schedule per Shift Type and
+ * both measurement series, so the phone gets the whole profile in one read
+ * rather than three round trips on a connection that mostly works (#36).
+ */
+export async function horseById(
+  db: OrgScopedDatabase,
+  horseId: string,
+  today: DayString,
+): Promise<HorseProfile | null> {
   const [row] = await db
     .select({
       id: horses.id,
@@ -117,7 +133,11 @@ export async function horseById(db: OrgScopedDatabase, horseId: string): Promise
     .limit(1)
   if (row === undefined) return null
 
-  const assignmentRows = (await assignmentsFor(db)).filter((entry) => entry.horseId === horseId)
+  const [assignmentRows, feedSchedules, measurements] = await Promise.all([
+    assignmentsFor(db).then((rows) => rows.filter((entry) => entry.horseId === horseId)),
+    currentFeedSchedulesFor(db, horseId, today),
+    measurementsFor(db, horseId),
+  ])
 
   return {
     id: row.id,
@@ -128,6 +148,8 @@ export async function horseById(db: OrgScopedDatabase, horseId: string): Promise
     photoUrl: row.photoUrl,
     departedOn: row.departedOn === null ? null : dayString(row.departedOn),
     spaces: spacesOf(assignmentRows),
+    feedSchedules,
+    measurements,
   }
 }
 

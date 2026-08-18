@@ -10,7 +10,12 @@
  */
 
 export type Refusal =
-  'horse_not_found' | 'space_not_found' | 'space_kind_mismatch' | 'space_occupied'
+  | 'horse_not_found'
+  | 'space_not_found'
+  | 'space_kind_mismatch'
+  | 'space_occupied'
+  | 'product_not_found'
+  | 'supplier_not_found'
 
 export type Recorded<T = null> =
   { readonly ok: true; readonly value: T } | { readonly ok: false; readonly because: Refusal }

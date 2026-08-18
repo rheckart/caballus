@@ -33,10 +33,14 @@ export { ROLES, ROLE_NAMES, ROLE_SCOPES, isRole, scopesOf, type Role } from '../
  * what they decided (ADR 0016).
  */
 export type FloorReason =
-  'work-on-a-shift-you-are-rostered-on' | 'record-an-observation' | 'record-your-own-presence'
+  | 'work-on-a-shift-you-are-rostered-on'
+  | 'record-an-observation'
+  | 'record-your-own-presence'
+  | 'record-a-measurement'
 
 export type Authorization =
   | { readonly kind: 'scope'; readonly scope: DomainScope }
+  | { readonly kind: 'any-scope'; readonly scopes: readonly DomainScope[] }
   | { readonly kind: 'shift-authority' }
   | { readonly kind: 'floor'; readonly because: FloorReason }
   | { readonly kind: 'read-everything' }
@@ -49,6 +53,20 @@ export type Authorization =
  */
 export function domainScope(required: DomainScope): Authorization {
   return { kind: 'scope', scope: required }
+}
+
+/**
+ * This endpoint requires any one of several Domain Scopes.
+ *
+ * ADR 0019's one two-Scope record: a Product is editable by holders of either
+ * `horse_care` or `supplies`, refused as field-level scoping on the grounds
+ * that a third authorization axis is the thing ADR 0010 warns against — so the
+ * choice is between the two Scopes wholesale, not a split of the record.
+ * Not a general mechanism to reach for; a second call site is the tripwire to
+ * revisit whether this earns a wider one.
+ */
+export function anyDomainScope(scopes: readonly DomainScope[]): Authorization {
+  return { kind: 'any-scope', scopes }
 }
 
 /** This endpoint requires Shift Authority over the Shift it names. */
@@ -109,6 +127,16 @@ export function authorize(required: Authorization, actor: Actor | null): Decisio
         ? { allowed: true }
         : { allowed: false, status: 403, wanted: required.scope }
 
+    case 'any-scope': {
+      const wanted = required.scopes.join(' or ')
+      if (actor === null) {
+        return { allowed: false, status: 401, wanted }
+      }
+      return required.scopes.some((scope) => actor.domainScopes.includes(scope))
+        ? { allowed: true }
+        : { allowed: false, status: 403, wanted }
+    }
+
     case 'shift-authority':
       // Shift Authority is held over one Shift and expires when it closes, so
       // the check is a join against that Shift's roster. The Shift model
@@ -124,6 +152,8 @@ export function describeAuthorization(required: Authorization): string {
   switch (required.kind) {
     case 'scope':
       return required.scope
+    case 'any-scope':
+      return required.scopes.join(' or ')
     case 'shift-authority':
       return 'shift authority'
     case 'floor':
