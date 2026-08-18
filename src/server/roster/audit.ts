@@ -44,6 +44,7 @@ export const AUDIT_ENTITIES = [
   'shift_pattern',
   'shift_pattern_roster',
   'shift_roster',
+  'task',
 ] as const
 
 export type AuditEntity = (typeof AUDIT_ENTITIES)[number]

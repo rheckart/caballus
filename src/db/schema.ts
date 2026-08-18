@@ -1259,3 +1259,178 @@ export const shiftRoster = pgTable(
     inScope('shift_roster_in_scope'),
   ],
 ).enableRLS()
+
+/**
+ * The Task catalogue (`CONTEXT.md`'s Task; ADR 0013). Current state plus an
+ * audit entry (ADR 0003) — a Task is *what the checklist should say*, edited
+ * the way a Product is, and never a version, because a mistyped instruction is
+ * a correction and not a new plan somebody executed under the old one.
+ *
+ * **What the rescue may choose among is fixed, and this fence is deliberate**
+ * (ADR 0013): subject kind, priority, period, whether it needs Medication
+ * Authority, an optional Condition gate, an optional Prep target, a nullable
+ * tolerance, the closing flag, and instruction text. A catalogue with a ninth
+ * field open to invention is a workflow builder, and nobody at this rescue
+ * wants to configure one.
+ */
+export const tasks = pgTable(
+  'tasks',
+  {
+    id: uuid('id').primaryKey(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id),
+    /** One of `TASK_SUBJECT_KINDS` in `src/shared/materialization.ts` — horse, space, or rescue. */
+    subjectKind: text('subject_kind').notNull(),
+    /** One of `TASK_PRIORITIES` — Essential or Discretionary. */
+    priority: text('priority').notNull(),
+    /** One of `TASK_PERIODS` — Shift or Day. */
+    period: text('period').notNull(),
+    requiresMedicationAuthority: boolean('requires_medication_authority').notNull().default(false),
+    /** One of `CONDITIONS` in `src/shared/weather.ts`, or null for an unconditional Task. */
+    conditionName: text('condition_name'),
+    /** One of `SHIFT_TYPES`, where this Task is Prep owed to a later Shift Type rather than work done now. */
+    prepForShiftType: text('prep_for_shift_type'),
+    /** Nullable, in the Task's own `period` unit — null means never overdue (ADR 0013). */
+    toleranceCount: integer('tolerance_count'),
+    /** Whether this belongs on the closing checklist rather than the working one. */
+    closing: boolean('closing').notNull().default(false),
+    /** Generic instruction text, shown first on every Item this Task produces. */
+    instructionText: text('instruction_text').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdBy: uuid('created_by').references(() => volunteers.id),
+  },
+  (table) => [
+    index('tasks_subject_kind').on(table.orgId, table.subjectKind),
+    inScope('tasks_in_scope'),
+  ],
+).enableRLS()
+
+/**
+ * A Task Assignment: which Shift Type normally does one Task for one Subject
+ * (`CONTEXT.md`'s Task Assignment; ADR 0013). This is the `GROOM` column
+ * generalized — one record for the pair, versioned like a Threshold and
+ * carrying the same three states (ADR 0015, ADR 0003's versioned tier):
+ * `assigned` to a Shift Type, deliberately `deliberately_none`, or **not yet
+ * decided**, which is the absence of a row rather than a value.
+ *
+ * The Subject is a horse, a Space, or the rescue as a whole — `horseId` and
+ * `spaceId` are both null for the rescue, exactly one is set otherwise, the
+ * same shape `weather_condition_resolutions` uses for a per-horse-or-barn
+ * answer. Subject-specific instruction text rides along, because it already
+ * exists per (Task, Subject) and a second entity would carry nothing new.
+ *
+ * **No audit entry** — the discipline `threshold_versions` and
+ * `feed_schedule_versions` both follow: a versioned-tier change *is* a
+ * version.
+ */
+export const taskAssignments = pgTable(
+  'task_assignments',
+  {
+    id: uuid('id').primaryKey(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id),
+    taskId: uuid('task_id')
+      .notNull()
+      .references(() => tasks.id),
+    /** Null for a Space or rescue Subject. */
+    horseId: uuid('horse_id').references(() => horses.id),
+    /** Null for a Horse or rescue Subject. */
+    spaceId: uuid('space_id').references(() => spaces.id),
+    /** One of `TASK_ASSIGNMENT_STANCES` — `assigned` or `deliberately_none`. */
+    stance: text('stance').notNull(),
+    /** One of `SHIFT_TYPES`. Required by `assigned`; null for `deliberately_none`. */
+    shiftType: text('shift_type'),
+    /** Subject-specific instruction text, shown second on the Item (ADR 0013). */
+    instructionText: text('instruction_text'),
+    validFrom: date('valid_from').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdBy: uuid('created_by').references(() => volunteers.id),
+  },
+  (table) => [
+    // The read every materialization and every admin screen makes: the latest
+    // version per (Task, Subject) — the same shape `threshold_versions_current`
+    // reads, generalized from one Subject column to two.
+    index('task_assignments_current').on(
+      table.orgId,
+      table.taskId,
+      table.horseId,
+      table.spaceId,
+      table.validFrom,
+    ),
+    inScope('task_assignments_in_scope'),
+  ],
+).enableRLS()
+
+/**
+ * A materialized Item: one Task, one Subject, on one day (`CONTEXT.md`'s Item;
+ * ADR 0013). Materialized once, at the start of the Shift's day, and never
+ * regenerated — this row *is* the frozen decision, which is why it carries the
+ * resolved instruction text and Condition citation rather than a pointer back
+ * to versions that may since have moved.
+ *
+ * **`shiftId` is null for a per-Day Item.** A Shift-period Task belongs to the
+ * one dated Shift it was materialized for; a Day-period Task (mucking stalls,
+ * grooming) belongs to the day itself, and either Shift that day may satisfy
+ * it — which is why it is not duplicated per Shift (ADR 0013).
+ *
+ * **`materializationKey` is what makes running materialization twice create
+ * nothing twice** — the same discipline `shifts_occurrence` gives generation:
+ * a pure function decides the key, and the unique index on it is what holds
+ * when two runs overlap.
+ *
+ * No audit entry: an Item is a materialization, not an edit, and ADR 0013's
+ * outcomes — Done, Dropped, Not done — are a later ticket's write.
+ */
+export const items = pgTable(
+  'items',
+  {
+    id: uuid('id').primaryKey(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id),
+    day: date('day').notNull(),
+    /** Null for a per-Day Item, which belongs to the day rather than to one Shift. */
+    shiftId: uuid('shift_id').references(() => shifts.id),
+    /** One of `ITEM_KINDS` — `feed`, `medicate`, or `task`. */
+    kind: text('kind').notNull(),
+    /** Null for `feed` and `medicate`, which are derived from Feed Schedules rather than a Task. */
+    taskId: uuid('task_id').references(() => tasks.id),
+    /** One of `TASK_SUBJECT_KINDS`. */
+    subjectKind: text('subject_kind').notNull(),
+    horseId: uuid('horse_id').references(() => horses.id),
+    spaceId: uuid('space_id').references(() => spaces.id),
+    /** One of `TASK_PRIORITIES`, copied at materialization. */
+    priority: text('priority').notNull(),
+    requiresMedicationAuthority: boolean('requires_medication_authority').notNull().default(false),
+    /** Generic and subject-specific instruction text, already combined (ADR 0013). */
+    instructionText: text('instruction_text').notNull(),
+    /** The Shift Type the Task Assignment named, or null where none applies or none is decided. */
+    assignedShiftType: text('assigned_shift_type'),
+    /** True where a Horse or Space Subject has no Task Assignment row at all — an unanswered question, never no work. */
+    assignmentUndecided: boolean('assignment_undecided').notNull().default(false),
+    /** One of `SHIFT_TYPES`, where this Item is Prep owed to a later Shift Type. */
+    prepForShiftType: text('prep_for_shift_type'),
+    closing: boolean('closing').notNull().default(false),
+    /** One of `CONDITIONS`, where this Item exists only because it held. */
+    conditionName: text('condition_name'),
+    /** The Reading this Item's Condition was resolved against, so a card can cite it. */
+    conditionReadingId: uuid('condition_reading_id').references(() => weatherReadings.id),
+    /**
+     * The deterministic identity `src/shared/materialization.ts` computes for
+     * this Item — day, Shift or day-scope, kind, Task and Subject — and the
+     * unique index below is what makes a second materialization run create
+     * nothing twice.
+     */
+    materializationKey: text('materialization_key').notNull(),
+    materializedAt: timestamp('materialized_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('items_materialization_key').on(table.orgId, table.materializationKey),
+    // The read a Shift's checklist makes: its own Items, plus the day's.
+    index('items_shift').on(table.orgId, table.shiftId),
+    index('items_day').on(table.orgId, table.day),
+    inScope('items_in_scope'),
+  ],
+).enableRLS()

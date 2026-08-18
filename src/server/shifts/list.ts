@@ -301,17 +301,22 @@ export async function shiftList(
     })
 }
 
-/** One Shift, for a write that needs to know it exists. */
+/**
+ * One Shift, for a write that needs to know it exists — and for the checklist
+ * read, which needs its day and Shift Type to find the right Items (ADR
+ * 0013). `shiftType` is null for a Pop-up, which materializes nothing.
+ */
 export async function shiftById(
   db: OrgScopedDatabase,
   shiftId: string,
-): Promise<{ id: string; day: DayString } | null> {
+): Promise<{ id: string; day: DayString; shiftType: AnyShiftType } | null> {
   const [row] = await db
-    .select({ id: shifts.id, day: shifts.day })
+    .select({ id: shifts.id, day: shifts.day, shiftType: shifts.shiftType })
     .from(shifts)
     .where(and(eq(shifts.id, shiftId)))
     .limit(1)
-  return row === undefined ? null : { id: row.id, day: dayString(row.day) }
+  if (row === undefined || !isAnyShiftType(row.shiftType)) return null
+  return { id: row.id, day: dayString(row.day), shiftType: row.shiftType }
 }
 
 /** The week in order, read off the vocabulary rather than spelled a second time. */

@@ -64,6 +64,13 @@
       "when": 1787079318856,
       "tag": "0008_silly_azazel",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1787082514534,
+      "tag": "0009_narrow_human_torch",
+      "breakpoints": true
     }
   ]
 }

@@ -28,7 +28,7 @@
  * leaves a Shift leaderless exactly when the suggested person did not show
  * (ADR 0010).
  */
-import { createFileRoute } from '@tanstack/react-router'
+import { Link, createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useState } from 'react'
 
 import { client } from '../shared/api-client'
@@ -179,6 +179,18 @@ function MyShifts() {
                   {shift.purpose !== null && <> — {shift.purpose}</>}
                   {shift.state === 'in_progress' && <em> — under way</em>}
                   <WhatIsMissing shift={shift} within={soon(shift)} />
+                  {/* A Pop-up materializes no checklist — it authors its own
+                      list, and this ticket does not build that screen
+                      (ADR 0013) — so the link is offered only where one
+                      might exist. */}
+                  {shift.shiftType !== 'pop_up' && (
+                    <>
+                      {' '}
+                      <Link to="/shifts/$shiftId" params={{ shiftId: shift.id }}>
+                        Checklist
+                      </Link>
+                    </>
+                  )}
                   {/* Short is declared and cleared by whoever carries Shift
                       Authority here, which is what the Lead needs at 5am on
                       the screen they are already looking at (ADR 0011). The
