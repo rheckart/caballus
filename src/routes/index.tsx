@@ -98,6 +98,9 @@ function Home() {
                 <Link to="/admin/products">Products and Suppliers</Link>
               </li>
               <li>
+                <Link to="/admin/thresholds">Thresholds</Link>
+              </li>
+              <li>
                 <Link to="/admin/release-versions">Release versions</Link>
               </li>
               <li>

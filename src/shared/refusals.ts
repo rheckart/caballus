@@ -35,6 +35,12 @@ const REFUSALS: Record<string, string> = {
   space_not_found: 'That Space is gone.',
   space_kind_mismatch: "That Space isn't the right kind for this assignment.",
   space_occupied: 'A horse still holds that Space. Clear it before changing kind.',
+  threshold_value_required: 'Give the number, or put the horse on the rescue’s number instead.',
+  threshold_not_per_horse: 'That number is one answer for the whole barn, not a per-horse one.',
+  coordinates_not_set:
+    'Nobody has told this deployment where the barn is. Set BARN_LATITUDE and BARN_LONGITUDE.',
+  forecast_unavailable:
+    'No weather service answered and there is no earlier forecast for today to fall back on. Try again shortly.',
 }
 
 /** What a failed call says when the server never answered at all. */

@@ -13,7 +13,10 @@
  * rescue is off the whiteboard. Its record stays reachable at its profile,
  * where the history lives (ADR 0002).
  *
- * It records nothing and credits nobody (ADR 0022).
+ * It records nothing and credits nobody (ADR 0022). **Today's Reading rides
+ * along** (#38): the barn reads *staying in* off the wall, and a grid stitched
+ * from two reads is two chances for the weather panel and the rows to be
+ * describing different minutes.
  */
 import { eq } from 'drizzle-orm'
 
@@ -22,6 +25,7 @@ import { horseSpaceAssignments, horses, spaces } from '../../db/schema'
 import { arrangeBoard, type BoardSection, type BoardSpaceRef } from '../../shared/board'
 import type { DayString } from '../../shared/time'
 import { currentFeedSchedulesByHorse, type CurrentFeedSchedule } from '../horses/feed-schedules'
+import { readingFor, type Reading } from '../weather/readings'
 
 /** A horse as one row of the grid carries it. */
 export interface BoardHorse {
@@ -38,6 +42,8 @@ export interface BoardHorse {
 export interface BoardGrid {
   readonly today: DayString
   readonly sections: readonly BoardSection<BoardHorse>[]
+  /** Null where nothing has fixed today's weather yet — a question, not a calm day. */
+  readonly weather: Reading | null
 }
 
 interface AssignmentRow {
@@ -49,7 +55,7 @@ interface AssignmentRow {
 
 /** The grid, in stall order, sections and all. */
 export async function boardGrid(db: OrgScopedDatabase, today: DayString): Promise<BoardGrid> {
-  const [horseRows, assignmentRows, stallRows, feedings] = await Promise.all([
+  const [horseRows, assignmentRows, stallRows, feedings, weather] = await Promise.all([
     db
       .select({
         id: horses.id,
@@ -73,6 +79,7 @@ export async function boardGrid(db: OrgScopedDatabase, today: DayString): Promis
     // (ADR 0002).
     db.select({ id: spaces.id, kind: spaces.kind, name: spaces.name }).from(spaces),
     currentFeedSchedulesByHorse(db, today),
+    readingFor(db, today),
   ])
 
   const assignmentsBy = new Map<string, AssignmentRow[]>()
@@ -106,5 +113,5 @@ export async function boardGrid(db: OrgScopedDatabase, today: DayString): Promis
     .filter((row) => row.kind === 'stall')
     .map((row) => ({ id: row.id, name: row.name }))
 
-  return { today, sections: arrangeBoard(here, stalls) }
+  return { today, sections: arrangeBoard(here, stalls), weather }
 }

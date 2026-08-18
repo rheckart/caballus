@@ -68,6 +68,10 @@ import { recordMeasurement } from '../horses/measurements'
 import { productList, supplierList } from '../products/list'
 import { boardGrid } from '../board/grid'
 import { createProduct, createSupplier, editProduct } from '../products/records'
+import { currentThresholds, publishThreshold } from '../weather/thresholds'
+import { readingFor, recordReading } from '../weather/readings'
+import type { Refusal as WeatherRefusal } from '../weather/outcome'
+import { THRESHOLD_SPECS } from '../../shared/weather'
 
 // The server's one entry point, so this is where reporting starts. It is a
 // no-op without a DSN, which is the state of every machine until one is set.
@@ -146,6 +150,25 @@ export function buildApi(
       because === 'product_not_found' ||
       because === 'supplier_not_found'
     return json({ error: because }, missing ? 404 : 409)
+  }
+
+  /**
+   * The same shape again, for the weather domain — and the one place a refusal
+   * here is deliberately **not** a 409.
+   *
+   * 409 means *this will not become true by retrying*, and a phone's queue
+   * drops on it. A Threshold that needs a number it does not carry is exactly
+   * that. **A forecast nobody answered is the opposite**: both providers were
+   * slow for a minute and there was nothing to reuse, which is the single most
+   * retryable outcome in the domain, and dropping the day's Reading over it
+   * would be the queue doing the wrong thing confidently. Unconfigured
+   * coordinates are a deployment fault, which is the same 503 `/day` already
+   * answers with when `APP_ORG_ID` names nothing.
+   */
+  function weatherRefusal(because: WeatherRefusal) {
+    if (because === 'horse_not_found') return json({ error: because }, 404)
+    const deployment = because === 'coordinates_not_set' || because === 'forecast_unavailable'
+    return json({ error: because }, deployment ? 503 : 409)
   }
 
   api.route('GET', '/day', readEverything(), async ({ context }) => {
@@ -460,6 +483,14 @@ export function buildApi(
 
     return json({
       today: grid.today,
+      weather:
+        grid.weather === null
+          ? null
+          : {
+              ...grid.weather,
+              hours: [...grid.weather.hours],
+              conditions: [...grid.weather.conditions],
+            },
       sections: grid.sections.map((section) => ({
         heading: section.heading,
         rows: section.rows.map((row) => ({
@@ -479,6 +510,55 @@ export function buildApi(
                 },
         })),
       })),
+    })
+  })
+
+  /**
+   * The numbers the rescue owns, and the decisions still owed on them.
+   *
+   * `readEverything()`, because a volunteer standing in a barn at 38 ° has
+   * every reason to know which horses get sheets — the numbers are on a
+   * whiteboard in that barn today. Editing them is `horse_care` (ADR 0015).
+   */
+  api.route('GET', '/thresholds', readEverything(), async ({ context }) => {
+    const current = await forOrg(context.orgId).run(async (db) => {
+      const on = await dayHere(db)
+      return { on, thresholds: await currentThresholds(db, on) }
+    })
+
+    return json({
+      today: current.on,
+      defaults: current.thresholds.defaults.map((record) => ({ ...record })),
+      horses: current.thresholds.horses.map((horse) => ({
+        horseId: horse.horseId,
+        horseName: horse.horseName,
+        records: horse.records.map((record) => ({ ...record })),
+        undecided: [...horse.undecided],
+      })),
+    })
+  })
+
+  /**
+   * Today's Reading, whole — the hours it read as well as what they resolved
+   * to, because *why was this horse blanketed* is answered by the conditions
+   * as read at the time (ADR 0015, #6).
+   */
+  api.route('GET', '/weather', readEverything(), async ({ context }) => {
+    const answered = await forOrg(context.orgId).run(async (db) => {
+      const on = await dayHere(db)
+      return { on, reading: await readingFor(db, on) }
+    })
+
+    return json({
+      day: answered.on,
+      reading:
+        answered.reading === null
+          ? null
+          : {
+              ...answered.reading,
+              hours: [...answered.reading.hours],
+              conditions: [...answered.reading.conditions],
+            },
     })
   })
 
@@ -580,6 +660,62 @@ export function buildApi(
     const outcome = await publishFeedSchedule(db, context.orgId, actor.volunteerId, input)
     if (!outcome.ok) return horseRefusal(outcome.because)
     return json({ feedScheduleVersionId: outcome.value.id }, 201)
+  })
+
+  /**
+   * Publishing a Threshold version — the rescue default or one horse's own.
+   *
+   * Under `horse_care`, the scope that owns care instructions: these numbers
+   * decide what goes on a horse at 38 °, and they are edited by the people who
+   * decide that rather than by whoever is on the roster (ADR 0015).
+   *
+   * The metric and the provider default from the kind. Cold is air temperature
+   * and heat is real feel, and a form asking a volunteer to restate that is a
+   * form inviting the one answer that silently re-calibrates every horse in the
+   * barn (#6).
+   */
+  api.mutation('/thresholds', domainScope('horse_care'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await publishThreshold(db, context.orgId, actor.volunteerId, {
+      horseId: input.horseId,
+      kind: input.kind,
+      stance: input.stance,
+      value: input.value ?? null,
+      metric: input.metric ?? THRESHOLD_SPECS[input.kind].metric,
+      // The provider the number is calibrated against, which is the one this
+      // deployment fetches from unless the caller says otherwise.
+      provider: input.provider ?? 'open_meteo',
+      validFrom: input.validFrom,
+    })
+    if (!outcome.ok) return weatherRefusal(outcome.because)
+    return json({ thresholdVersionId: outcome.value.id }, 201)
+  })
+
+  /**
+   * Fixing today's weather: the fetch, the evaluation and the Reading, in one
+   * act.
+   *
+   * Under `horse_care` for now, and it is the daily job's first step the day
+   * there is a daily job (ADR 0013's materialization). It is a write and not a
+   * read with a side effect, because everything downstream reads the row it
+   * wrote rather than the internet.
+   */
+  api.mutation('/weather/readings', domainScope('horse_care'), async (_input, { context, db }) => {
+    const actor = actorOf(context)
+    const [org] = await db.select({ timeZone: orgs.timeZone }).from(orgs).limit(1)
+    if (org === undefined) {
+      throw new Error('The organisation is not visible; APP_ORG_ID names one that does not exist.')
+    }
+
+    const outcome = await recordReading(db, context.orgId, actor.volunteerId, {
+      day: await dayHere(db),
+      timeZone: org.timeZone,
+    })
+    if (!outcome.ok) return weatherRefusal(outcome.because)
+    return json(
+      { readingId: outcome.value.id, provider: outcome.value.provider, stale: outcome.value.stale },
+      201,
+    )
   })
 
   /**
