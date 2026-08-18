@@ -205,6 +205,9 @@ function Home() {
                 <Link to="/contacts">Contacts</Link>
               </li>
               <li>
+                <Link to="/supplies">Supplies</Link>
+              </li>
+              <li>
                 <Link to="/admin/volunteers">Volunteers</Link>
               </li>
               <li>

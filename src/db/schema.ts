@@ -1864,3 +1864,114 @@ export const standingRules = pgTable(
   },
   () => [inScope('standing_rules_in_scope')],
 ).enableRLS()
+
+/**
+ * A count against one Product, written down with its date (`CONTEXT.md`'s
+ * Days of Supply; ADR 0019, #47). ADR 0003's measurement-series tier —
+ * appended, never edited, no reason field — the same shape as a weight, at
+ * the cost of one table and no new concept.
+ *
+ * `daysRemaining` is what a person counted, not a stock level: there is no
+ * unit anywhere in this model (a Feed Schedule's `amount` is free text, "2
+ * wells", and does not divide a sack), so the app's only addition is time —
+ * `src/shared/supplies.ts` decrements this against today and floors at zero,
+ * never asserting a negative number the app does not know.
+ *
+ * Written by holders of `supplies`, or by Shift Authority over the Shift the
+ * recorder is presently on — the person standing in the feed room looking at
+ * the sacks, checked in `src/server/supplies/records.ts` rather than declared
+ * on the route, on `escalateObservation`'s own precedent (ADR 0014).
+ */
+export const daysOfSupplyReadings = pgTable(
+  'days_of_supply_readings',
+  {
+    id: uuid('id').primaryKey(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id),
+    productId: uuid('product_id')
+      .notNull()
+      .references(() => products.id),
+    /** Not an integer: the whiteboard's own "14.5" is a half-sack, and the tell that hand entry beats derivation. */
+    daysRemaining: numeric('days_remaining', { mode: 'number' }).notNull(),
+    countedOn: date('counted_on').notNull(),
+    recordedBy: uuid('recorded_by')
+      .notNull()
+      .references(() => volunteers.id),
+    recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    // The Supplies screen's own read: one Product's series, newest first.
+    index('days_of_supply_readings_product').on(table.orgId, table.productId, table.countedOn),
+    inScope('days_of_supply_readings_in_scope'),
+  ],
+).enableRLS()
+
+/**
+ * One cycle of getting more of a Product (`CONTEXT.md`'s Reorder; ADR 0019,
+ * #47). Borrows the Escalation's shape rather than inventing a fourth
+ * hand-rolled append-only table (ADR 0010's event-store tripwire): Open until
+ * a `supplies` holder closes it with a note, and there is no reopen.
+ *
+ * Carries no quantity and names no horse — both go in the thread, where the
+ * board already put them. `escalationId` is the optional link back to the
+ * Escalation this Reorder may have been created from; the two share no
+ * state — the Escalation closes when answered, this Reorder when the feed
+ * arrives.
+ */
+export const reorders = pgTable(
+  'reorders',
+  {
+    id: uuid('id').primaryKey(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id),
+    productId: uuid('product_id')
+      .notNull()
+      .references(() => products.id),
+    escalationId: uuid('escalation_id').references(() => escalations.id),
+    openedBy: uuid('opened_by')
+      .notNull()
+      .references(() => volunteers.id),
+    openedAt: timestamp('opened_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Null while Open. Set together, and never after — there is no reopen. */
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    closedBy: uuid('closed_by').references(() => volunteers.id),
+    closingNote: text('closing_note'),
+  },
+  (table) => [
+    index('reorders_product').on(table.orgId, table.productId),
+    // The Supplies screen's own read: a holder's open Reorders.
+    index('reorders_open').on(table.orgId, table.closedAt),
+    inScope('reorders_in_scope'),
+  ],
+).enableRLS()
+
+/**
+ * The Reorder's thread — where the dates go, ordered, chased, arrived. Unlike
+ * the Escalation's own thread, writable by `supplies` holders alone: a
+ * Reorder has no reporter with standing the way an Observation does, and the
+ * linked Escalation's thread — still floor-writable — is where the floor
+ * keeps its voice (ADR 0019).
+ */
+export const reorderComments = pgTable(
+  'reorder_comments',
+  {
+    id: uuid('id').primaryKey(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id),
+    reorderId: uuid('reorder_id')
+      .notNull()
+      .references(() => reorders.id),
+    text: text('text').notNull(),
+    authoredBy: uuid('authored_by')
+      .notNull()
+      .references(() => volunteers.id),
+    authoredAt: timestamp('authored_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('reorder_comments_reorder').on(table.orgId, table.reorderId),
+    inScope('reorder_comments_in_scope'),
+  ],
+).enableRLS()

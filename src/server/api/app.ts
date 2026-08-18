@@ -147,6 +147,14 @@ import {
   editStandingRule,
 } from '../contacts/records'
 import type { Refusal as ContactRefusalKind } from '../contacts/outcome'
+import { reorderList, suppliesList } from '../supplies/list'
+import {
+  addReorderComment,
+  closeReorder,
+  openReorder,
+  recordSuppliesReading,
+  type Refusal as SuppliesRefusal,
+} from '../supplies/records'
 
 // The server's one entry point, so this is where reporting starts. It is a
 // no-op without a DSN, which is the state of every machine until one is set.
@@ -320,6 +328,15 @@ export function buildApi(
   /** An Announcement's one refusal — a thing that is not there. */
   function announcementRefusal(because: AnnouncementRefusalKind) {
     return json({ error: because }, 404)
+  }
+
+  /** And again for Days-of-Supply readings and Reorders (ADR 0019). */
+  function suppliesRefusal(because: SuppliesRefusal) {
+    const missing =
+      because === 'product_not_found' ||
+      because === 'reorder_not_found' ||
+      because === 'escalation_not_found'
+    return json({ error: because }, missing ? 404 : 409)
   }
 
   api.route('GET', '/day', readEverything(), async ({ context }) => {
@@ -615,6 +632,35 @@ export function buildApi(
   api.route('GET', '/products', readEverything(), async ({ context }) => {
     const listed = await forOrg(context.orgId).run((db) => productList(db))
     return json({ products: listed.map((product) => ({ ...product })) })
+  })
+
+  /**
+   * Every Product's days-of-supply forecast, whole (ADR 0019, #47) — "every
+   * Volunteer reads everything," the same as the catalogue itself.
+   */
+  api.route('GET', '/supplies', readEverything(), async ({ context }) => {
+    const answered = await forOrg(context.orgId).run(async (db) => {
+      const { today: on } = await clockHere(db)
+      return { today: on, products: await suppliesList(db, on) }
+    })
+    return json({
+      today: answered.today,
+      products: answered.products.map((product) => ({
+        ...product,
+        latestReading: product.latestReading === null ? null : { ...product.latestReading },
+      })),
+    })
+  })
+
+  /**
+   * Every Reorder, on the floor — a `supplies` holder's own open ones are
+   * this same read, filtered on the phone (ADR 0019).
+   */
+  api.route('GET', '/reorders', readEverything(), async ({ context }) => {
+    const entries = await forOrg(context.orgId).run((db) => reorderList(db))
+    return json({
+      reorders: entries.map((entry) => ({ ...entry, comments: [...entry.comments] })),
+    })
   })
 
   /**
@@ -1743,6 +1789,67 @@ export function buildApi(
       return noContent()
     },
   )
+
+  /**
+   * Appends a Days-of-Supply reading — a `supplies` holder from anywhere, or
+   * Shift Authority over the Shift named, both resolved inside
+   * `recordSuppliesReading` rather than declared here, for the same reason
+   * the on-behalf check on `/observations` is (ADR 0019).
+   */
+  api.mutation(
+    '/supplies/readings',
+    floor('record-a-supplies-reading'),
+    async (input, { context, db }) => {
+      const actor = actorOf(context)
+      const outcome = await recordSuppliesReading(db, context.orgId, actor, {
+        productId: input.productId,
+        daysRemaining: input.daysRemaining,
+        countedOn: input.countedOn,
+        shiftId: input.shiftId ?? null,
+      })
+      if (!outcome.ok) return suppliesRefusal(outcome.because)
+      return json({ readingId: outcome.value.id }, 201)
+    },
+  )
+
+  /**
+   * Opens a Reorder against one Product, under `supplies` — `escalationId`
+   * links it back to the Escalation it may have been created from, sharing no
+   * state with it (ADR 0019).
+   */
+  api.mutation('/reorders', domainScope('supplies'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await openReorder(db, context.orgId, actor.volunteerId, {
+      productId: input.productId,
+      escalationId: input.escalationId ?? null,
+    })
+    if (!outcome.ok) return suppliesRefusal(outcome.because)
+    return json({ reorderId: outcome.value.id }, 201)
+  })
+
+  /**
+   * Appends to a Reorder's thread, under `supplies` — never floor-writable,
+   * unlike the Escalation's own thread (ADR 0019).
+   */
+  api.mutation('/reorders/comments', domainScope('supplies'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await addReorderComment(db, context.orgId, actor.volunteerId, {
+      reorderId: input.reorderId,
+      text: input.text,
+    })
+    if (!outcome.ok) return suppliesRefusal(outcome.because)
+    return json({ commentId: outcome.value.id }, 201)
+  })
+
+  /** Closes a Reorder with a note, under `supplies` — there is no reopen (ADR 0019). */
+  api.mutation('/reorders/close', domainScope('supplies'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await closeReorder(db, actor.volunteerId, {
+      reorderId: input.reorderId,
+      note: input.note,
+    })
+    return outcome.ok ? noContent() : suppliesRefusal(outcome.because)
+  })
 
   // Every path the contract declares now has a handler, or this throws and the
   // container does not start. Registering a path nothing declares is a type

@@ -82,6 +82,15 @@ export type FloorReason =
    * same reason escalating is (ADR 0014).
    */
   | 'close-an-escalation'
+  /**
+   * Recording a Days-of-Supply reading: a holder of `supplies`, or Shift
+   * Authority over the Shift the recorder is presently on (ADR 0019). Neither
+   * half is a static fact about this endpoint's payload — `shiftId` is
+   * optional, so this can never be `MutationAuthorization`'s Shift-Authority
+   * type — so both are resolved in `src/server/supplies/records.ts`, on
+   * `escalateObservation`'s own precedent.
+   */
+  | 'record-a-supplies-reading'
 
 /**
  * A position on **one Shift** — `lead`, `co_lead` or `acting_lead` — and,
