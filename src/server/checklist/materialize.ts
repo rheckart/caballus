@@ -16,11 +16,19 @@
  * resolution `/weather/readings` stores, which stands in for a Shift with a
  * day's window until a Shift exists to give it one. This is that Shift.
  */
-import { and, eq, gte, isNull, lte, or } from 'drizzle-orm'
+import { and, eq, gte, inArray, isNull, lte, or } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 
 import type { OrgId, OrgScopedDatabase } from '../../db/for-org'
-import { horses, items, shifts, spaces } from '../../db/schema'
+import {
+  horses,
+  horseSpaceAssignments,
+  itemOutcomes,
+  items,
+  shifts,
+  spaces,
+  volunteers,
+} from '../../db/schema'
 import { currentFeedSchedulesByHorse } from '../horses/feed-schedules'
 import { resolveConditions, windowFor, type HourReading } from '../../shared/conditions'
 import { isShiftType, type ShiftType } from '../../shared/feed-schedule'
@@ -32,10 +40,10 @@ import {
   type ShiftOccurrence,
   type TaskCatalog,
 } from '../../shared/materialization'
-import { instant, type DayString } from '../../shared/time'
+import { instant, type DayString, type Instant } from '../../shared/time'
 import { conditionsScoped, isConditionName, type ConditionName } from '../../shared/weather'
 import { currentTaskAssignments, taskList, type TaskAssignmentRow } from './assignments'
-import { addDays, dayBounds, startOfShift } from '../time'
+import { addDays, dayBounds, instantOfTimestamp, startOfShift } from '../time'
 import { currentThresholds } from '../weather/thresholds'
 import { readingFor } from '../weather/readings'
 
@@ -245,6 +253,8 @@ export interface ChecklistItem {
   readonly subjectKind: 'horse' | 'space' | 'rescue'
   readonly horseId: string | null
   readonly horseName: string | null
+  /** The horse's own stall, where it has one — what a card sorts by (#42). */
+  readonly horseStallName: string | null
   readonly spaceId: string | null
   readonly spaceName: string | null
   readonly priority: 'essential' | 'discretionary'
@@ -255,6 +265,10 @@ export interface ChecklistItem {
   readonly prepForShiftType: ShiftType | null
   readonly closing: boolean
   readonly conditionName: ConditionName | null
+  /** Whether the latest claim against this Item is `done` (ADR 0013, #42). */
+  readonly done: boolean
+  readonly doneAt: Instant | null
+  readonly doneByName: string | null
 }
 
 export interface Checklist {
@@ -307,13 +321,71 @@ export async function checklistForShift(
       ),
   ])
 
+  const [stallNames, outcomes] = await Promise.all([
+    stallNamesFor(db),
+    outcomesFor(
+      db,
+      [...ownRows, ...prepRows].map((row) => row.id),
+    ),
+  ])
+
   const materialized = ownRows.length > 0
 
   return {
     materialized,
-    items: ownRows.map(view),
-    prepOwed: prepRows.map(view),
+    items: ownRows.map((row) => view(row, stallNames, outcomes)),
+    prepOwed: prepRows.map((row) => view(row, stallNames, outcomes)),
   }
+}
+
+/** Every horse's own stall, by horse id — the Board's own `stall` kind (ADR 0002). */
+async function stallNamesFor(db: OrgScopedDatabase): Promise<ReadonlyMap<string, string>> {
+  const rows = await db
+    .select({ horseId: horseSpaceAssignments.horseId, stallName: spaces.name })
+    .from(horseSpaceAssignments)
+    .innerJoin(spaces, eq(spaces.id, horseSpaceAssignments.spaceId))
+    .where(eq(horseSpaceAssignments.kind, 'stall'))
+
+  return new Map(rows.map((row) => [row.horseId, row.stallName]))
+}
+
+/**
+ * The latest claim against each of `itemIds`, by id — "latest" because ADR
+ * 0013 makes an Item's current outcome the newest of its append-only series,
+ * never a value overwritten in place. Only `done` is ever written today
+ * (#42), so this reads as *has anyone claimed it, and when, and who*.
+ */
+async function outcomesFor(
+  db: OrgScopedDatabase,
+  itemIds: readonly string[],
+): Promise<
+  ReadonlyMap<string, { readonly outcome: string; readonly at: Instant; readonly by: string }>
+> {
+  if (itemIds.length === 0) return new Map()
+
+  const rows = await db
+    .select({
+      itemId: itemOutcomes.itemId,
+      outcome: itemOutcomes.outcome,
+      claimedAt: itemOutcomes.claimedAt,
+      claimedByName: volunteers.name,
+    })
+    .from(itemOutcomes)
+    .innerJoin(volunteers, eq(volunteers.id, itemOutcomes.claimedBy))
+    .where(inArray(itemOutcomes.itemId, itemIds))
+    .orderBy(itemOutcomes.claimedAt)
+
+  // Ordered oldest first, so the last write for a given Item id in this loop
+  // is the latest claim — no second pass to find a maximum.
+  const by = new Map<string, { outcome: string; at: Instant; by: string }>()
+  for (const row of rows) {
+    by.set(row.itemId, {
+      outcome: row.outcome,
+      at: instantOfTimestamp(row.claimedAt),
+      by: row.claimedByName,
+    })
+  }
+  return by
 }
 
 const SELECTED = {
@@ -334,23 +406,32 @@ const SELECTED = {
   conditionName: items.conditionName,
 }
 
-function view(row: {
-  readonly id: string
-  readonly kind: string
-  readonly subjectKind: string
-  readonly horseId: string | null
-  readonly horseName: string | null
-  readonly spaceId: string | null
-  readonly spaceName: string | null
-  readonly priority: string
-  readonly requiresMedicationAuthority: boolean
-  readonly instructionText: string
-  readonly assignedShiftType: string | null
-  readonly assignmentUndecided: boolean
-  readonly prepForShiftType: string | null
-  readonly closing: boolean
-  readonly conditionName: string | null
-}): ChecklistItem {
+function view(
+  row: {
+    readonly id: string
+    readonly kind: string
+    readonly subjectKind: string
+    readonly horseId: string | null
+    readonly horseName: string | null
+    readonly spaceId: string | null
+    readonly spaceName: string | null
+    readonly priority: string
+    readonly requiresMedicationAuthority: boolean
+    readonly instructionText: string
+    readonly assignedShiftType: string | null
+    readonly assignmentUndecided: boolean
+    readonly prepForShiftType: string | null
+    readonly closing: boolean
+    readonly conditionName: string | null
+  },
+  stallNames: ReadonlyMap<string, string>,
+  outcomes: ReadonlyMap<
+    string,
+    { readonly outcome: string; readonly at: Instant; readonly by: string }
+  >,
+): ChecklistItem {
+  const latest = outcomes.get(row.id) ?? null
+
   return {
     id: row.id,
     kind: row.kind === 'feed' || row.kind === 'medicate' ? row.kind : 'task',
@@ -358,6 +439,7 @@ function view(row: {
       row.subjectKind === 'horse' || row.subjectKind === 'space' ? row.subjectKind : 'rescue',
     horseId: row.horseId,
     horseName: row.horseName,
+    horseStallName: row.horseId === null ? null : (stallNames.get(row.horseId) ?? null),
     spaceId: row.spaceId,
     spaceName: row.spaceName,
     priority: row.priority === 'discretionary' ? 'discretionary' : 'essential',
@@ -375,5 +457,8 @@ function view(row: {
     closing: row.closing,
     conditionName:
       row.conditionName !== null && isConditionName(row.conditionName) ? row.conditionName : null,
+    done: latest?.outcome === 'done',
+    doneAt: latest === null ? null : latest.at,
+    doneByName: latest === null ? null : latest.by,
   }
 }

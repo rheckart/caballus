@@ -1436,6 +1436,56 @@ export const items = pgTable(
 ).enableRLS()
 
 /**
+ * A claim against one Item: *I did this*, from an actor, at a moment
+ * (`CONTEXT.md`'s Item outcomes; ADR 0013, #42). **Append-only, never
+ * updated** — ADR 0013 says reversal appends rather than deletes, so the
+ * current outcome is the latest row for an Item rather than a column on it,
+ * and a second claim under a different key is a second fact rather than a
+ * correction to the first.
+ *
+ * `shiftId` is the Shift open on the phone that made the claim, which is not
+ * always the Item's own: a per-Day Item's `items.shiftId` is null, and either
+ * Shift that day may satisfy it (ADR 0013), so the claim needs its own record
+ * of which one the volunteer was actually standing on.
+ *
+ * **Only `done` is written today.** ADR 0013 names four outcomes — Done,
+ * Dropped, Not done, and blank as the default nothing here ever writes — and
+ * `outcome` is text rather than an enum column for the same reason `position`
+ * on `shift_roster` is, so the other three arrive as a value rather than a
+ * migration (#42).
+ *
+ * No audit entry: this *is* the record, the way `items` itself carries none.
+ */
+export const itemOutcomes = pgTable(
+  'item_outcomes',
+  {
+    id: uuid('id').primaryKey(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id),
+    itemId: uuid('item_id')
+      .notNull()
+      .references(() => items.id),
+    shiftId: uuid('shift_id')
+      .notNull()
+      .references(() => shifts.id),
+    /** `done` today; ADR 0013's other two are a later ticket's write. */
+    outcome: text('outcome').notNull(),
+    /** Free text, for the outcomes that carry one — none does yet. */
+    reason: text('reason'),
+    claimedAt: timestamp('claimed_at', { withTimezone: true }).notNull().defaultNow(),
+    claimedBy: uuid('claimed_by')
+      .notNull()
+      .references(() => volunteers.id),
+  },
+  (table) => [
+    // The read a checklist makes: every claim against one Item, newest first.
+    index('item_outcomes_item').on(table.orgId, table.itemId),
+    inScope('item_outcomes_in_scope'),
+  ],
+).enableRLS()
+
+/**
  * The sign-in sheet, replaced: one row per visit (ADR 0012; `CONTEXT.md`'s
  * Attendance).
  *

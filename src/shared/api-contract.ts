@@ -873,6 +873,8 @@ const checklistItem = z.object({
   subjectKind: taskSubjectKind,
   horseId: z.string().nullable(),
   horseName: z.string().nullable(),
+  /** The horse's own stall, where it has one — what a card sorts by (#42). */
+  horseStallName: z.string().nullable(),
   spaceId: z.string().nullable(),
   spaceName: z.string().nullable(),
   priority: taskPriority,
@@ -885,6 +887,11 @@ const checklistItem = z.object({
   prepForShiftType: shiftType.nullable(),
   closing: z.boolean(),
   conditionName: conditionName.nullable(),
+  /** Whether the latest claim against this Item is Done (ADR 0013, #42). */
+  done: z.boolean(),
+  /** Epoch milliseconds, or null where nobody has ticked this yet. */
+  doneAt: z.number().nullable(),
+  doneByName: z.string().nullable(),
 })
 
 /**
@@ -1569,6 +1576,23 @@ export const contract = {
         supervisingAdultPhone: z.string().max(30).nullish(),
       }),
       answers: z.void(),
+    },
+    /**
+     * Ticks an Item Done — the shift prep queue's write (ADR 0005, ADR 0013,
+     * #42). `shiftId` is the Shift open on the phone, which is not always the
+     * Item's own: a per-Day Item belongs to the day, and either Shift that
+     * day may satisfy it, so this names which one the volunteer was actually
+     * standing on. Any Volunteer rostered on that Shift may tick any Item it
+     * shows; a Medicate Item needs Medication Authority besides, checked on
+     * the server and refused explicitly rather than hidden.
+     *
+     * Queues like any other statement about work that already happened — it
+     * carries no `neverQueued`, unlike Cover, Drop and Acting Lead, because a
+     * tick is true whether or not the app knows it yet.
+     */
+    '/items/done': {
+      accepts: z.object({ shiftId: z.uuid(), itemId: z.uuid() }),
+      answers: z.object({ itemOutcomeId: z.string() }),
     },
   },
 } as const satisfies Contract
