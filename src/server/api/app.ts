@@ -114,6 +114,15 @@ import { shiftById } from '../shifts/list'
 import type { ShiftType } from '../../shared/feed-schedule'
 import { attendanceLedger } from '../attendance/list'
 import { signIn, signOut, type Refusal as AttendanceRefusal } from '../attendance/records'
+import { escalationList, observationsFor, reporterEmail } from '../observations/list'
+import { noteObservation, recordObservation } from '../observations/records'
+import {
+  addEscalationComment,
+  closeEscalation,
+  escalateObservation,
+  type Refusal as ObservationRefusal,
+} from '../observations/escalations'
+import { notifyClosed, notifyCommented, notifyEscalated } from '../observations/notify'
 import { currentAnnouncements } from '../announcements/list'
 import { createAnnouncement, editAnnouncement } from '../announcements/records'
 import type { Refusal as AnnouncementRefusalKind } from '../announcements/outcome'
@@ -278,6 +287,15 @@ export function buildApi(
    */
   function attendanceRefusal(because: AttendanceRefusal) {
     const missing = because === 'volunteer_not_found' || because === 'shift_not_found'
+    return json({ error: because }, missing ? 404 : 409)
+  }
+
+  /** And again for Observations and Escalations (ADR 0014). */
+  function observationRefusal(because: ObservationRefusal) {
+    const missing =
+      because === 'observation_not_found' ||
+      because === 'escalation_not_found' ||
+      because === 'subject_not_found'
     return json({ error: because }, missing ? 404 : 409)
   }
 
@@ -865,6 +883,34 @@ export function buildApi(
     return json({ entries: entries.map((entry) => ({ ...entry })) })
   })
 
+  /**
+   * One Attendance's own Observations — the Visit sign-out screen's own read,
+   * and readable to everyone on ADR 0010's floor (ADR 0014).
+   */
+  api.route('GET', '/observations/:attendanceId', readEverything(), async ({ context, params }) => {
+    const entries = await forOrg(context.orgId).run((db) =>
+      observationsFor(db, params.attendanceId ?? ''),
+    )
+    return json({
+      observations: entries.map((entry) => ({
+        ...entry,
+        escalatedScopes: [...entry.escalatedScopes],
+      })),
+    })
+  })
+
+  /**
+   * Every Escalation, on the floor — "everyone reads everything," and the
+   * home section that shows only a holder's open ones is the phone filtering
+   * this same read rather than a second one (ADR 0014).
+   */
+  api.route('GET', '/escalations', readEverything(), async ({ context }) => {
+    const entries = await forOrg(context.orgId).run((db) => escalationList(db))
+    return json({
+      escalations: entries.map((entry) => ({ ...entry, comments: [...entry.comments] })),
+    })
+  })
+
   api.mutation('/spaces', domainScope('horse_care'), async (input, { context, db }) => {
     const actor = actorOf(context)
     const outcome = await createSpace(db, context.orgId, actor.volunteerId, input)
@@ -1439,6 +1485,115 @@ export function buildApi(
         supervisingAdultPhone: input.supervisingAdultPhone ?? null,
       })
       return outcome.ok ? noContent() : attendanceRefusal(outcome.because)
+    },
+  )
+
+  /**
+   * Records an Observation, on ADR 0010's floor: needs no Domain Scope, and
+   * attaches to the recorder's own open Attendance. `observerVolunteerId` is
+   * Shift Authority's own act, checked inside `recordObservation` because
+   * `shiftId` is nullable here and so this write can never declare Shift
+   * Authority's own type (`src/server/api/route.ts`).
+   */
+  api.mutation('/observations', floor('record-an-observation'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await recordObservation(db, context.orgId, actor, {
+      shiftId: input.shiftId ?? null,
+      text: input.text,
+      subjectKind: input.subjectKind ?? null,
+      subjectId: input.subjectId ?? null,
+      subjectLabel: input.subjectLabel ?? null,
+      observerVolunteerId: input.observerVolunteerId ?? null,
+    })
+    if (!outcome.ok) return observationRefusal(outcome.because)
+    return json({ observationId: outcome.value.id }, 201)
+  })
+
+  /**
+   * A Visit's own second exit at sign-out: noted, with no action — belongs to
+   * the Observation's own recorder alone, checked inside `noteObservation`
+   * (ADR 0014).
+   */
+  api.mutation(
+    '/observations/note',
+    floor('disposition-your-own-observation'),
+    async (input, { context, db }) => {
+      const actor = actorOf(context)
+      const outcome = await noteObservation(db, actor.volunteerId, {
+        observationId: input.observationId,
+      })
+      return outcome.ok ? noContent() : observationRefusal(outcome.because)
+    },
+  )
+
+  /**
+   * Escalates an Observation to one Domain Scope: Shift Authority over the
+   * Shift it was recorded on, or a holder of `scope` adopting it into their
+   * own — both resolved inside `escalateObservation` rather than declared
+   * here, for the same reason the on-behalf check above is (ADR 0014). Mails
+   * the Scope's current holders.
+   */
+  api.mutation('/escalations', floor('escalate-an-observation'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await escalateObservation(db, context.orgId, actor, {
+      observationId: input.observationId,
+      scope: input.scope,
+      framing: input.framing,
+    })
+    if (!outcome.ok) return observationRefusal(outcome.because)
+
+    const clock = await clockHere(db)
+    await notifyEscalated(db, clock, {
+      scope: input.scope,
+      framing: input.framing,
+      observationText: outcome.value.observationText,
+    })
+    return json({ escalationId: outcome.value.id }, 201)
+  })
+
+  /**
+   * Appends to an Escalation's thread — ADR 0010's fourth scope-free write
+   * (ADR 0014). Mails the destination Scope's current holders and the
+   * reporter.
+   */
+  api.mutation(
+    '/escalations/comments',
+    floor('comment-on-an-escalation'),
+    async (input, { context, db }) => {
+      const actor = actorOf(context)
+      const outcome = await addEscalationComment(db, context.orgId, actor.volunteerId, {
+        escalationId: input.escalationId,
+        text: input.text,
+      })
+      if (!outcome.ok) return observationRefusal(outcome.because)
+
+      const clock = await clockHere(db)
+      const to = await reporterEmail(db, outcome.value.observedBy)
+      await notifyCommented(db, clock, outcome.value.scope, to, { text: input.text })
+      return json({ commentId: outcome.value.id }, 201)
+    },
+  )
+
+  /**
+   * Closes an Escalation: a holder of its own addressed Scope, and a note —
+   * checked inside `closeEscalation`, for the reason escalating is (ADR
+   * 0014). Mails the reporter the closing note in full — never a teaser.
+   */
+  api.mutation(
+    '/escalations/close',
+    floor('close-an-escalation'),
+    async (input, { context, db }) => {
+      const actor = actorOf(context)
+      const outcome = await closeEscalation(db, actor, {
+        escalationId: input.escalationId,
+        note: input.note,
+      })
+      if (!outcome.ok) return observationRefusal(outcome.because)
+
+      const clock = await clockHere(db)
+      const to = await reporterEmail(db, outcome.value.observedBy)
+      await notifyClosed(clock.organisation, to, { closingNote: input.note })
+      return noContent()
     },
   )
 
