@@ -80,7 +80,16 @@ function Home() {
           <nav>
             <ul>
               <li>
+                <Link to="/horses">Horses</Link>
+              </li>
+              <li>
                 <Link to="/admin/volunteers">Volunteers</Link>
+              </li>
+              <li>
+                <Link to="/admin/horses">Horses (admin)</Link>
+              </li>
+              <li>
+                <Link to="/admin/spaces">Spaces</Link>
               </li>
               <li>
                 <Link to="/admin/release-versions">Release versions</Link>
@@ -90,7 +99,7 @@ function Home() {
               </li>
             </ul>
           </nav>
-          <p>The barn comes next.</p>
+          <p>Shifts come next.</p>
           {/* Reachable, because a session lasts until somebody ends it and the
               barn has a shared tablet on it. This ends *this* session only —
               revoking every session an Account holds is an officer's act. */}

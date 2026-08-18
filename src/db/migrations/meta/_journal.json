@@ -29,6 +29,13 @@
       "when": 1786995000559,
       "tag": "0003_three_gates_and_a_signature",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1787013512850,
+      "tag": "0004_a_space_and_a_horse",
+      "breakpoints": true
     }
   ]
 }

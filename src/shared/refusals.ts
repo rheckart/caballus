@@ -31,6 +31,10 @@ const REFUSALS: Record<string, string> = {
   volunteer_not_found: 'That volunteer is not here any more.',
   release_version_not_found: 'That release version is gone.',
   signature_not_found: 'That signature is gone.',
+  horse_not_found: 'That horse is not here any more.',
+  space_not_found: 'That Space is gone.',
+  space_kind_mismatch: "That Space isn't the right kind for this assignment.",
+  space_occupied: 'A horse still holds that Space. Clear it before changing kind.',
 }
 
 /** What a failed call says when the server never answered at all. */

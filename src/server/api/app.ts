@@ -53,6 +53,16 @@ import {
 } from '../roster/releases'
 import { startObservability } from '../observability'
 import { today } from '../time'
+import { horseById, horseList, spaceList } from '../horses/list'
+import {
+  assignHorseSpace,
+  createHorse,
+  createSpace,
+  editHorseAttributes,
+  editSpace,
+  recordHorseDeparture,
+  type Refusal as HorseRefusal,
+} from '../horses/records'
 
 // The server's one entry point, so this is where reporting starts. It is a
 // no-op without a DSN, which is the state of every machine until one is set.
@@ -120,6 +130,12 @@ export function buildApi(
       because === 'volunteer_not_found' ||
       because === 'release_version_not_found' ||
       because === 'signature_not_found'
+    return json({ error: because }, missing ? 404 : 409)
+  }
+
+  /** The same shape as `refusal`, for the horses-and-Spaces domain's own outcome union. */
+  function horseRefusal(because: HorseRefusal) {
+    const missing = because === 'horse_not_found' || because === 'space_not_found'
     return json({ error: because }, missing ? 404 : 409)
   }
 
@@ -365,6 +381,71 @@ export function buildApi(
     const actor = actorOf(context)
     const published = await publishReleaseVersion(db, context.orgId, actor.volunteerId, input)
     return json({ releaseVersionId: published.id }, 201)
+  })
+
+  /** Every Space, occupied or not — an empty Stall is exactly as visible (ADR 0002). */
+  api.route('GET', '/spaces', readEverything(), async ({ context }) => {
+    const listed = await forOrg(context.orgId).run((db) => spaceList(db))
+    return json({
+      spaces: listed.map((space) => ({ ...space, occupants: [...space.occupants] })),
+    })
+  })
+
+  /** Every horse, current or Departed — hiding a Departed one is the phone's concern, not this read's (#32). */
+  api.route('GET', '/horses', readEverything(), async ({ context }) => {
+    const listed = await forOrg(context.orgId).run((db) => horseList(db))
+    return json({ horses: listed.map((horse) => ({ ...horse })) })
+  })
+
+  /** One horse's profile — the first parameterised path (ADR 0021). */
+  api.route('GET', '/horses/:horseId', readEverything(), async ({ context, params }) => {
+    const found = await forOrg(context.orgId).run((db) => horseById(db, params.horseId ?? ''))
+    if (found === null) return json({ error: 'horse_not_found' }, 404)
+    return json({ ...found })
+  })
+
+  api.mutation('/spaces', domainScope('horse_care'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await createSpace(db, context.orgId, actor.volunteerId, input)
+    if (!outcome.ok) return horseRefusal(outcome.because)
+    return json({ spaceId: outcome.value.id }, 201)
+  })
+
+  api.mutation('/spaces/edit', domainScope('horse_care'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await editSpace(db, context.orgId, actor.volunteerId, input)
+    return outcome.ok ? noContent() : horseRefusal(outcome.because)
+  })
+
+  api.mutation('/horses', domainScope('horse_care'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await createHorse(db, context.orgId, actor.volunteerId, {
+      name: input.name,
+      halterColour: input.halterColour ?? null,
+      blanketSize: input.blanketSize ?? null,
+      height: input.height ?? null,
+      photoUrl: input.photoUrl ?? null,
+    })
+    if (!outcome.ok) return horseRefusal(outcome.because)
+    return json({ horseId: outcome.value.id }, 201)
+  })
+
+  api.mutation('/horses/attributes', domainScope('horse_care'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await editHorseAttributes(db, context.orgId, actor.volunteerId, input)
+    return outcome.ok ? noContent() : horseRefusal(outcome.because)
+  })
+
+  api.mutation('/horses/space', domainScope('horse_care'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await assignHorseSpace(db, context.orgId, actor.volunteerId, input)
+    return outcome.ok ? noContent() : horseRefusal(outcome.because)
+  })
+
+  api.mutation('/horses/departure', domainScope('horse_care'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await recordHorseDeparture(db, context.orgId, actor.volunteerId, input)
+    return outcome.ok ? noContent() : horseRefusal(outcome.because)
   })
 
   // Every path the contract declares now has a handler, or this throws and the

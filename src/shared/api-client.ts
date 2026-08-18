@@ -18,6 +18,8 @@ import {
   type Answers,
   type AnswersWrite,
   type Contract,
+  type PathParamNames,
+  type PathParams,
   type ReadPath,
   type RoutePath,
   type WritePath,
@@ -146,8 +148,20 @@ export class UnreadableAnswerError extends ApiError {
  * drift the contract was built to remove.
  */
 export interface ApiClient<C extends Contract> {
-  /** A read. The path must be one the contract declares, and the answer is its shape. */
-  get<P extends ReadPath<C>>(path: P, init?: RequestInit): Promise<Answers<C, P>>
+  /**
+   * A read. The path must be one the contract declares, and the answer is its
+   * shape.
+   *
+   * A path with `:name` segments — `/horses/:horseId` — takes the params as
+   * its second argument and interpolates them; a path with none takes none, so
+   * every existing call site is unaffected (ADR 0021).
+   */
+  get<P extends ReadPath<C>>(
+    path: P,
+    ...args: PathParamNames<P> extends never
+      ? [init?: RequestInit]
+      : [params: PathParams<P>, init?: RequestInit]
+  ): Promise<Answers<C, P>>
 
   /**
    * A queueable write. The idempotency key is minted here, once, before the
@@ -167,10 +181,21 @@ export interface ApiClient<C extends Contract> {
 export function createClient<C extends Contract>(against: C): ApiClient<C> {
   async function get<P extends ReadPath<C>>(
     path: P,
-    init: RequestInit = {},
+    ...args: PathParamNames<P> extends never
+      ? [init?: RequestInit]
+      : [params: PathParams<P>, init?: RequestInit]
   ): Promise<Answers<C, P>> {
     const read = declared(against.reads[path], path)
-    return (await send(path, { ...init, method: 'GET' }, read.answers)) as Answers<C, P>
+    // The generic can't see which branch of the union above a given `P` took,
+    // so which of the two positional arguments is params and which is init is
+    // read from the pattern itself: a path this build declared with a `:name`
+    // segment is one every caller of *that* path was required to give params
+    // for, and one without never was.
+    const [params, init] = path.includes(':')
+      ? [args[0] as Record<string, string> | undefined, args[1] as RequestInit | undefined]
+      : [undefined, args[0] as RequestInit | undefined]
+    const resolved = interpolate(path, params)
+    return (await send(resolved, { ...init, method: 'GET' }, read.answers)) as Answers<C, P>
   }
 
   async function post<P extends WritePath<C>>(
@@ -212,6 +237,27 @@ function declared<T>(endpoint: T | undefined, path: RoutePath): T {
     throw new Error(`No endpoint is declared at ${path}. Add it to the API contract.`)
   }
   return endpoint
+}
+
+/**
+ * A declared path with its `:name` segments filled in — `/horses/:horseId`
+ * with `{ horseId: 'abc' }` becomes `/horses/abc`. A path with none is
+ * returned unchanged, which is every call site before this one (ADR 0021).
+ */
+function interpolate(path: RoutePath, params: Record<string, string> | undefined): RoutePath {
+  if (params === undefined) return path
+  return path
+    .split('/')
+    .map((segment) => {
+      if (!segment.startsWith(':')) return segment
+      const name = segment.slice(1)
+      const value = params[name]
+      if (value === undefined) {
+        throw new Error(`${path} needs a "${name}" param, and none was given.`)
+      }
+      return encodeURIComponent(value)
+    })
+    .join('/') as RoutePath
 }
 
 /** The client this build talks to its own server with. */

@@ -22,6 +22,7 @@ import { z } from 'zod'
 import { DOMAIN_SCOPES } from './domain-scopes'
 import { ROLES } from './roles'
 import { ROSTER_GAPS } from './rostering'
+import { SPACE_KINDS } from './spaces'
 import { isDayString, type DayString } from './time'
 
 /**
@@ -46,6 +47,26 @@ export const dayOfTheOrganisation = z.custom<DayString>(
  * had nothing holding them together tomorrow.
  */
 export type RoutePath = `/${string}`
+
+/**
+ * The `:name` segments of a path, as a union — `/horses/:horseId` gives
+ * `'horseId'`, and a path with none gives `never`.
+ *
+ * ADR 0021 named this gap on purpose: it declared a parameterised path legal
+ * in the contract and left the client unable to call one without the caller
+ * writing the literal `:horseId`, deferred until an endpoint needed it. This
+ * ticket's horse profile is that endpoint.
+ */
+export type PathParamNames<P extends string> = P extends `${string}:${infer Param}/${infer Rest}`
+  ? Param | PathParamNames<`/${Rest}`>
+  : P extends `${string}:${infer Param}`
+    ? Param
+    : never
+
+/** The params object a path needs to be interpolated — `never` names give `Record<string, never>`, so a plain path takes none. */
+export type PathParams<P extends string> = [PathParamNames<P>] extends [never]
+  ? Record<string, never>
+  : { readonly [K in PathParamNames<P>]: string }
 
 /** A read: the path, and the shape of what it answers. */
 export interface Read {
@@ -222,10 +243,53 @@ export const auditLog = z.object({
   ),
 })
 
+/** A Space, as the wire carries its kind (ADR 0002). */
+const spaceKind = z.enum(SPACE_KINDS)
+
+const spaceRef = z.object({ id: z.string(), name: z.string() })
+
+/** One Space: a kind, a name, and who currently holds it — visible even at zero (ADR 0002). */
+export const space = z.object({
+  id: z.string(),
+  kind: spaceKind,
+  name: z.string(),
+  occupants: z.array(z.object({ id: z.string(), name: z.string() })),
+})
+
+export const spaceList = z.object({ spaces: z.array(space) })
+
+/**
+ * A horse, as ADR 0003's current-state tier and #32's stories carry it for
+ * this ticket. `photoUrl` is where the photo is hosted, not the photo itself —
+ * this application has no object storage yet (the same gap #34 left the
+ * release template pointing at). Alerts is deliberately absent: nothing writes
+ * one yet, and the profile screen holds a place for it rather than this
+ * schema inventing a field nobody populates.
+ */
+export const horse = z.object({
+  id: z.string(),
+  name: z.string(),
+  halterColour: z.string().nullable(),
+  blanketSize: z.string().nullable(),
+  height: z.string().nullable(),
+  photoUrl: z.string().nullable(),
+  /** A date, never a delete (ADR 0002). `null` for a horse still at the rescue. */
+  departedOn: dayOfTheOrganisation.nullable(),
+  spaces: z.object({
+    stall: spaceRef.nullable(),
+    field: spaceRef.nullable(),
+    barn: spaceRef.nullable(),
+  }),
+})
+
+export const horseList = z.object({ horses: z.array(horse) })
+
 /** An optional note on a grant, a revocation or a correction (ADR 0010). */
 const reason = z.string().max(500).nullish()
 
 const volunteerId = z.uuid()
+const horseId = z.uuid()
+const spaceId = z.uuid()
 
 export const contract = {
   reads: {
@@ -234,6 +298,10 @@ export const contract = {
     '/volunteers': { answers: people },
     '/release-versions': { answers: releaseVersionList },
     '/audit': { answers: auditLog },
+    '/spaces': { answers: spaceList },
+    '/horses': { answers: horseList },
+    /** The first parameterised path — see `PathParamNames` above. */
+    '/horses/:horseId': { answers: horse },
   },
   writes: {
     /**
@@ -316,6 +384,52 @@ export const contract = {
         obsoletesPrior: z.boolean(),
       }),
       answers: z.object({ releaseVersionId: z.string() }),
+    },
+    '/spaces': {
+      accepts: z.object({ kind: spaceKind, name: z.string().min(1).max(200) }),
+      answers: z.object({ spaceId: z.string() }),
+    },
+    /**
+     * A rename, a change of kind, or both — the whole of how splitting or
+     * merging a joined Space happens: an edit by someone with the authority
+     * to make it, never a gate sensor (ADR 0002).
+     */
+    '/spaces/edit': {
+      accepts: z.object({ spaceId, kind: spaceKind, name: z.string().min(1).max(200), reason }),
+      answers: z.void(),
+    },
+    '/horses': {
+      accepts: z.object({
+        name: z.string().min(1).max(200),
+        halterColour: z.string().max(100).nullish(),
+        blanketSize: z.string().max(100).nullish(),
+        height: z.string().max(50).nullish(),
+        photoUrl: z.string().max(2000).nullish(),
+      }),
+      answers: z.object({ horseId: z.string() }),
+    },
+    /** A partial edit: an omitted field is unchanged, and `null` clears one that may be (ADR 0003). */
+    '/horses/attributes': {
+      accepts: z.object({
+        horseId,
+        name: z.string().min(1).max(200).optional(),
+        halterColour: z.string().max(100).nullish(),
+        blanketSize: z.string().max(100).nullish(),
+        height: z.string().max(50).nullish(),
+        photoUrl: z.string().max(2000).nullish(),
+        reason,
+      }),
+      answers: z.void(),
+    },
+    /** `spaceId: null` clears the assignment for that kind (ADR 0002). */
+    '/horses/space': {
+      accepts: z.object({ horseId, kind: spaceKind, spaceId: spaceId.nullable() }),
+      answers: z.void(),
+    },
+    /** `departedOn: null` corrects a mistaken Departure — a date, never a delete (ADR 0002, #32). */
+    '/horses/departure': {
+      accepts: z.object({ horseId, departedOn: dayOfTheOrganisation.nullable(), reason }),
+      answers: z.void(),
     },
   },
 } as const satisfies Contract
