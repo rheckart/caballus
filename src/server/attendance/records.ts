@@ -14,12 +14,18 @@
  * open row itself — which is what lets a plain volunteer close their own
  * Visit without first reading a ledger that sits behind `roster` (ADR 0012's
  * pattern-of-life carve-out, below).
+ *
+ * **A Visit's own close gate (ADR 0014).** "On a Visit there is no Lead, so
+ * the volunteer dispositions their own Observations at sign-out" — so closing
+ * a Visit refuses while any Observation recorded on it still has no
+ * disposition. A Shift sign-out never carries this check: the Shift's own
+ * gate is a close the Shift itself does not have yet (#45).
  */
 import { and, desc, eq, isNull } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 
 import type { OrgId, OrgScopedDatabase } from '../../db/for-org'
-import { attendance, shifts, volunteers } from '../../db/schema'
+import { attendance, observations, shifts, volunteers } from '../../db/schema'
 import { isAttendanceCategory, type AttendanceCategory } from '../../shared/attendance'
 import { now } from '../../shared/time'
 import { timestampOf } from '../time'
@@ -64,7 +70,11 @@ export async function signIn(
   let description: string | null
 
   if (shiftId !== null) {
-    const [shift] = await db.select({ id: shifts.id }).from(shifts).where(eq(shifts.id, shiftId)).limit(1)
+    const [shift] = await db
+      .select({ id: shifts.id })
+      .from(shifts)
+      .where(eq(shifts.id, shiftId))
+      .limit(1)
     if (shift === undefined) return refused('shift_not_found')
     category = 'shift'
     description = null
@@ -126,6 +136,15 @@ export async function signOut(
   const open = await openRow(db, about.volunteerId, shiftId)
   if (open === null) return refused('not_signed_in')
 
+  if (shiftId === null) {
+    const [undispositioned] = await db
+      .select({ id: observations.id })
+      .from(observations)
+      .where(and(eq(observations.attendanceId, open.id), isNull(observations.dispositionedAt)))
+      .limit(1)
+    if (undispositioned !== undefined) return refused('observations_undispositioned')
+  }
+
   await db
     .update(attendance)
     .set({
@@ -149,11 +168,14 @@ async function openRow(
   volunteerId: string,
   shiftId: string | null,
 ): Promise<{ id: string } | null> {
-  const matchesShift = shiftId === null ? isNull(attendance.shiftId) : eq(attendance.shiftId, shiftId)
+  const matchesShift =
+    shiftId === null ? isNull(attendance.shiftId) : eq(attendance.shiftId, shiftId)
   const [row] = await db
     .select({ id: attendance.id })
     .from(attendance)
-    .where(and(eq(attendance.volunteerId, volunteerId), matchesShift, isNull(attendance.departedAt)))
+    .where(
+      and(eq(attendance.volunteerId, volunteerId), matchesShift, isNull(attendance.departedAt)),
+    )
     .orderBy(desc(attendance.arrivedAt))
     .limit(1)
   return row ?? null

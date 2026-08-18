@@ -53,6 +53,35 @@ export type FloorReason =
    * else* is the act ADR 0010 puts under `roster`.
    */
   | 'commit-to-or-leave-a-shift'
+  /**
+   * A Visit's own recorder clearing an Observation with no action — "noted, no
+   * action" — at sign-out (ADR 0014). Belongs to the Observation's own
+   * recorder alone, checked in `src/server/observations/records.ts` rather
+   * than here, on `claimActingLead`'s own precedent.
+   */
+  | 'disposition-your-own-observation'
+  /**
+   * Escalating an Observation: Shift Authority over the Shift it was recorded
+   * on, or a holder of the Scope the payload names, adopting it into their own
+   * (ADR 0014). Neither half is a static fact about this endpoint — the Shift
+   * is a fact about the Observation and the Scope is chosen at write time — so
+   * both are resolved in `src/server/observations/escalations.ts`, the same
+   * way *any rostered volunteer* is resolved inside `claimActingLead` rather
+   * than declared on its route.
+   */
+  | 'escalate-an-observation'
+  /**
+   * Appending to an Escalation's thread — ADR 0010's fourth scope-free write,
+   * restated by ADR 0014: closing needs the addressed Scope, commenting never
+   * has, before close or after.
+   */
+  | 'comment-on-an-escalation'
+  /**
+   * Closing an Escalation: a holder of its own addressed Scope, chosen at
+   * write time and checked in `src/server/observations/escalations.ts` for the
+   * same reason escalating is (ADR 0014).
+   */
+  | 'close-an-escalation'
 
 /**
  * A position on **one Shift** — `lead`, `co_lead` or `acting_lead` — and,

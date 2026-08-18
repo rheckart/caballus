@@ -18,6 +18,13 @@ export type Refusal =
   | 'already_signed_in'
   /** Nothing open to close — never departed *and* never arrived read the same here. */
   | 'not_signed_in'
+  /**
+   * A Visit's own close gate (ADR 0014): its recorder has not yet
+   * dispositioned every Observation recorded on it — Escalate or noted, no
+   * action. `src/server/observations/records.ts` and `.../escalations.ts` are
+   * the two doors that clear it.
+   */
+  | 'observations_undispositioned'
 
 export type Recorded<T = null> =
   { readonly ok: true; readonly value: T } | { readonly ok: false; readonly because: Refusal }

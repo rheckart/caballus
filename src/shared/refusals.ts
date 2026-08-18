@@ -61,6 +61,27 @@ const REFUSALS: Record<string, string> = {
   announcement_not_found: 'That announcement is gone.',
   contact_not_found: 'That contact is gone.',
   standing_rule_not_found: 'That rule is gone.',
+  text_required: 'Say what you saw.',
+  framing_required: 'Say it in your own words before sending it on.',
+  note_required: 'A closing note is required.',
+  subject_kind_invalid: 'Pick a subject from the list.',
+  subject_id_required: 'Pick which one.',
+  subject_label_required: 'Say what record you mean.',
+  subject_not_found: 'That is gone.',
+  attendance_not_found: 'Sign in first — there is nothing open to attach this to.',
+  on_behalf_requires_shift: 'Naming somebody else only works on a Shift, never a Visit.',
+  not_shift_authority: 'You need to be leading this Shift to record on somebody else’s behalf.',
+  observer_not_rostered: 'They are not on this Shift.',
+  observation_not_found: 'That observation is gone.',
+  already_dispositioned: 'That is already dispositioned.',
+  not_the_recorder: 'Only the person who recorded it may note it with no action.',
+  not_authorized_to_escalate:
+    'You need Shift Authority here, or to hold the Scope you are escalating to.',
+  escalation_not_found: 'That escalation is gone.',
+  already_closed: 'That escalation is already closed.',
+  not_the_addressed_scope: 'Only a holder of the Scope this was sent to may close it.',
+  observations_undispositioned:
+    'Every Observation on this Visit needs a decision — Escalate, or note with no action — before signing out.',
 }
 
 /** What a failed call says when the server never answered at all. */

@@ -48,11 +48,12 @@ const PEOPLE = {
   unstaffedScopes: [],
 }
 
-function watchPosts(): { path: string; body: unknown }[] {
+function watchPosts(extra: Record<string, unknown> = {}): { path: string; body: unknown }[] {
   const posted: { path: string; body: unknown }[] = []
   stubApi({
     '/volunteers': PEOPLE,
     '/me': ME,
+    '/horses': { horses: [] },
     '/attendance/sign-in': (init: RequestInit) => {
       posted.push({ path: '/attendance/sign-in', body: JSON.parse(String(init.body)) as unknown })
       return { attendanceId: 'new' }
@@ -61,6 +62,20 @@ function watchPosts(): { path: string; body: unknown }[] {
       posted.push({ path: '/attendance/sign-out', body: JSON.parse(String(init.body)) as unknown })
       return {}
     },
+    '/observations': (init: RequestInit) => {
+      posted.push({ path: '/observations', body: JSON.parse(String(init.body)) as unknown })
+      return { observationId: 'obs-1' }
+    },
+    '/observations/note': (init: RequestInit) => {
+      posted.push({ path: '/observations/note', body: JSON.parse(String(init.body)) as unknown })
+      return {}
+    },
+    '/escalations': (init: RequestInit) => {
+      posted.push({ path: '/escalations', body: JSON.parse(String(init.body)) as unknown })
+      return { escalationId: 'esc-1' }
+    },
+    '/observations/new': { observations: [] },
+    ...extra,
   })
   return posted
 }
@@ -122,5 +137,90 @@ describe('a Visit, on the phone', () => {
       body: { volunteerId: 'beth' },
     })
     expect(posted[0]?.body).not.toHaveProperty('shiftId')
+  })
+})
+
+describe('Observations and their disposition on a Visit (ADR 0014)', () => {
+  it('records an Observation against the Attendance opened by signing in', async () => {
+    const posted = watchPosts()
+    renderVisit()
+
+    fireEvent.change(await screen.findByLabelText('What are you here to do?'), {
+      target: { value: 'Mowed the north field' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+    await waitFor(() => {
+      expect(posted.some((call) => call.path === '/attendance/sign-in')).toBe(true)
+    })
+
+    fireEvent.change(await screen.findByLabelText('What did you see?'), {
+      target: { value: 'The west gate latch is broken' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Record' }))
+
+    await waitFor(() => {
+      expect(posted.some((call) => call.path === '/observations')).toBe(true)
+    })
+    const written = posted.find((call) => call.path === '/observations')
+    expect(written?.body).toMatchObject({
+      text: 'The west gate latch is broken',
+      subjectKind: null,
+      subjectId: null,
+    })
+  })
+
+  it('lists an undispositioned Observation and clears it with "noted, no action"', async () => {
+    let recorded = false
+    const posted = watchPosts({
+      '/observations': (init: RequestInit) => {
+        recorded = true
+        posted.push({ path: '/observations', body: JSON.parse(String(init.body)) as unknown })
+        return { observationId: 'obs-1' }
+      },
+      '/observations/new': () => ({
+        observations: recorded
+          ? [
+              {
+                id: 'obs-1',
+                attendanceId: 'new',
+                text: 'The west gate latch is broken',
+                subjectKind: null,
+                subjectId: null,
+                subjectLabel: null,
+                recordedBy: 'beth',
+                recordedByName: 'Beth Ann',
+                observedBy: 'beth',
+                observedByName: 'Beth Ann',
+                recordedAt: 0,
+                dispositionedAt: null,
+                disposition: null,
+                escalatedScopes: [],
+              },
+            ]
+          : [],
+      }),
+    })
+    renderVisit()
+
+    fireEvent.change(await screen.findByLabelText('What are you here to do?'), {
+      target: { value: 'Mowed the north field' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+    await waitFor(() =>
+      expect(posted.some((call) => call.path === '/attendance/sign-in')).toBe(true),
+    )
+
+    fireEvent.change(await screen.findByLabelText('What did you see?'), {
+      target: { value: 'The west gate latch is broken' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Record' }))
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Note, no action' }))
+    await waitFor(() => {
+      expect(posted.some((call) => call.path === '/observations/note')).toBe(true)
+    })
+    expect(posted.find((call) => call.path === '/observations/note')?.body).toMatchObject({
+      observationId: 'obs-1',
+    })
   })
 })

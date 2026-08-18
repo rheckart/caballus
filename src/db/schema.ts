@@ -1502,6 +1502,145 @@ export const attendance = pgTable(
 ).enableRLS()
 
 /**
+ * An Observation: free text with an optional subject, recorded by whoever
+ * noticed (`CONTEXT.md`'s Observation; ADR 0014). It attaches to the
+ * **recorder's own Attendance** — a Shift or a Visit alike — and needs no
+ * Domain Scope: ADR 0010's floor, `'record-an-observation'`.
+ *
+ * **Never edited or deleted once it reaches the server.** No
+ * `/observations/edit` exists in `src/shared/api-contract.ts`, and nothing
+ * here is written a second time except the disposition pair, which records a
+ * *decision about* the Observation rather than a change to what was seen.
+ *
+ * `observedBy` equals `recordedBy` in the ordinary case and differs only when
+ * Shift Authority records on a rostered volunteer's behalf — "recorded by
+ * Kate, observed by Joy" — the two fields being distinct is what keeps that a
+ * truthful record rather than a forgery surface (ADR 0014).
+ *
+ * The subject is a pointer picked from wherever the volunteer was standing —
+ * a horse, a Space, a Product, or a record that is wrong — named by
+ * `subjectLabel` at write time rather than resolved from a fourth join at
+ * read time, so a renamed horse does not rewrite what an old report meant.
+ * It is never a substitute for `text`.
+ */
+export const observations = pgTable(
+  'observations',
+  {
+    id: uuid('id').primaryKey(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id),
+    attendanceId: uuid('attendance_id')
+      .notNull()
+      .references(() => attendance.id),
+    text: text('text').notNull(),
+    /** One of `OBSERVATION_SUBJECT_KINDS` in `src/shared/observations.ts`, or null for none. */
+    subjectKind: text('subject_kind'),
+    /** The horse/Space/Product id the subject names; null for `record` and for no subject. */
+    subjectId: uuid('subject_id'),
+    /** What the subject is called, carried here rather than resolved by a later join. */
+    subjectLabel: text('subject_label'),
+    recordedBy: uuid('recorded_by')
+      .notNull()
+      .references(() => volunteers.id),
+    observedBy: uuid('observed_by')
+      .notNull()
+      .references(() => volunteers.id),
+    recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * Set once, by the recorder, at a Visit's sign-out (ADR 0014) — or by the
+     * first Escalation this Observation ever receives, from any Scope holder,
+     * whichever comes first. Null on a Shift's Observation until #45's
+     * close gate sets it.
+     */
+    dispositionedAt: timestamp('dispositioned_at', { withTimezone: true }),
+    dispositionedBy: uuid('dispositioned_by').references(() => volunteers.id),
+    /** One of `OBSERVATION_DISPOSITIONS` — `escalated` or `noted_no_action`. */
+    disposition: text('disposition'),
+  },
+  (table) => [
+    // A Shift's or a Visit's own Observations, and the Visit sign-out gate's
+    // own read.
+    index('observations_attendance').on(table.orgId, table.attendanceId),
+    inScope('observations_in_scope'),
+  ],
+).enableRLS()
+
+/**
+ * An Escalation: the escalator's own framing, addressed to exactly one Domain
+ * Scope, resolved to its holders at delivery by email (ADR 0014). A separate
+ * record from the Observation it reports, because the author differs — filing
+ * and routing are two acts by two people — and because the framing has
+ * nowhere else to live without putting words in the recorder's mouth.
+ *
+ * **Two states, closed with a note, and no reopen.** Closing belongs to a
+ * holder of `scope`, never to the escalator and never to the reporter — ADR
+ * 0010 has no authorship axis for either to lean on. A genuine recurrence is a
+ * new Observation, which is where it belongs anyway.
+ *
+ * One Observation may carry many Escalations — to different Scopes, or from
+ * different people adopting the same one — and they share no state with each
+ * other: closing Terry's does not touch the Head's.
+ */
+export const escalations = pgTable(
+  'escalations',
+  {
+    id: uuid('id').primaryKey(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id),
+    observationId: uuid('observation_id')
+      .notNull()
+      .references(() => observations.id),
+    /** One of `DOMAIN_SCOPES`, exactly one (ADR 0014). */
+    scope: text('scope').notNull(),
+    /** The escalator's own words — curation ADR 0010 was about to lose. */
+    framing: text('framing').notNull(),
+    escalatedBy: uuid('escalated_by')
+      .notNull()
+      .references(() => volunteers.id),
+    escalatedAt: timestamp('escalated_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Null while Open. Set together, and never after — there is no reopen. */
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    closedBy: uuid('closed_by').references(() => volunteers.id),
+    closingNote: text('closing_note'),
+  },
+  (table) => [
+    index('escalations_observation').on(table.orgId, table.observationId),
+    // The home section's own read: open Escalations addressed to a Scope.
+    index('escalations_scope').on(table.orgId, table.scope),
+    inScope('escalations_in_scope'),
+  ],
+).enableRLS()
+
+/**
+ * The thread: floor-writable by anyone, before close and after — the fourth
+ * scope-free write ADR 0010 gains from ADR 0014. Closing still needs the
+ * Scope; commenting does not.
+ */
+export const escalationComments = pgTable(
+  'escalation_comments',
+  {
+    id: uuid('id').primaryKey(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id),
+    escalationId: uuid('escalation_id')
+      .notNull()
+      .references(() => escalations.id),
+    text: text('text').notNull(),
+    authoredBy: uuid('authored_by')
+      .notNull()
+      .references(() => volunteers.id),
+    authoredAt: timestamp('authored_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('escalation_comments_escalation').on(table.orgId, table.escalationId),
+    inScope('escalation_comments_in_scope'),
+  ],
+).enableRLS()
+
+/**
  * News about the rescue, belonging to no Shift and to no horse
  * (`CONTEXT.md`'s Announcement; ADR 0018, #46).
  *

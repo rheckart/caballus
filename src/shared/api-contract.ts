@@ -30,6 +30,7 @@ import {
   TASK_SUBJECT_KINDS,
 } from './materialization'
 import { MEASUREMENT_KINDS, MEASUREMENT_METHODS } from './measurements'
+import { OBSERVATION_DISPOSITIONS, OBSERVATION_SUBJECT_KINDS } from './observations'
 import { PRODUCT_KINDS } from './products'
 import { ROLES } from './roles'
 import { ROSTER_GAPS } from './rostering'
@@ -957,9 +958,83 @@ const attendanceRecord = z.object({
  */
 export const attendanceLedger = z.object({ entries: z.array(attendanceRecord) })
 
+/** Where an Observation's subject came from — the closed vocabulary ADR 0014 names. */
+const observationSubjectKind = z.enum(OBSERVATION_SUBJECT_KINDS)
+
+/** The Visit's own two exits at sign-out; a Shift's third — curated into Shift Notes — is #45's. */
+const observationDisposition = z.enum(OBSERVATION_DISPOSITIONS)
+
+/**
+ * One Observation: free text with an optional subject, never edited or
+ * deleted once it reaches the server (`CONTEXT.md`'s Observation; ADR 0014).
+ * `recordedBy` and `observedBy` differ only when Shift Authority recorded it
+ * on a rostered volunteer's behalf. `escalatedScopes` names every Scope it
+ * has been escalated to, without the thread each one carries — that is
+ * `escalation` below, read from `/escalations`.
+ */
+export const observation = z.object({
+  id: z.string(),
+  attendanceId: z.string(),
+  text: z.string(),
+  subjectKind: observationSubjectKind.nullable(),
+  subjectId: z.string().nullable(),
+  subjectLabel: z.string().nullable(),
+  recordedBy: z.string(),
+  recordedByName: z.string(),
+  observedBy: z.string(),
+  observedByName: z.string(),
+  /** Epoch milliseconds. */
+  recordedAt: z.number(),
+  /** Epoch milliseconds, or null while nobody has dispositioned it yet. */
+  dispositionedAt: z.number().nullable(),
+  disposition: observationDisposition.nullable(),
+  escalatedScopes: z.array(z.enum(DOMAIN_SCOPES)),
+})
+
+export const observationList = z.object({ observations: z.array(observation) })
+
+/** One entry in an Escalation's thread — floor-writable, before close and after (ADR 0014). */
+const escalationComment = z.object({
+  id: z.string(),
+  text: z.string(),
+  authoredBy: z.string(),
+  authoredByName: z.string(),
+  /** Epoch milliseconds. */
+  authoredAt: z.number(),
+})
+
+/**
+ * One Escalation: the escalator's own framing, addressed to exactly one
+ * Domain Scope, carrying the Observation's own words and its thread whole
+ * (`CONTEXT.md`'s Escalation; ADR 0014). `closedAt` null is Open; there is no
+ * reopen.
+ */
+export const escalation = z.object({
+  id: z.string(),
+  observationId: z.string(),
+  observationText: z.string(),
+  observationSubjectLabel: z.string().nullable(),
+  scope: z.enum(DOMAIN_SCOPES),
+  framing: z.string(),
+  escalatedBy: z.string(),
+  escalatedByName: z.string(),
+  /** Epoch milliseconds. */
+  escalatedAt: z.number(),
+  /** Epoch milliseconds, or null while Open. */
+  closedAt: z.number().nullable(),
+  closedBy: z.string().nullable(),
+  closedByName: z.string().nullable(),
+  closingNote: z.string().nullable(),
+  comments: z.array(escalationComment),
+})
+
+export const escalationList = z.object({ escalations: z.array(escalation) })
+
 const announcementId = z.uuid()
 const contactId = z.uuid()
 const standingRuleId = z.uuid()
+const observationId = z.uuid()
+const escalationId = z.uuid()
 
 export const contract = {
   reads: {
@@ -999,6 +1074,10 @@ export const contract = {
     '/task-assignments': { answers: taskAssignmentList },
     /** The sign-in sheet, whole, behind `roster` — the hours report is built from this (ADR 0012). */
     '/attendance': { answers: attendanceLedger },
+    /** One Attendance's own Observations — the Visit sign-out screen's own read (ADR 0014). */
+    '/observations/:attendanceId': { answers: observationList },
+    /** Every Escalation, on the floor — a holder's open ones are this same read, filtered (ADR 0014). */
+    '/escalations': { answers: escalationList },
   },
   writes: {
     /**
@@ -1568,6 +1647,68 @@ export const contract = {
         supervisingAdultId: volunteerId.nullish(),
         supervisingAdultPhone: z.string().max(30).nullish(),
       }),
+      answers: z.void(),
+    },
+    /**
+     * Records an Observation, on ADR 0010's floor: free text with an optional
+     * subject, attaching to the recorder's own open Attendance (ADR 0014).
+     * `shiftId` names a Shift row; omitted, it attaches to the caller's open
+     * Visit. `observerVolunteerId` is Shift Authority's own act — naming a
+     * rostered volunteer as the observer instead of the caller — checked in
+     * `src/server/observations/records.ts` rather than declared here, because
+     * `shiftId` is nullable and so this write's `MutationAuthorization` can
+     * never be Shift Authority's own type (`src/server/api/route.ts`).
+     */
+    '/observations': {
+      accepts: z.object({
+        shiftId: shiftId.nullish(),
+        text: z.string().min(1).max(2000),
+        subjectKind: observationSubjectKind.nullish(),
+        subjectId: z.uuid().nullish(),
+        subjectLabel: z.string().max(200).nullish(),
+        observerVolunteerId: volunteerId.nullish(),
+      }),
+      answers: z.object({ observationId: z.string() }),
+    },
+    /**
+     * A Visit's own second exit at sign-out: noted, with no action — belongs
+     * to the Observation's own recorder alone (ADR 0014). The first exit,
+     * Escalate, is the ordinary `/escalations` write below, which
+     * dispositions the Observation itself the moment it lands.
+     */
+    '/observations/note': {
+      accepts: z.object({ observationId }),
+      answers: z.void(),
+    },
+    /**
+     * Escalates an Observation to exactly one Domain Scope: Shift Authority
+     * over the Shift it was recorded on, or a holder of `scope` adopting it
+     * into their own (ADR 0014). `framing` is the escalator's own words, never
+     * the Observation's — curation the app was about to lose. One Observation
+     * may carry many Escalations, and they share no state with each other.
+     */
+    '/escalations': {
+      accepts: z.object({
+        observationId,
+        scope: z.enum(DOMAIN_SCOPES),
+        framing: z.string().min(1).max(2000),
+      }),
+      answers: z.object({ escalationId: z.string() }),
+    },
+    /**
+     * Appends to an Escalation's thread — ADR 0010's fourth scope-free write
+     * (ADR 0014). Anyone signed in, before close and after.
+     */
+    '/escalations/comments': {
+      accepts: z.object({ escalationId, text: z.string().min(1).max(2000) }),
+      answers: z.object({ commentId: z.string() }),
+    },
+    /**
+     * Closes an Escalation: a holder of its own addressed Scope, and a note —
+     * never the escalator, never the reporter, and never a reopen (ADR 0014).
+     */
+    '/escalations/close': {
+      accepts: z.object({ escalationId, note: z.string().min(1).max(2000) }),
       answers: z.void(),
     },
   },
