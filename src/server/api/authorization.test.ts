@@ -5,6 +5,7 @@ import {
   DOMAIN_SCOPES,
   ROLES,
   anyDomainScope,
+  anyScopeHolder,
   authorize,
   board,
   domainScope,
@@ -144,6 +145,29 @@ describe('any-scope, for a record two Scopes may edit', () => {
       outcome: 'refused',
       status: 401,
       wanted: 'horse_care or supplies',
+    })
+  })
+})
+
+describe('holds-any-scope, for posting an Announcement (ADR 0018)', () => {
+  it('allows a holder of any single scope, unnamed', () => {
+    expect(authorize(anyScopeHolder(), person('financial'))).toEqual({ outcome: 'allowed' })
+    expect(authorize(anyScopeHolder(), person('roster'))).toEqual({ outcome: 'allowed' })
+  })
+
+  it('refuses a signed-in Volunteer holding none, distinct from `read-everything`', () => {
+    expect(authorize(anyScopeHolder(), person())).toEqual({
+      outcome: 'refused',
+      status: 403,
+      wanted: 'any domain scope',
+    })
+  })
+
+  it('refuses nobody with a 401', () => {
+    expect(authorize(anyScopeHolder(), NOBODY)).toEqual({
+      outcome: 'refused',
+      status: 401,
+      wanted: 'any domain scope',
     })
   })
 })

@@ -54,6 +54,9 @@ const REFUSALS: Record<string, string> = {
   already_short:
     'Somebody has already called this shift short. Clear it first if that has changed.',
   not_short: 'Nobody has called this shift short.',
+  announcement_not_found: 'That announcement is gone.',
+  contact_not_found: 'That contact is gone.',
+  standing_rule_not_found: 'That rule is gone.',
 }
 
 /** What a failed call says when the server never answered at all. */

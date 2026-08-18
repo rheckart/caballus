@@ -122,6 +122,7 @@ describe.skipIf(!reachable)('the Board, through the API', () => {
 
   async function wipe({ keepOrg = false }: { keepOrg?: boolean } = {}): Promise<void> {
     await owner`delete from audit_entries where org_id = ${FIELD_BARN}`
+    await owner`delete from announcements where org_id = ${FIELD_BARN}`
     await owner`delete from feed_schedule_lines where org_id = ${FIELD_BARN}`
     await owner`delete from feed_schedule_versions where org_id = ${FIELD_BARN}`
     await owner`delete from horse_measurements where org_id = ${FIELD_BARN}`
@@ -327,6 +328,30 @@ describe.skipIf(!reachable)('the Board, through the API', () => {
       const grid = await boardAsTablet()
       expect(grid.sections.map((section) => section.heading)).toEqual(['No space assigned'])
       expect(grid.sections[0]?.rows[0]?.horse?.name).toBe('Storm')
+    })
+  })
+
+  describe('Announcements, the whiteboard’s missing panel (#46)', () => {
+    it('carries unexpired Announcements on the same read as the rows', async () => {
+      const api = await holder()
+      const today = ((await get(api, '/day')).body as { day: string }).day
+      await post(api, '/announcements', { text: 'The hay comes Thursday.', expiresOn: today })
+
+      const grid = await boardAsTablet()
+      expect(grid.announcements).toEqual([
+        expect.objectContaining({ text: 'The hay comes Thursday.' }),
+      ])
+    })
+
+    it('leaves an expired Announcement off the wall', async () => {
+      const api = await holder()
+      await post(api, '/announcements', {
+        text: 'The water is back on.',
+        expiresOn: '2020-01-01',
+      })
+
+      const grid = await boardAsTablet()
+      expect(grid.announcements).toEqual([])
     })
   })
 })

@@ -16,12 +16,16 @@
  * It records nothing and credits nobody (ADR 0022). **Today's Reading rides
  * along** (#38): the barn reads *staying in* off the wall, and a grid stitched
  * from two reads is two chances for the weather panel and the rows to be
- * describing different minutes.
+ * describing different minutes. **Unexpired Announcements ride along too**
+ * (#46, ADR 0018) — the whiteboard's missing panel is on the same read as the
+ * rows it sits beside, rather than a fifth request the tablet's poll has to
+ * keep in step with the other four.
  */
 import { eq } from 'drizzle-orm'
 
 import type { OrgScopedDatabase } from '../../db/for-org'
 import { horseSpaceAssignments, horses, spaces } from '../../db/schema'
+import { currentAnnouncements, type Announcement } from '../announcements/list'
 import { arrangeBoard, type BoardSection, type BoardSpaceRef } from '../../shared/board'
 import type { DayString } from '../../shared/time'
 import { currentFeedSchedulesByHorse, type CurrentFeedSchedule } from '../horses/feed-schedules'
@@ -44,6 +48,8 @@ export interface BoardGrid {
   readonly sections: readonly BoardSection<BoardHorse>[]
   /** Null where nothing has fixed today's weather yet — a question, not a calm day. */
   readonly weather: Reading | null
+  /** Unexpired only — what has left the wall is not here (#46, ADR 0018). */
+  readonly announcements: readonly Announcement[]
 }
 
 interface AssignmentRow {
@@ -55,32 +61,34 @@ interface AssignmentRow {
 
 /** The grid, in stall order, sections and all. */
 export async function boardGrid(db: OrgScopedDatabase, today: DayString): Promise<BoardGrid> {
-  const [horseRows, assignmentRows, stallRows, feedings, weather] = await Promise.all([
-    db
-      .select({
-        id: horses.id,
-        name: horses.name,
-        halterColour: horses.halterColour,
-        departedOn: horses.departedOn,
-      })
-      .from(horses)
-      .orderBy(horses.name),
-    db
-      .select({
-        horseId: horseSpaceAssignments.horseId,
-        kind: horseSpaceAssignments.kind,
-        spaceId: horseSpaceAssignments.spaceId,
-        spaceName: spaces.name,
-      })
-      .from(horseSpaceAssignments)
-      .innerJoin(spaces, eq(spaces.id, horseSpaceAssignments.spaceId)),
-    // Every Stall, not only the occupied ones: the row for the stall that
-    // stands OPEN is information, and it is the row this read exists to keep
-    // (ADR 0002).
-    db.select({ id: spaces.id, kind: spaces.kind, name: spaces.name }).from(spaces),
-    currentFeedSchedulesByHorse(db, today),
-    readingFor(db, today),
-  ])
+  const [horseRows, assignmentRows, stallRows, feedings, weather, announcements] =
+    await Promise.all([
+      db
+        .select({
+          id: horses.id,
+          name: horses.name,
+          halterColour: horses.halterColour,
+          departedOn: horses.departedOn,
+        })
+        .from(horses)
+        .orderBy(horses.name),
+      db
+        .select({
+          horseId: horseSpaceAssignments.horseId,
+          kind: horseSpaceAssignments.kind,
+          spaceId: horseSpaceAssignments.spaceId,
+          spaceName: spaces.name,
+        })
+        .from(horseSpaceAssignments)
+        .innerJoin(spaces, eq(spaces.id, horseSpaceAssignments.spaceId)),
+      // Every Stall, not only the occupied ones: the row for the stall that
+      // stands OPEN is information, and it is the row this read exists to keep
+      // (ADR 0002).
+      db.select({ id: spaces.id, kind: spaces.kind, name: spaces.name }).from(spaces),
+      currentFeedSchedulesByHorse(db, today),
+      readingFor(db, today),
+      currentAnnouncements(db, today),
+    ])
 
   const assignmentsBy = new Map<string, AssignmentRow[]>()
   for (const row of assignmentRows) {
@@ -113,5 +121,5 @@ export async function boardGrid(db: OrgScopedDatabase, today: DayString): Promis
     .filter((row) => row.kind === 'stall')
     .map((row) => ({ id: row.id, name: row.name }))
 
-  return { today, sections: arrangeBoard(here, stalls), weather }
+  return { today, sections: arrangeBoard(here, stalls), weather, announcements }
 }

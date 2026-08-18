@@ -11,9 +11,11 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as BoardRouteImport } from './routes/board'
+import { Route as ContactsRouteImport } from './routes/contacts'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ShiftsRouteImport } from './routes/shifts'
 import { Route as AdminAuditRouteImport } from './routes/admin/audit'
+import { Route as AdminContactsRouteImport } from './routes/admin/contacts'
 import { Route as AdminHorsesRouteImport } from './routes/admin/horses'
 import { Route as AdminProductsRouteImport } from './routes/admin/products'
 import { Route as AdminReleaseVersionsRouteImport } from './routes/admin/release-versions'
@@ -35,6 +37,11 @@ const BoardRoute = BoardRouteImport.update({
   path: '/board',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ContactsRoute = ContactsRouteImport.update({
+  id: '/contacts',
+  path: '/contacts',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -48,6 +55,11 @@ const ShiftsRoute = ShiftsRouteImport.update({
 const AdminAuditRoute = AdminAuditRouteImport.update({
   id: '/admin/audit',
   path: '/admin/audit',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminContactsRoute = AdminContactsRouteImport.update({
+  id: '/admin/contacts',
+  path: '/admin/contacts',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminHorsesRoute = AdminHorsesRouteImport.update({
@@ -104,9 +116,11 @@ const HorsesHorseIdRoute = HorsesHorseIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/board': typeof BoardRoute
+  '/contacts': typeof ContactsRoute
   '/login': typeof LoginRoute
   '/shifts': typeof ShiftsRoute
   '/admin/audit': typeof AdminAuditRoute
+  '/admin/contacts': typeof AdminContactsRoute
   '/admin/horses': typeof AdminHorsesRoute
   '/admin/products': typeof AdminProductsRoute
   '/admin/release-versions': typeof AdminReleaseVersionsRoute
@@ -121,9 +135,11 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/board': typeof BoardRoute
+  '/contacts': typeof ContactsRoute
   '/login': typeof LoginRoute
   '/shifts': typeof ShiftsRoute
   '/admin/audit': typeof AdminAuditRoute
+  '/admin/contacts': typeof AdminContactsRoute
   '/admin/horses': typeof AdminHorsesRoute
   '/admin/products': typeof AdminProductsRoute
   '/admin/release-versions': typeof AdminReleaseVersionsRoute
@@ -139,9 +155,11 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/board': typeof BoardRoute
+  '/contacts': typeof ContactsRoute
   '/login': typeof LoginRoute
   '/shifts': typeof ShiftsRoute
   '/admin/audit': typeof AdminAuditRoute
+  '/admin/contacts': typeof AdminContactsRoute
   '/admin/horses': typeof AdminHorsesRoute
   '/admin/products': typeof AdminProductsRoute
   '/admin/release-versions': typeof AdminReleaseVersionsRoute
@@ -158,9 +176,11 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/board'
+    | '/contacts'
     | '/login'
     | '/shifts'
     | '/admin/audit'
+    | '/admin/contacts'
     | '/admin/horses'
     | '/admin/products'
     | '/admin/release-versions'
@@ -175,9 +195,11 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/board'
+    | '/contacts'
     | '/login'
     | '/shifts'
     | '/admin/audit'
+    | '/admin/contacts'
     | '/admin/horses'
     | '/admin/products'
     | '/admin/release-versions'
@@ -192,9 +214,11 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/board'
+    | '/contacts'
     | '/login'
     | '/shifts'
     | '/admin/audit'
+    | '/admin/contacts'
     | '/admin/horses'
     | '/admin/products'
     | '/admin/release-versions'
@@ -210,9 +234,11 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BoardRoute: typeof BoardRoute
+  ContactsRoute: typeof ContactsRoute
   LoginRoute: typeof LoginRoute
   ShiftsRoute: typeof ShiftsRoute
   AdminAuditRoute: typeof AdminAuditRoute
+  AdminContactsRoute: typeof AdminContactsRoute
   AdminHorsesRoute: typeof AdminHorsesRoute
   AdminProductsRoute: typeof AdminProductsRoute
   AdminReleaseVersionsRoute: typeof AdminReleaseVersionsRoute
@@ -241,6 +267,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BoardRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/contacts': {
+      id: '/contacts'
+      path: '/contacts'
+      fullPath: '/contacts'
+      preLoaderRoute: typeof ContactsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -260,6 +293,13 @@ declare module '@tanstack/react-router' {
       path: '/admin/audit'
       fullPath: '/admin/audit'
       preLoaderRoute: typeof AdminAuditRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/contacts': {
+      id: '/admin/contacts'
+      path: '/admin/contacts'
+      fullPath: '/admin/contacts'
+      preLoaderRoute: typeof AdminContactsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/horses': {
@@ -338,9 +378,11 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BoardRoute: BoardRoute,
+  ContactsRoute: ContactsRoute,
   LoginRoute: LoginRoute,
   ShiftsRoute: ShiftsRoute,
   AdminAuditRoute: AdminAuditRoute,
+  AdminContactsRoute: AdminContactsRoute,
   AdminHorsesRoute: AdminHorsesRoute,
   AdminProductsRoute: AdminProductsRoute,
   AdminReleaseVersionsRoute: AdminReleaseVersionsRoute,

@@ -1259,3 +1259,89 @@ export const shiftRoster = pgTable(
     inScope('shift_roster_in_scope'),
   ],
 ).enableRLS()
+
+/**
+ * News about the rescue, belonging to no Shift and to no horse
+ * (`CONTEXT.md`'s Announcement; ADR 0018, #46).
+ *
+ * **No subject column exists, by construction** — anything about one horse
+ * already has three better homes (a care instruction, a measurement, an
+ * Observation), and a fourth would compete with all of them.
+ *
+ * `expiresOn` is mandatory and never defaulted at this layer either: the
+ * writer sets it, and a day it has passed is the whole of *expired* — a
+ * comparison at read time rather than a job that sweeps rows, the way a
+ * Release's staleness is read-time rather than scheduled (ADR 0017).
+ *
+ * **Domain record, no audit entries** (ADR 0018): the only reader of who
+ * changed a wall notice and when is a person standing at the wall, which
+ * `lastEditedBy`/`lastEditedAt` answer directly, and writing these to
+ * `audit_entries` would fill the table `roster` consults with the least
+ * consequential edits in the system.
+ */
+export const announcements = pgTable(
+  'announcements',
+  {
+    id: uuid('id').primaryKey(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id),
+    text: text('text').notNull(),
+    expiresOn: date('expires_on').notNull(),
+    authoredBy: uuid('authored_by')
+      .notNull()
+      .references(() => volunteers.id),
+    authoredAt: timestamp('authored_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Null until the first edit — posting is not an edit of itself. */
+    lastEditedBy: uuid('last_edited_by').references(() => volunteers.id),
+    lastEditedAt: timestamp('last_edited_at', { withTimezone: true }),
+  },
+  (table) => [
+    // The Home screen's and the Board's one read: what has not expired yet.
+    index('announcements_expires_on').on(table.orgId, table.expiresOn),
+    inScope('announcements_in_scope'),
+  ],
+).enableRLS()
+
+/**
+ * A posted number: who to phone, the hours it is answered, and what it is for
+ * (`CONTEXT.md`'s Contacts; ADR 0014). Current state plus an audit entry
+ * (ADR 0003), the same tier as a Supplier — and, like a Supplier, it carries
+ * no column that could let an Escalation resolve to it: ADR 0010 keeps this
+ * screen entirely outside the routing model.
+ */
+export const contacts = pgTable(
+  'contacts',
+  {
+    id: uuid('id').primaryKey(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id),
+    name: text('name').notNull(),
+    number: text('number').notNull(),
+    /** Display text a person reads at 2am, not a modelled availability window (ADR 0014). */
+    hours: text('hours'),
+    purpose: text('purpose').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  () => [inScope('contacts_in_scope')],
+).enableRLS()
+
+/**
+ * A rescue-wide safety rule belonging to no Task and no Space — the residue
+ * of the board's Reminders panel once the rest decomposed into existing
+ * models (ADR 0018): *no scissors in fields*, *take turns wide*. Shown on the
+ * same screen as Contacts rather than a panel of its own.
+ */
+export const standingRules = pgTable(
+  'standing_rules',
+  {
+    id: uuid('id').primaryKey(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id),
+    text: text('text').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  () => [inScope('standing_rules_in_scope')],
+).enableRLS()

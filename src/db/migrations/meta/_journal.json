@@ -64,6 +64,13 @@
       "when": 1787079318856,
       "tag": "0008_silly_azazel",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1787081824283,
+      "tag": "0009_familiar_killer_shrike",
+      "breakpoints": true
     }
   ]
 }

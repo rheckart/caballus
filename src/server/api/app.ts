@@ -29,6 +29,7 @@ import type { contract } from '../../shared/api-contract'
 import { type DayString } from '../../shared/time'
 import {
   anyDomainScope,
+  anyScopeHolder,
   board,
   domainScope,
   floor,
@@ -99,6 +100,17 @@ import { currentThresholds, publishThreshold } from '../weather/thresholds'
 import { readingFor, recordReading } from '../weather/readings'
 import type { Refusal as WeatherRefusal } from '../weather/outcome'
 import { THRESHOLD_SPECS } from '../../shared/weather'
+import { currentAnnouncements } from '../announcements/list'
+import { createAnnouncement, editAnnouncement } from '../announcements/records'
+import type { Refusal as AnnouncementRefusalKind } from '../announcements/outcome'
+import { contactList, standingRuleList } from '../contacts/list'
+import {
+  createContact,
+  createStandingRule,
+  editContact,
+  editStandingRule,
+} from '../contacts/records'
+import type { Refusal as ContactRefusalKind } from '../contacts/outcome'
 
 // The server's one entry point, so this is where reporting starts. It is a
 // no-op without a DSN, which is the state of every machine until one is set.
@@ -225,6 +237,16 @@ export function buildApi(
       because === 'shift_not_found' ||
       because === 'volunteer_not_found'
     return json({ error: because }, missing ? 404 : 409)
+  }
+
+  /** The Contacts screen's one refusal — a thing that is not there. */
+  function contactRefusal(because: ContactRefusalKind) {
+    return json({ error: because }, 404)
+  }
+
+  /** An Announcement's one refusal — a thing that is not there. */
+  function announcementRefusal(because: AnnouncementRefusalKind) {
+    return json({ error: because }, 404)
   }
 
   api.route('GET', '/day', readEverything(), async ({ context }) => {
@@ -523,6 +545,37 @@ export function buildApi(
   })
 
   /**
+   * The Contacts screen: posted numbers and the rescue's standing rules, both
+   * read by everyone (ADR 0014, ADR 0018).
+   */
+  api.route('GET', '/contacts', readEverything(), async ({ context }) => {
+    const answered = await forOrg(context.orgId).run(async (db) => ({
+      contacts: await contactList(db),
+      standingRules: await standingRuleList(db),
+    }))
+    return json({
+      contacts: answered.contacts.map((contact) => ({ ...contact })),
+      standingRules: answered.standingRules.map((rule) => ({ ...rule })),
+    })
+  })
+
+  /**
+   * Unexpired Announcements, newest posted first — the home screen's own read
+   * (#46, ADR 0018). `readEverything()`, because a wall in the barn is read by
+   * every Volunteer who walks past it.
+   */
+  api.route('GET', '/announcements', readEverything(), async ({ context }) => {
+    const answered = await forOrg(context.orgId).run(async (db) => {
+      const on = await dayHere(db)
+      return { on, announcements: await currentAnnouncements(db, on) }
+    })
+    return json({
+      today: answered.on,
+      announcements: answered.announcements.map((announcement) => ({ ...announcement })),
+    })
+  })
+
+  /**
    * The Board: the faithful grid, read-only, whole (#37).
    *
    * `board()` rather than `readEverything()` — a signed-in Volunteer, or the
@@ -566,6 +619,7 @@ export function buildApi(
                 },
         })),
       })),
+      announcements: grid.announcements.map((announcement) => ({ ...announcement })),
     })
   })
 
@@ -747,6 +801,69 @@ export function buildApi(
       return outcome.ok ? noContent() : horseRefusal(outcome.because)
     },
   )
+
+  /** Posts a Contact, under `roster` — the same Scope Contacts is edited under (ADR 0014). */
+  api.mutation('/contacts', domainScope('roster'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await createContact(db, context.orgId, actor.volunteerId, {
+      name: input.name,
+      number: input.number,
+      hours: input.hours ?? null,
+      purpose: input.purpose,
+    })
+    if (!outcome.ok) return contactRefusal(outcome.because)
+    return json({ contactId: outcome.value.id }, 201)
+  })
+
+  api.mutation('/contacts/edit', domainScope('roster'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await editContact(db, context.orgId, actor.volunteerId, input)
+    return outcome.ok ? noContent() : contactRefusal(outcome.because)
+  })
+
+  /** Adds a standing rule — the Reminders panel's residue, under `roster` (ADR 0018). */
+  api.mutation('/standing-rules', domainScope('roster'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await createStandingRule(db, context.orgId, actor.volunteerId, input)
+    if (!outcome.ok) return contactRefusal(outcome.because)
+    return json({ standingRuleId: outcome.value.id }, 201)
+  })
+
+  api.mutation('/standing-rules/edit', domainScope('roster'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await editStandingRule(db, context.orgId, actor.volunteerId, {
+      standingRuleId: input.standingRuleId,
+      text: input.text,
+      reason: input.reason ?? null,
+    })
+    return outcome.ok ? noContent() : contactRefusal(outcome.because)
+  })
+
+  /**
+   * Posts an Announcement. Any single Domain Scope — the check ADR 0018 asks
+   * for, unnamed rather than enumerated (`anyScopeHolder`).
+   */
+  api.mutation('/announcements', anyScopeHolder(), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await createAnnouncement(db, context.orgId, actor.volunteerId, input)
+    if (!outcome.ok) return announcementRefusal(outcome.because)
+    return json({ announcementId: outcome.value.id }, 201)
+  })
+
+  /**
+   * Edits an Announcement in place — by the author or any Domain Scope
+   * holder, which is the same check as posting: ADR 0010 has no authorship
+   * axis for this to lean on instead (ADR 0018).
+   */
+  api.mutation('/announcements/edit', anyScopeHolder(), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await editAnnouncement(db, context.orgId, actor.volunteerId, {
+      announcementId: input.announcementId,
+      text: input.text,
+      expiresOn: input.expiresOn,
+    })
+    return outcome.ok ? noContent() : announcementRefusal(outcome.because)
+  })
 
   /**
    * Publishing a Feed Schedule version. Under `horse_care` — a care
