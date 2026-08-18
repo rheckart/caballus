@@ -64,6 +64,13 @@
       "when": 1787079318856,
       "tag": "0008_silly_azazel",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1787082415018,
+      "tag": "0009_noisy_richard_fisk",
+      "breakpoints": true
     }
   ]
 }

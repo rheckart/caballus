@@ -66,6 +66,7 @@ function shift(
     gaps: string[]
     suggestedActingLead: string | null
     short: unknown
+    attendance: unknown[]
   }> = {},
 ) {
   return {
@@ -84,6 +85,7 @@ function shift(
       suggestedActingLead: extra.suggestedActingLead ?? null,
     },
     short: extra.short ?? null,
+    attendance: extra.attendance ?? [],
   }
 }
 
@@ -130,6 +132,14 @@ function watchPosts(schedule: unknown = SCHEDULE): { path: string; body: unknown
     '/shifts/acting-lead': (init: RequestInit) => {
       posted.push({ path: '/shifts/acting-lead', body: JSON.parse(String(init.body)) as unknown })
       return { rosterId: 'acting' }
+    },
+    '/attendance/sign-in': (init: RequestInit) => {
+      posted.push({ path: '/attendance/sign-in', body: JSON.parse(String(init.body)) as unknown })
+      return { attendanceId: 'signed-in' }
+    },
+    '/attendance/sign-out': (init: RequestInit) => {
+      posted.push({ path: '/attendance/sign-out', body: JSON.parse(String(init.body)) as unknown })
+      return {}
     },
   })
   return posted
@@ -393,5 +403,97 @@ describe('a volunteer’s own Shifts', () => {
 
     expect(await screen.findByText('You are not on any Shift in the next fortnight.')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Drop' })).toBeNull()
+  })
+})
+
+describe('signing in and out, on the phone (ADR 0012)', () => {
+  it('signs in against the Shift it is on, attributed to nobody but self', async () => {
+    const posted = watchPosts()
+    renderShifts()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Sign in' }))
+    await waitFor(() => {
+      expect(posted).toHaveLength(1)
+    })
+    expect(posted[0]).toMatchObject({
+      path: '/attendance/sign-in',
+      body: { volunteerId: 'beth', shiftId: 'mine' },
+    })
+  })
+
+  it('offers Sign out once the Shift shows an open arrival for this volunteer', async () => {
+    watchPosts({
+      today: '2026-08-18',
+      shifts: [
+        shift('mine', {
+          roster: [member('beth')],
+          attendance: [{ volunteerId: 'beth', arrivedAt: 1_700_000_000_000, departedAt: null }],
+        }),
+      ],
+    })
+    renderShifts()
+
+    expect(await screen.findByRole('button', { name: 'Sign out' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull()
+  })
+
+  it('signs out with no Attendance id — the server resolves the open one', async () => {
+    const posted = watchPosts({
+      today: '2026-08-18',
+      shifts: [
+        shift('mine', {
+          roster: [member('beth')],
+          attendance: [{ volunteerId: 'beth', arrivedAt: 1_700_000_000_000, departedAt: null }],
+        }),
+      ],
+    })
+    renderShifts()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Sign out' }))
+    await waitFor(() => {
+      expect(posted).toHaveLength(1)
+    })
+    expect(posted[0]).toMatchObject({
+      path: '/attendance/sign-out',
+      body: { volunteerId: 'beth', shiftId: 'mine' },
+    })
+  })
+
+  it('shows the fourth roster fact — rostered, absent, no Drop — to whoever carries Shift Authority', async () => {
+    watchPosts({
+      today: '2026-08-18',
+      shifts: [
+        shift('mine', {
+          state: 'in_progress',
+          roster: [member('beth', { position: 'lead' }), member('valerie', { name: 'Valerie' })],
+          // Beth, the Lead reading this screen, has already signed herself in —
+          // only Valerie is left unaccounted for.
+          attendance: [{ volunteerId: 'beth', arrivedAt: 1_700_000_000_000, departedAt: null }],
+        }),
+      ],
+    })
+    renderShifts()
+
+    expect(await screen.findByText('Rostered, not yet signed in: Valerie')).toBeTruthy()
+  })
+
+  it('says nothing once the missing name has signed in too', async () => {
+    watchPosts({
+      today: '2026-08-18',
+      shifts: [
+        shift('mine', {
+          state: 'in_progress',
+          roster: [member('beth', { position: 'lead' }), member('valerie', { name: 'Valerie' })],
+          attendance: [
+            { volunteerId: 'beth', arrivedAt: 1_700_000_000_000, departedAt: null },
+            { volunteerId: 'valerie', arrivedAt: 1_700_000_000_000, departedAt: null },
+          ],
+        }),
+      ],
+    })
+    renderShifts()
+
+    await screen.findByRole('button', { name: 'Sign out' })
+    expect(screen.queryByText(/Rostered, not yet signed in/)).toBeNull()
   })
 })

@@ -32,6 +32,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useState } from 'react'
 
 import { client } from '../shared/api-client'
+import { rosteredAbsent } from '../shared/attendance'
 import { refusalText } from '../shared/refusals'
 import type { AssignablePosition } from '../shared/shifts'
 import { carriesShiftAuthority } from '../shared/shifts'
@@ -92,6 +93,81 @@ function WhatIsMissing({ shift, within }: { shift: Shift; within: boolean }) {
           this, and the app neither declares Short nor withdraws it (ADR 0011). */}
       {shift.short !== null && <strong> — somebody has called this shift short</strong>}
     </>
+  )
+}
+
+/**
+ * The sign-in sheet, replaced (ADR 0012): a button that says which of the
+ * three states this Shift is in for `volunteerId` — never arrived, signed in,
+ * or signed out — and does the one action that moves it forward. `for` names
+ * whose Attendance this is; it is `me`'s own row on the common path and
+ * anybody else's when a Lead is signing somebody in who arrived without a
+ * phone in hand, which is allowed in both directions and always attributed to
+ * whoever taps the button.
+ */
+function AttendanceControl({
+  shiftId,
+  forVolunteer,
+  busy,
+  act,
+}: {
+  shiftId: string
+  forVolunteer: { volunteerId: string; name?: string; entry: Shift['attendance'][number] | undefined }
+  busy: boolean
+  act: (work: () => Promise<unknown>) => Promise<void>
+}) {
+  const { volunteerId, name, entry } = forVolunteer
+
+  if (entry === undefined) {
+    return (
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => {
+          void act(() => client.post('/attendance/sign-in', { volunteerId, shiftId }))
+        }}
+      >
+        Sign in{name !== undefined ? ` — ${name}` : ''}
+      </button>
+    )
+  }
+
+  if (entry.departedAt === null) {
+    return (
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => {
+          void act(() => client.post('/attendance/sign-out', { volunteerId, shiftId }))
+        }}
+      >
+        Sign out{name !== undefined ? ` — ${name}` : ''}
+      </button>
+    )
+  }
+
+  return <span> — signed out</span>
+}
+
+/**
+ * The fourth roster fact ADR 0012 names: **rostered, absent, no Drop** —
+ * displayed, and nothing more. The app does not count it, does not flag a
+ * pattern in it, and never turns it into a label on a person; it is what a
+ * Lead already knows standing in the barn, said out loud on the screen they
+ * are already looking at.
+ */
+function RosteredAbsent({ shift }: { shift: Shift }) {
+  const absent = rosteredAbsent(shift.roster, shift.attendance)
+  if (absent.length === 0) return null
+
+  const names = absent.map(
+    (volunteerId) => shift.roster.find((member) => member.volunteerId === volunteerId)?.name,
+  )
+
+  return (
+    <p>
+      Rostered, not yet signed in: {names.filter((name) => name !== undefined).join(', ')}
+    </p>
   )
 }
 
@@ -179,6 +255,22 @@ function MyShifts() {
                   {shift.purpose !== null && <> — {shift.purpose}</>}
                   {shift.state === 'in_progress' && <em> — under way</em>}
                   <WhatIsMissing shift={shift} within={soon(shift)} />
+                  {' '}
+                  <AttendanceControl
+                    shiftId={shift.id}
+                    forVolunteer={{
+                      volunteerId: me.volunteerId,
+                      entry: shift.attendance.find((entry) => entry.volunteerId === me.volunteerId),
+                    }}
+                    busy={busy}
+                    act={act}
+                  />
+                  {/* Who a Lead can see is standing and rostered but has not
+                      signed in — a displayed fact, never a label the app
+                      applies to a person (ADR 0012). */}
+                  {member !== undefined &&
+                    carriesShiftAuthority(member.position) &&
+                    shift.state === 'in_progress' && <RosteredAbsent shift={shift} />}
                   {/* Short is declared and cleared by whoever carries Shift
                       Authority here, which is what the Lead needs at 5am on
                       the screen they are already looking at (ADR 0011). The

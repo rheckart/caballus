@@ -1259,3 +1259,69 @@ export const shiftRoster = pgTable(
     inScope('shift_roster_in_scope'),
   ],
 ).enableRLS()
+
+/**
+ * The sign-in sheet, replaced: one row per visit (ADR 0012; `CONTEXT.md`'s
+ * Attendance).
+ *
+ * **A person, an arrival, a departure, an optional Shift, and — for a Visit —
+ * a job in the volunteer's own words plus a coarse category.** `shiftId` null
+ * is the bottom section of the paper: a volunteer at the rescue on no Shift,
+ * carrying `description` and `category` instead. Neither is invented for a
+ * Shift row, and neither is required of one.
+ *
+ * **A departure is never invented.** `departedAt` stays null until a person —
+ * anyone, including the volunteer themself — records it; nothing here ever
+ * writes it on a timer. `recordedBy` on each end is always the actor, which is
+ * what makes recording for somebody else safe rather than a forgery surface:
+ * *Beth signed herself in* and *the Lead recorded Beth's arrival* are stored
+ * as different facts because `arrivedRecordedBy` says which.
+ *
+ * `supervisingAdultId` and `supervisingAdultPhone` are captured at departure,
+ * alongside the sign-out that already happens there, and are **who supervised
+ * a minor** — a fact ADR 0012 keeps distinct from who else was merely present,
+ * which is the rest of that Shift's roster. Null for an adult volunteer and
+ * for any Shift nobody supervised.
+ *
+ * On ADR 0003's current-state tier: appended and, once closed, essentially
+ * done. Corrections are audit entries under ADR 0012's own carve-out from ADR
+ * 0011's domain-record habit — a later ticket's write, not this one's.
+ */
+export const attendance = pgTable(
+  'attendance',
+  {
+    id: uuid('id').primaryKey(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id),
+    /** Who was present. Distinct from `arrivedRecordedBy` the moment somebody else asserts it. */
+    volunteerId: uuid('volunteer_id')
+      .notNull()
+      .references(() => volunteers.id),
+    /** Null for a Visit — a volunteer at the rescue on no Shift (ADR 0012). */
+    shiftId: uuid('shift_id').references(() => shifts.id),
+    /** One of `ATTENDANCE_CATEGORIES`. `shift` for a Shift row; a Visit's own word otherwise. */
+    category: text('category').notNull(),
+    /** The job, in the volunteer's own words. Null on a Shift row, required on a Visit. */
+    description: text('description'),
+    arrivedAt: timestamp('arrived_at', { withTimezone: true }).notNull(),
+    arrivedRecordedBy: uuid('arrived_recorded_by')
+      .notNull()
+      .references(() => volunteers.id),
+    /** Null while open. Never written by a timer — a person closes it, or Shift Authority does (ADR 0012). */
+    departedAt: timestamp('departed_at', { withTimezone: true }),
+    departedRecordedBy: uuid('departed_recorded_by').references(() => volunteers.id),
+    /** Who supervised a minor, as a Volunteer — distinct from who was merely present (ADR 0012). */
+    supervisingAdultId: uuid('supervising_adult_id').references(() => volunteers.id),
+    /** A phone number a school can ring, captured alongside the adult (ADR 0012). */
+    supervisingAdultPhone: text('supervising_adult_phone'),
+  },
+  (table) => [
+    // A volunteer's own ledger, and the read the desktop report builds on.
+    index('attendance_volunteer').on(table.orgId, table.volunteerId, table.arrivedAt),
+    // A Shift's own sign-ins, which is where the fourth roster fact is read
+    // from (ADR 0012: rostered, absent, no Drop).
+    index('attendance_shift').on(table.orgId, table.shiftId),
+    inScope('attendance_in_scope'),
+  ],
+).enableRLS()

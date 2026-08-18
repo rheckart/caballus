@@ -41,6 +41,7 @@ import {
   type Weekday,
 } from '../../shared/shifts'
 import { dayString, now, type DayString, type Instant } from '../../shared/time'
+import { shiftAttendanceSummaries } from '../attendance/list'
 import { gatesOf } from './gates'
 import { staffingInputs } from './staffing'
 import { instantOfTimestamp, startOfShift } from '../time'
@@ -156,6 +157,13 @@ export interface ShiftStaffing {
   readonly suggestedActingLead: string | null
 }
 
+/** One Volunteer's sign-in against this Shift, arrival and departure only (ADR 0012). */
+export interface ShiftAttendanceMember {
+  readonly volunteerId: string
+  readonly arrivedAt: Instant
+  readonly departedAt: Instant | null
+}
+
 export interface ShiftRecord {
   readonly id: string
   readonly patternId: string | null
@@ -172,6 +180,14 @@ export interface ShiftRecord {
   readonly staffing: ShiftStaffing
   /** Declared. Null until a person says so, and null again once one clears it. */
   readonly short: DeclaredShort | null
+  /**
+   * Who has signed in, floor-readable so a Lead can see it without a `roster`
+   * grant — the slice `src/server/attendance/list.ts` carries here rather than
+   * behind the full ledger (ADR 0012). What it is missing —
+   * *rostered, absent, no Drop* — is `rosteredAbsent` in
+   * `src/shared/attendance.ts`, computed from this and `roster` together.
+   */
+  readonly attendance: readonly ShiftAttendanceMember[]
 }
 
 /**
@@ -188,7 +204,7 @@ export async function shiftList(
   today: DayString,
   timeZone: string,
 ): Promise<readonly ShiftRecord[]> {
-  const [shiftRows, rosterRows, people, inputs] = await Promise.all([
+  const [shiftRows, rosterRows, people, inputs, attendanceRows] = await Promise.all([
     db
       .select({
         id: shifts.id,
@@ -223,7 +239,15 @@ export async function shiftList(
       .orderBy(volunteers.name),
     gatesOf(db, today),
     staffingInputs(db),
+    shiftAttendanceSummaries(db),
   ])
+
+  const attendanceBy = new Map<string, ShiftAttendanceMember[]>()
+  for (const row of attendanceRows) {
+    const held = attendanceBy.get(row.shiftId) ?? []
+    held.push({ volunteerId: row.volunteerId, arrivedAt: row.arrivedAt, departedAt: row.departedAt })
+    attendanceBy.set(row.shiftId, held)
+  }
 
   const rosterBy = new Map<string, ShiftRosterMember[]>()
   for (const row of rosterRows) {
@@ -297,6 +321,7 @@ export async function shiftList(
                 declaredAt: instantOfTimestamp(row.shortDeclaredAt),
                 declaredBy: row.shortDeclaredBy,
               },
+        attendance: attendanceBy.get(row.id) ?? [],
       }
     })
 }
