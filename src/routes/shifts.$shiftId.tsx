@@ -24,6 +24,7 @@
 import { Link, createFileRoute, useParams } from '@tanstack/react-router'
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 
+import { Loading } from '../components/forms'
 import { client } from '../shared/api-client'
 import type { Answers, contract } from '../shared/api-contract'
 import { report } from '../shared/observability.browser'
@@ -484,7 +485,7 @@ export function ShiftChecklist() {
   if (checklist === null || shiftId === undefined) {
     return (
       <main>
-        <p>One moment…</p>
+        <Loading what="the checklist" />
       </main>
     )
   }

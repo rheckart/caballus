@@ -16,6 +16,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 
 import type { DomainScope } from '../shared/domain-scopes'
+import { Empty, Loading } from '../components/forms'
 import { client } from '../shared/api-client'
 import { refusalText } from '../shared/refusals'
 import type { Answers, contract } from '../shared/api-contract'
@@ -178,7 +179,7 @@ export function Escalations() {
     return (
       <main>
         <h1>Escalations</h1>
-        <p>One moment…</p>
+        <Loading what="escalations" />
       </main>
     )
   }
@@ -212,7 +213,7 @@ export function Escalations() {
       <section>
         <h2>Every Escalation</h2>
         {list.escalations.length === 0 ? (
-          <p>Nothing has been escalated yet.</p>
+          <Empty>Nothing has been escalated yet.</Empty>
         ) : (
           <ul>
             {list.escalations.map((escalation) => (

@@ -595,57 +595,71 @@ function freshness(age: number | null, problem: string | null): string {
  * means, the field does.
  */
 const STYLE = `
-.board { font-family: system-ui, sans-serif; margin: 0; padding: 1rem; }
-.board-head { display: flex; align-items: baseline; gap: 1rem; flex-wrap: wrap; }
-.board-head h1 { font-size: 1.6rem; margin: 0; }
-.board-day { font-size: 1.1rem; margin: 0; }
-.board-age { font-size: 0.95rem; margin: 0; color: #555; }
-.board-stale { color: #8a3b00; font-weight: 700; }
-.board-grid { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; font-size: 1.05rem; }
-.board-grid caption { text-align: left; font-size: 1.2rem; font-weight: 700; padding: 0.4rem 0; }
-.board-grid th, .board-grid td { border: 1px solid #b9c3d0; padding: 0.5rem; vertical-align: top; text-align: left; }
-.board-grid thead th { background: #eef2f7; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.06em; }
-.board-name { font-weight: 700; font-size: 1.15rem; display: block; }
-.board-halter { display: inline-block; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; }
-.board-open { font-style: italic; letter-spacing: 0.1em; }
-.board-blank { color: #6b7480; font-style: italic; }
+.board { font-family: var(--font); margin: 0; padding: var(--space-md); color: var(--ink); }
+.board-head { display: flex; align-items: baseline; gap: var(--space-md); flex-wrap: wrap; margin-bottom: var(--space-md); }
+.board-head h1 { font-size: 32px; letter-spacing: -0.5px; margin: 0; }
+.board-day { font-size: 18px; margin: 0; color: var(--charcoal); }
+.board-age { font-size: 14px; margin: 0; color: var(--steel); background: none; border: 0; padding: 0; }
+.board-stale { color: var(--warning); font-weight: 600; background: none; border: 0; padding: 0; }
+.board-grid { width: 100%; display: table; border-collapse: separate; border-spacing: 0; margin-bottom: var(--space-xl); font-size: 16px; background: var(--canvas); border: 1px solid var(--hairline); border-radius: var(--rounded-lg); overflow: hidden; }
+.board-grid caption { text-align: left; font-size: 22px; font-weight: 600; padding: var(--space-sm) 0; color: var(--ink); }
+.board-grid th, .board-grid td { border-bottom: 1px solid var(--hairline-soft); border-right: 1px solid var(--hairline-soft); padding: var(--space-sm) var(--space-md); vertical-align: top; text-align: left; }
+.board-grid tbody tr:last-child th, .board-grid tbody tr:last-child td { border-bottom: 0; }
+.board-grid th:last-child, .board-grid td:last-child { border-right: 0; }
+.board-grid thead th { background: var(--surface); color: var(--steel); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; white-space: nowrap; }
+.board-name { font-weight: 600; font-size: 18px; display: block; color: var(--ink); }
+.board-halter { display: inline-block; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--slate); }
+.board-open { font-weight: 600; letter-spacing: 2px; color: var(--stone); background: var(--surface-soft); }
+.board-blank { color: var(--stone); font-style: italic; }
 .board-lines { list-style: none; margin: 0; padding: 0; }
-.board-lines li { padding: 0.1rem 0; }
-.board-lines li[data-kind='feed'] { color: #0f5d55; }
-.board-lines li[data-kind='supplement'] { color: #1b3f8f; }
-.board-lines li[data-kind='medication'] { color: #a3122a; font-weight: 700; }
+.board-lines li { padding: 2px 0; margin: 0; border: 0; }
+/* Colour is the Product's kind, never a pen somebody picked up (ADR 0022). */
+.board-lines li[data-kind='feed'] { color: var(--brand-teal); }
+.board-lines li[data-kind='supplement'] { color: var(--link-blue); }
+.board-lines li[data-kind='medication'] { color: var(--error); font-weight: 600; }
 .board-route { font-style: italic; }
-.board-announcements { margin: 0 0 1rem; padding: 0.5rem 0.75rem; border: 2px dashed #b9c3d0; border-radius: 6px; }
-.board-announcements ul { margin: 0; padding-left: 1.2rem; }
-.board-weather { margin: 0 0 1rem; padding: 0.5rem 0.75rem; border: 2px solid #b9c3d0; border-radius: 6px; }
-.board-weather p { margin: 0.15rem 0; }
-.board-weather-holds { font-size: 1.5rem; font-weight: 700; letter-spacing: 0.04em; }
-.board-weather-holding { margin-right: 1rem; text-transform: uppercase; color: #8a3b00; }
-.board-weather-reading { font-size: 0.95rem; color: #555; }
-.board-weather-unresolved { font-size: 0.95rem; color: #8a3b00; font-weight: 700; }
-.board-garment { display: inline-block; margin-left: 0.4rem; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
-.board-garment[data-garment='blanket_weather'] { color: #1b3f8f; }
-.board-garment[data-garment='sheet_weather'] { color: #0f5d55; }
-.board-garment-why { font-weight: 400; text-transform: none; letter-spacing: 0; color: #555; }
-.board-new { font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #1b57c4; }
+.board-announcements { margin: 0 0 var(--space-md); padding: var(--space-sm) var(--space-md); background: var(--card-tint-yellow-bold); border: 0; border-radius: var(--rounded-lg); color: var(--charcoal); }
+.board-announcements ul { margin: 0; padding-left: var(--space-lg); }
+.board-announcements li { border: 0; padding: 2px 0; }
+.board-weather { margin: 0 0 var(--space-md); padding: var(--space-sm) var(--space-md); background: var(--card-tint-sky); border: 0; border-radius: var(--rounded-lg); }
+.board-weather p { margin: 2px 0; }
+.board-weather-holds { font-size: 24px; font-weight: 600; letter-spacing: -0.3px; color: var(--ink); }
+.board-weather-holding { margin-right: var(--space-md); text-transform: uppercase; color: var(--brand-orange-deep); }
+.board-weather-reading { font-size: 14px; color: var(--slate); }
+.board-weather-unresolved { font-size: 14px; color: var(--brand-orange-deep); font-weight: 600; background: none; border: 0; padding: 0; margin: 2px 0; }
+.board-garment { display: inline-block; margin-left: var(--space-xxs); font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; border-radius: var(--rounded-sm); padding: 2px 8px; }
+.board-garment[data-garment='blanket_weather'] { background: var(--card-tint-lavender); color: var(--brand-purple-800); }
+.board-garment[data-garment='sheet_weather'] { background: var(--card-tint-mint); color: var(--brand-green); }
+.board-garment-why { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--slate); }
+.board-new { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--primary); }
+/*
+ * The barn's tablet is often on a wall in a dim aisle; the dark reading of the
+ * same tokens keeps the kind colours apart at the far end of it.
+ */
 @media (prefers-color-scheme: dark) {
-  .board { background: #14171b; color: #e8ecf2; }
-  .board-grid th, .board-grid td { border-color: #39424e; }
-  .board-grid thead th { background: #1f242b; }
-  .board-age { color: #a2adbc; }
-  .board-stale { color: #e5a63f; }
-  .board-blank { color: #8d97a4; }
+  .board { background: var(--brand-navy-deep); color: var(--on-dark); }
+  .board-head h1, .board-name { color: var(--on-dark); }
+  .board-day { color: var(--on-dark-muted); }
+  .board-grid { background: var(--brand-navy); border-color: var(--brand-navy-mid); }
+  .board-grid caption { color: var(--on-dark); }
+  .board-grid th, .board-grid td { border-color: var(--brand-navy-mid); }
+  .board-grid thead th { background: var(--brand-navy-mid); color: var(--on-dark-muted); }
+  .board-halter { color: var(--on-dark-muted); }
+  .board-age, .board-weather-reading { color: var(--on-dark-muted); }
+  .board-stale { color: var(--brand-yellow); }
+  .board-blank { color: var(--stone); }
+  .board-open { background: var(--brand-navy-deep); color: var(--stone); }
   .board-lines li[data-kind='feed'] { color: #45d6c2; }
   .board-lines li[data-kind='supplement'] { color: #86adff; }
   .board-lines li[data-kind='medication'] { color: #ff7385; }
-  .board-new { color: #86adff; }
-  .board-announcements { border-color: #39424e; }
-  .board-weather { border-color: #39424e; }
-  .board-weather-holding { color: #e5a63f; }
-  .board-weather-reading { color: #a2adbc; }
-  .board-weather-unresolved { color: #e5a63f; }
-  .board-garment[data-garment='blanket_weather'] { color: #86adff; }
-  .board-garment[data-garment='sheet_weather'] { color: #45d6c2; }
-  .board-garment-why { color: #a2adbc; }
+  .board-new { color: var(--brand-purple-300); }
+  .board-announcements { background: var(--brand-navy-mid); color: var(--on-dark); }
+  .board-weather { background: var(--brand-navy-mid); }
+  .board-weather-holds { color: var(--on-dark); }
+  .board-weather-holding { color: var(--brand-yellow); }
+  .board-weather-unresolved { color: var(--brand-yellow); }
+  .board-garment[data-garment='blanket_weather'] { background: var(--brand-purple-800); color: var(--brand-purple-300); }
+  .board-garment[data-garment='sheet_weather'] { background: #14432a; color: #7fe3a0; }
+  .board-garment-why { color: var(--on-dark-muted); }
 }
 `

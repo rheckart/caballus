@@ -15,6 +15,18 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 
+import {
+  Actions,
+  AddButton,
+  Empty,
+  Field,
+  Fields,
+  Loading,
+  SaveButton,
+  Saved,
+  Sheet,
+  useSaving,
+} from '../../components/forms'
 import { client } from '../../shared/api-client'
 import { refusalText } from '../../shared/refusals'
 import type { Answers, contract } from '../../shared/api-contract'
@@ -30,6 +42,8 @@ function ReleaseVersions() {
   const [versions, setVersions] = useState<Versions | null>(null)
   const [day, setDay] = useState<string>('')
   const [problem, setProblem] = useState<string | null>(null)
+  const [open, setOpen] = useState(false)
+  const { pending, saved, save } = useSaving()
 
   const load = useCallback(async () => {
     const [published, today] = await Promise.all([
@@ -54,19 +68,22 @@ function ReleaseVersions() {
     const form = event.currentTarget
     const data = new FormData(form)
     setProblem(null)
-    void client
-      .post('/release-versions', {
-        label: String(data.get('label') ?? ''),
-        validFrom: dayString(String(data.get('validFrom') ?? '')),
-        obsoletesPrior: data.get('obsoletesPrior') === 'on',
-      })
-      .then(async () => {
-        form.reset()
-        await load()
-      })
-      .catch((error: unknown) => {
-        setProblem(refusalText(error))
-      })
+    void save(() =>
+      client
+        .post('/release-versions', {
+          label: String(data.get('label') ?? ''),
+          validFrom: dayString(String(data.get('validFrom') ?? '')),
+          obsoletesPrior: data.get('obsoletesPrior') === 'on',
+        })
+        .then(async () => {
+          form.reset()
+          await load()
+          setOpen(false)
+        })
+        .catch((error: unknown) => {
+          setProblem(refusalText(error))
+        }),
+    )
   }
 
   return (
@@ -75,17 +92,29 @@ function ReleaseVersions() {
 
       {problem !== null && <p role="alert">{problem}</p>}
 
-      <p>
-        A version is one issue of the release text. It is immutable — a correction is a new version,
+      <p className="lede">
+        A version is one issue of the release text. It is immutable: a correction is a new version,
         and the current one is the newest. The signed papers stay in the cabinet; what is here is
         the record that they exist.
       </p>
 
+      <div className="list-head">
+        <h2>Published, newest first</h2>
+        <AddButton
+          onClick={() => {
+            setOpen(true)
+          }}
+        >
+          Publish a version
+        </AddButton>
+      </div>
+
       {versions === null ? (
-        <p>One moment…</p>
+        <Loading what="versions" />
+      ) : versions.versions.length === 0 ? (
+        <Empty>Nothing published yet. The first version is the one everybody signs against.</Empty>
       ) : (
         <table>
-          <caption>Published, newest first</caption>
           <thead>
             <tr>
               <th scope="col">Label</th>
@@ -105,21 +134,54 @@ function ReleaseVersions() {
         </table>
       )}
 
-      <form onSubmit={publish}>
-        <h2>Publish a version</h2>
-        <label htmlFor="label">Label</label>
-        <input id="label" name="label" required maxLength={200} placeholder="Updated 2020" />
-        <label htmlFor="valid-from">Valid from</label>
-        <input id="valid-from" name="validFrom" type="date" defaultValue={day} required />
-        <p>
-          Obsoleting prior signatures stales every release signed before that date. Nobody is
-          removed from any roster: they are flagged on the people list, and the Coordinator works
-          the list.
-        </p>
-        <label htmlFor="obsoletes-prior">Obsolete every prior signature</label>
-        <input id="obsoletes-prior" name="obsoletesPrior" type="checkbox" />
-        <button type="submit">Publish</button>
-      </form>
+      {open && (
+        <Sheet
+          title="Publish a version"
+          description="A version is immutable once published. A correction is another version."
+          onClose={() => {
+            setOpen(false)
+          }}
+        >
+          <form onSubmit={publish}>
+            <Fields>
+              <Field label="Label" htmlFor="label" hint="What the paper itself says at the top.">
+                <input
+                  id="label"
+                  name="label"
+                  required
+                  maxLength={200}
+                  placeholder="Updated 2020"
+                  autoFocus
+                  aria-describedby="label-hint"
+                />
+              </Field>
+              <Field label="Valid from" htmlFor="valid-from">
+                <input id="valid-from" name="validFrom" type="date" defaultValue={day} required />
+              </Field>
+            </Fields>
+
+            {/* The sharpest control in the application, so what it does is
+                stated beside it at full size rather than in a hint. */}
+            <div className="danger">
+              <label htmlFor="obsoletes-prior">
+                <input id="obsoletes-prior" name="obsoletesPrior" type="checkbox" />
+                Obsolete every prior signature
+              </label>
+              <p>
+                This stales every release signed before that date. Nobody is removed from any
+                roster: they are flagged on the people list, and the Coordinator works the list.
+              </p>
+            </div>
+
+            <Actions>
+              <SaveButton pending={pending} pendingLabel="Publishing…">
+                Publish
+              </SaveButton>
+              <Saved saved={saved} what="Published" />
+            </Actions>
+          </form>
+        </Sheet>
+      )}
     </main>
   )
 }

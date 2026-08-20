@@ -7,6 +7,7 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 
+import { Loading } from '../../components/forms'
 import { client } from '../../shared/api-client'
 import { refusalText } from '../../shared/refusals'
 import type { Answers, contract } from '../../shared/api-contract'
@@ -49,7 +50,7 @@ export function HorseList() {
     return (
       <main>
         <h1>Horses</h1>
-        <p>One moment…</p>
+        <Loading what="horses" />
       </main>
     )
   }

@@ -19,6 +19,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 
+import { Actions, Empty, Field, Fields, Loading } from '../components/forms'
 import { client } from '../shared/api-client'
 import { refusalText } from '../shared/refusals'
 import { carriesShiftAuthority } from '../shared/shifts'
@@ -249,7 +250,7 @@ export function Supplies() {
     return (
       <main>
         <h1>Supplies</h1>
-        <p>One moment…</p>
+        <Loading what="supplies" />
       </main>
     )
   }
@@ -266,7 +267,7 @@ export function Supplies() {
       <section>
         <h2>Days of supply</h2>
         {forecast.products.length === 0 ? (
-          <p>No Products in the catalogue yet.</p>
+          <Empty>No Products in the catalogue yet.</Empty>
         ) : (
           <ul>
             {forecast.products.map((product) => (
@@ -299,35 +300,48 @@ export function Supplies() {
             }}
           >
             <h3>Record a count</h3>
-            <label htmlFor="reading-product">Product</label>
-            <select id="reading-product" name="productId" required defaultValue="">
-              <option value="" disabled>
-                Pick one
-              </option>
-              {forecast.products.map((product) => (
-                <option key={product.productId} value={product.productId}>
-                  {product.productName}
-                </option>
-              ))}
-            </select>
-            <label htmlFor="reading-days">Days remaining</label>
-            <input
-              id="reading-days"
-              name="daysRemaining"
-              type="number"
-              min={0}
-              step="0.5"
-              required
-            />
-            <label htmlFor="reading-counted-on">Counted on</label>
-            <input
-              id="reading-counted-on"
-              name="countedOn"
-              type="date"
-              required
-              defaultValue={forecast.today}
-            />
-            <button type="submit">Record</button>
+            <Fields>
+              <Field label="Product" htmlFor="reading-product">
+                <select id="reading-product" name="productId" required defaultValue="">
+                  <option value="" disabled>
+                    Pick one
+                  </option>
+                  {forecast.products.map((product) => (
+                    <option key={product.productId} value={product.productId}>
+                      {product.productName}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field
+                label="Days remaining"
+                htmlFor="reading-days"
+                hint="How many days it would last from the day you counted."
+              >
+                <input
+                  id="reading-days"
+                  name="daysRemaining"
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  step="0.5"
+                  required
+                  aria-describedby="reading-days-hint"
+                />
+              </Field>
+              <Field label="Counted on" htmlFor="reading-counted-on">
+                <input
+                  id="reading-counted-on"
+                  name="countedOn"
+                  type="date"
+                  required
+                  defaultValue={forecast.today}
+                />
+              </Field>
+            </Fields>
+            <Actions>
+              <button type="submit">Record</button>
+            </Actions>
           </form>
         </section>
       )}

@@ -1,0 +1,1866 @@
+/*
+ * The design system, as one file.
+ *
+ * `DESIGN.md` at the repository root is the source: its `colors`, `typography`,
+ * `rounded` and `spacing` tokens are transcribed here as custom properties, and
+ * everything below them is those tokens applied. Nothing invents a value that
+ * the file does not name.
+ *
+ * It styles *elements* rather than classes, because every screen in this
+ * application is already plain semantic HTML — a `<main>`, an `<h2>`, a
+ * `<form>`, a `<table>`. Styling the elements is what lets one file redesign
+ * twenty screens without touching twenty files, and it is what keeps the next
+ * screen consistent by default rather than by remembering.
+ *
+ * Mobile first throughout (ADR 0004): the volunteer is holding a phone in a
+ * barn, so the base rules are the phone's and the wider layouts are the
+ * additions. Touch targets are 44px, which is DESIGN.md's own floor.
+ */
+
+/* ---------------------------------------------------------------- tokens -- */
+
+:root {
+  /* colors */
+  --primary: #5645d4;
+  --primary-pressed: #4534b3;
+  --primary-deep: #3a2a99;
+  --on-primary: #ffffff;
+  --brand-navy: #0a1530;
+  --brand-navy-deep: #070f24;
+  --brand-navy-mid: #1a2a52;
+  --link-blue: #0075de;
+  --link-blue-pressed: #005bab;
+  --brand-orange: #dd5b00;
+  --brand-orange-deep: #793400;
+  --brand-pink: #ff64c8;
+  --brand-pink-deep: #a02e6d;
+  --brand-purple: #7b3ff2;
+  --brand-purple-300: #d6b6f6;
+  --brand-purple-800: #391c57;
+  --brand-teal: #2a9d99;
+  --brand-green: #1aae39;
+  --brand-yellow: #f5d75e;
+  --brand-brown: #523410;
+  --card-tint-peach: #ffe8d4;
+  --card-tint-rose: #fde0ec;
+  --card-tint-mint: #d9f3e1;
+  --card-tint-lavender: #e6e0f5;
+  --card-tint-sky: #dcecfa;
+  --card-tint-yellow: #fef7d6;
+  --card-tint-yellow-bold: #f9e79f;
+  --card-tint-cream: #f8f5e8;
+  --card-tint-gray: #f0eeec;
+  --canvas: #ffffff;
+  --surface: #f6f5f4;
+  --surface-soft: #fafaf9;
+  --hairline: #e5e3df;
+  --hairline-soft: #ede9e4;
+  --hairline-strong: #c8c4be;
+  --ink-deep: #000000;
+  --ink: #1a1a1a;
+  --charcoal: #37352f;
+  --slate: #5d5b54;
+  --steel: #787671;
+  --stone: #a4a097;
+  --muted: #bbb8b1;
+  --on-dark: #ffffff;
+  --on-dark-muted: #a4a097;
+  --success: #1aae39;
+  --warning: #dd5b00;
+  --error: #e03131;
+
+  /* rounded */
+  --rounded-xs: 4px;
+  --rounded-sm: 6px;
+  --rounded-md: 8px;
+  --rounded-lg: 12px;
+  --rounded-xl: 16px;
+  --rounded-xxl: 20px;
+  --rounded-xxxl: 24px;
+  --rounded-full: 9999px;
+
+  /* spacing */
+  --space-xxs: 4px;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 20px;
+  --space-xl: 24px;
+  --space-xxl: 32px;
+  --space-xxxl: 40px;
+  --space-section-sm: 48px;
+  --space-section: 64px;
+  --space-section-lg: 96px;
+  --space-hero: 120px;
+
+  /*
+   * Notion Sans is Notion's own licensed face and is not ours to ship, so the
+   * stack is DESIGN.md's own fallback list, headed by Inter where the platform
+   * already has it.
+   */
+  --font: Inter, -apple-system, system-ui, 'Segoe UI', Helvetica, sans-serif;
+
+  /* DESIGN.md's Known Gaps names no timing; its own recommendation is 150–200ms. */
+  --motion: 160ms ease;
+
+  --shell-top: 56px;
+  --shell-bottom: calc(60px + env(safe-area-inset-bottom, 0px));
+  --measure: 1100px;
+}
+
+/* ------------------------------------------------------------------ base -- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--surface-soft);
+  color: var(--ink);
+  font-family: var(--font);
+  /* typography.body-md */
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.55;
+}
+
+/* -------------------------------------------------------------- headings -- */
+
+h1,
+h2,
+h3,
+h4,
+h5 {
+  margin: 0 0 var(--space-sm);
+  font-weight: 600;
+  color: var(--ink);
+  text-wrap: balance;
+}
+
+/* typography.heading-2 at the phone's width, heading-1 once there is room. */
+h1 {
+  font-size: 30px;
+  line-height: 1.2;
+  letter-spacing: -0.5px;
+}
+
+h2 {
+  font-size: 22px;
+  line-height: 1.25;
+  letter-spacing: -0.3px;
+  margin-top: var(--space-xl);
+}
+
+h3 {
+  font-size: 18px;
+  line-height: 1.3;
+  margin-top: var(--space-lg);
+}
+
+h4,
+h5 {
+  font-size: 16px;
+  line-height: 1.4;
+  margin-top: var(--space-md);
+}
+
+p {
+  margin: 0 0 var(--space-sm);
+  color: var(--charcoal);
+}
+
+small,
+figcaption {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--steel);
+}
+
+hr {
+  border: 0;
+  border-top: 1px solid var(--hairline);
+  margin: var(--space-xl) 0;
+}
+
+code {
+  font-size: 13px;
+  background: var(--surface);
+  border-radius: var(--rounded-xs);
+  padding: 2px 6px;
+}
+
+/* ----------------------------------------------------------------- links -- */
+
+/* link-blue for inline text links, never the purple: DESIGN.md keeps the two
+   roles apart, and the purple is the CTA's alone. */
+a {
+  color: var(--link-blue);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+a:active {
+  color: var(--link-blue-pressed);
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: var(--rounded-xs);
+}
+
+/* ------------------------------------------------------------------ page -- */
+
+/*
+ * Every screen in this application is a `<main>`, so `<main>` is the page
+ * frame: the bottom padding clears the phone's tab bar, which is fixed.
+ */
+main {
+  display: block;
+  max-width: var(--measure);
+  margin: 0 auto;
+  padding: var(--space-lg) var(--space-md) calc(var(--shell-bottom) + var(--space-xxl));
+}
+
+main > h1 {
+  margin-bottom: var(--space-lg);
+}
+
+/*
+ * A `<section>` is a card. Which is the whole redesign for most screens: they
+ * are already written as a heading and a section per thing.
+ */
+section {
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--rounded-lg);
+  padding: var(--space-md);
+  margin: 0 0 var(--space-md);
+}
+
+section > h2:first-child,
+section > h3:first-child,
+section > h4:first-child {
+  margin-top: 0;
+}
+
+section section {
+  border: 0;
+  border-top: 1px solid var(--hairline-soft);
+  border-radius: 0;
+  padding: var(--space-md) 0 0;
+  margin: var(--space-md) 0 0;
+}
+
+article {
+  border: 1px solid var(--hairline);
+  border-radius: var(--rounded-lg);
+  padding: var(--space-md);
+  margin: 0 0 var(--space-sm);
+  background: var(--canvas);
+}
+
+/* ----------------------------------------------------------------- lists -- */
+
+ul,
+ol {
+  margin: 0 0 var(--space-sm);
+  padding-left: var(--space-lg);
+}
+
+li {
+  margin: 0 0 var(--space-xs);
+}
+
+/* A list of records — rows rather than bullets — wherever a list sits directly
+   inside a card and its items are wrapping records rather than sentences. */
+section > ul {
+  list-style: none;
+  padding-left: 0;
+}
+
+section > ul > li {
+  padding: var(--space-sm) 0;
+  border-bottom: 1px solid var(--hairline-soft);
+}
+
+section > ul > li:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+/* ---------------------------------------------------------------- tables -- */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--rounded-md);
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0 0 var(--space-md);
+  overflow: hidden;
+}
+
+caption {
+  text-align: left;
+  font-weight: 600;
+  padding: var(--space-sm) 0;
+  color: var(--charcoal);
+}
+
+th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--steel);
+  background: var(--surface);
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--hairline);
+  white-space: nowrap;
+}
+
+td {
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--hairline-soft);
+  vertical-align: top;
+}
+
+tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+/*
+ * A wide table on a narrow phone scrolls sideways rather than crushing its
+ * columns. `display: block` is what makes the element itself the scroller,
+ * which is what lets it work without a wrapper element on every screen.
+ */
+@media (max-width: 767px) {
+  table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* ----------------------------------------------------------------- forms -- */
+
+form {
+  display: block;
+}
+
+/*
+ * A form inside a card is the *add one of these* form on nearly every admin
+ * screen; it gets the quieter surface so it reads as a composer rather than as
+ * more of the list above it.
+ */
+section > form {
+  background: var(--surface-soft);
+  border: 1px solid var(--hairline);
+  border-radius: var(--rounded-md);
+  padding: var(--space-md);
+  margin-top: var(--space-md);
+}
+
+form > h3:first-child,
+form > h4:first-child {
+  margin-top: 0;
+}
+
+label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--charcoal);
+  margin: var(--space-sm) 0 var(--space-xxs);
+}
+
+/* A checkbox or radio label is beside its control, not above it. */
+label:has(> input[type='checkbox']),
+label:has(> input[type='radio']) {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  min-height: 44px;
+  margin: 0;
+}
+
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: 16px; /* 16px or iOS zooms the page on focus. */
+  color: var(--ink);
+  background: var(--canvas);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--rounded-md);
+  padding: var(--space-sm) var(--space-md);
+  min-height: 44px;
+  width: 100%;
+  max-width: 420px;
+  transition:
+    border-color var(--motion),
+    box-shadow var(--motion);
+}
+
+textarea {
+  min-height: 96px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+input[type='checkbox'],
+input[type='radio'] {
+  width: 22px;
+  height: 22px;
+  min-height: 0;
+  margin: 0;
+  accent-color: var(--primary);
+  flex: none;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--muted);
+}
+
+input:disabled,
+select:disabled,
+textarea:disabled {
+  background: var(--surface);
+  color: var(--muted);
+}
+
+fieldset {
+  border: 1px solid var(--hairline);
+  border-radius: var(--rounded-md);
+  padding: var(--space-md);
+  margin: var(--space-md) 0;
+}
+
+legend {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--charcoal);
+  padding: 0 var(--space-xs);
+}
+
+/* --------------------------------------------------------------- buttons -- */
+
+/*
+ * Rectangles at `rounded.md`, never pills — DESIGN.md is explicit that the
+ * rectangle is the brand's geometry and the pill is somebody else's.
+ */
+button {
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.3;
+  min-height: 44px;
+  padding: 10px 18px;
+  border-radius: var(--rounded-md);
+  border: 1px solid var(--hairline-strong);
+  background: var(--canvas);
+  color: var(--ink);
+  cursor: pointer;
+  transition:
+    background var(--motion),
+    border-color var(--motion),
+    color var(--motion);
+  margin: var(--space-xs) var(--space-xs) 0 0;
+}
+
+button:hover:not(:disabled) {
+  background: var(--surface);
+}
+
+button:disabled {
+  background: var(--hairline);
+  border-color: var(--hairline);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+/* The purple is the dominant CTA and nothing else, so it lands on the one
+   button a form submits with. */
+button[type='submit'] {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+}
+
+button[type='submit']:hover:not(:disabled) {
+  background: var(--primary-pressed);
+  border-color: var(--primary-pressed);
+}
+
+button[type='submit']:active:not(:disabled) {
+  background: var(--primary-deep);
+  border-color: var(--primary-deep);
+}
+
+button[type='submit']:disabled {
+  background: var(--hairline);
+  border-color: var(--hairline);
+  color: var(--muted);
+}
+
+/* ---------------------------------------------------------- alerts, tags -- */
+
+/*
+ * Every refusal in this application is already a `role="alert"`, so the
+ * refusal styling needs no new markup anywhere: it is the semantics the
+ * screens were written with.
+ */
+[role='alert'] {
+  display: block;
+  background: color-mix(in srgb, var(--error) 8%, var(--canvas));
+  border: 1px solid color-mix(in srgb, var(--error) 35%, var(--canvas));
+  border-left: 3px solid var(--error);
+  border-radius: var(--rounded-md);
+  color: var(--ink);
+  font-size: 14px;
+  padding: var(--space-sm) var(--space-md);
+  margin: var(--space-sm) 0;
+}
+
+[role='status'] {
+  display: block;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--rounded-md);
+  font-size: 14px;
+  padding: var(--space-sm) var(--space-md);
+  margin: var(--space-sm) 0;
+}
+
+.badge {
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  border-radius: var(--rounded-sm);
+  padding: 2px 8px;
+  background: var(--card-tint-gray);
+  color: var(--charcoal);
+}
+
+.badge-purple {
+  background: var(--card-tint-lavender);
+  color: var(--brand-purple-800);
+}
+
+.badge-orange {
+  background: var(--card-tint-peach);
+  color: var(--brand-orange-deep);
+}
+
+.badge-green {
+  background: var(--card-tint-mint);
+  color: var(--brand-green);
+}
+
+/* ----------------------------------------------------------- the app bar -- */
+
+/*
+ * The way back. Every screen has it, it is fixed to the top, and the wordmark
+ * is a link to `/` — which is the thing the application had no answer for
+ * before: a volunteer four screens deep with no way home but the browser.
+ */
+.appbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  height: var(--shell-top);
+  padding: 0 var(--space-md);
+  background: var(--canvas);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.appbar-home {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  min-height: 44px;
+  padding: 0 var(--space-xs) 0 0;
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 16px;
+  letter-spacing: -0.2px;
+}
+
+.appbar-home:hover {
+  text-decoration: none;
+  color: var(--primary);
+}
+
+.appbar-mark {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--rounded-md);
+  background: var(--brand-navy);
+  color: var(--on-dark);
+  font-size: 15px;
+  font-weight: 600;
+  flex: none;
+}
+
+.appbar-spacer {
+  flex: 1;
+}
+
+/* The desktop row of destinations; the phone gets the tab bar below instead. */
+.appbar-links {
+  display: none;
+  gap: var(--space-xxs);
+  align-items: center;
+}
+
+.appbar-links a {
+  color: var(--slate);
+  font-size: 14px;
+  font-weight: 500;
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--rounded-sm);
+}
+
+.appbar-links a:hover {
+  text-decoration: none;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.appbar-links a[data-current='true'] {
+  background: var(--surface);
+  color: var(--ink);
+}
+
+/* ------------------------------------------------------- the phone's tabs -- */
+
+/*
+ * Five destinations, thumb-height, fixed to the bottom of the phone. The fifth
+ * is Home, because the ask this shell answers is *get back to the home page
+ * easily* and the home page is where everything else is reachable from.
+ */
+.tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  background: var(--canvas);
+  border-top: 1px solid var(--hairline);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.tabbar a {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 60px;
+  padding: var(--space-xxs) 2px;
+  color: var(--steel);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.tabbar a:hover {
+  text-decoration: none;
+}
+
+.tabbar a[data-current='true'] {
+  color: var(--primary);
+}
+
+.tabbar-glyph {
+  font-size: 19px;
+  line-height: 1;
+}
+
+/* ------------------------------------------------------------ home tiles -- */
+
+/*
+ * The hero band, which DESIGN.md builds every surface's opening from: deep
+ * navy, white type, and the one purple CTA.
+ */
+.hero {
+  background: var(--brand-navy);
+  color: var(--on-dark);
+  border-radius: var(--rounded-lg);
+  padding: var(--space-xxl) var(--space-lg);
+  margin: 0 0 var(--space-lg);
+}
+
+.hero h1 {
+  color: var(--on-dark);
+  font-size: 36px;
+  line-height: 1.1;
+  letter-spacing: -1px;
+  margin-bottom: var(--space-xs);
+}
+
+.hero p {
+  color: var(--on-dark-muted);
+  font-size: 16px;
+  margin: 0;
+  max-width: 46ch;
+}
+
+.hero-scopes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  margin-top: var(--space-md);
+}
+
+.hero-scope {
+  background: var(--brand-navy-mid);
+  color: var(--on-dark);
+  border-radius: var(--rounded-full);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 10px;
+}
+
+.section-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--steel);
+  margin: var(--space-xl) 0 var(--space-sm);
+}
+
+/*
+ * The destinations, as cards rather than as a bulleted list of links: two up on
+ * the smallest phone, so the whole barn's worth of screens is one thumb-reach
+ * rather than a scroll.
+ */
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-sm);
+  list-style: none;
+  margin: 0 0 var(--space-md);
+  padding: 0;
+}
+
+.tiles li {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xxs);
+  height: 100%;
+  min-height: 104px;
+  padding: var(--space-md);
+  border-radius: var(--rounded-lg);
+  border: 1px solid var(--hairline);
+  background: var(--canvas);
+  color: var(--charcoal);
+  transition:
+    transform var(--motion),
+    box-shadow var(--motion);
+}
+
+.tile:hover {
+  text-decoration: none;
+  transform: translateY(-2px);
+  box-shadow: rgba(15, 15, 15, 0.08) 0 6px 16px -4px;
+}
+
+.tile-glyph {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.tile-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.tile-what {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--slate);
+}
+
+/* The pastel tints, which is how the two groups read apart at a glance. */
+.tile[data-tint='peach'] {
+  background: var(--card-tint-peach);
+  border-color: transparent;
+}
+.tile[data-tint='rose'] {
+  background: var(--card-tint-rose);
+  border-color: transparent;
+}
+.tile[data-tint='mint'] {
+  background: var(--card-tint-mint);
+  border-color: transparent;
+}
+.tile[data-tint='lavender'] {
+  background: var(--card-tint-lavender);
+  border-color: transparent;
+}
+.tile[data-tint='sky'] {
+  background: var(--card-tint-sky);
+  border-color: transparent;
+}
+.tile[data-tint='yellow'] {
+  background: var(--card-tint-yellow);
+  border-color: transparent;
+}
+.tile[data-tint='cream'] {
+  background: var(--card-tint-cream);
+  border-color: transparent;
+}
+.tile[data-tint='gray'] {
+  background: var(--card-tint-gray);
+  border-color: transparent;
+}
+
+/* Sign out is the quietest thing on the screen, not a second CTA. */
+.quiet-actions {
+  margin-top: var(--space-xl);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--hairline);
+}
+
+/* ----------------------------------------------------------- login, board -- */
+
+/*
+ * Signing in is the one screen with no shell — there is nowhere to navigate to
+ * yet — so it is centred and the form is the whole page.
+ */
+main.centred-page {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  min-height: 100dvh;
+  max-width: none;
+  padding: var(--space-xxl) var(--space-md);
+}
+
+main.centred-page > * {
+  width: 100%;
+  max-width: 400px;
+}
+
+main.centred-page h1 {
+  text-align: center;
+  margin-bottom: var(--space-lg);
+}
+
+main.centred-page form {
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--rounded-lg);
+  padding: var(--space-xl);
+}
+
+main.centred-page input {
+  max-width: none;
+}
+
+main.centred-page button {
+  width: 100%;
+  margin-left: 0;
+  margin-right: 0;
+}
+
+/*
+ * The Board is a wall the barn reads across a room, so it keeps the full width
+ * and loses the phone's bottom padding — nothing taps it (ADR 0022).
+ */
+body:has(.board) main {
+  max-width: none;
+  padding-bottom: var(--space-lg);
+}
+
+/* ----------------------------------------------------- wider than a phone -- */
+
+@media (min-width: 600px) {
+  .tiles {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  main {
+    padding: var(--space-xl) var(--space-lg) var(--space-xxl);
+  }
+
+  h1 {
+    font-size: 36px;
+  }
+
+  .hero {
+    padding: var(--space-section-sm) var(--space-xxl);
+  }
+
+  .hero h1 {
+    font-size: 48px;
+    letter-spacing: -1.5px;
+  }
+}
+
+@media (min-width: 900px) {
+  /* The tab bar is the phone's; a wide screen navigates from the top bar. */
+  .tabbar {
+    display: none;
+  }
+
+  main {
+    padding-bottom: var(--space-section);
+  }
+
+  .appbar-links {
+    display: flex;
+  }
+
+  .tiles {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  section {
+    padding: var(--space-xl);
+  }
+
+  h1 {
+    font-size: 44px;
+    letter-spacing: -0.5px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* ============================================================ data entry == */
+
+/*
+ * The primitives in `src/components/forms.tsx`. Everything here is the same
+ * token set the rest of the file uses; nothing below invents a value.
+ */
+
+/* ------------------------------------------------------------- the sheet -- */
+
+/*
+ * A native `<dialog>`. On a phone it is a sheet that rises from the bottom and
+ * takes the full width; on a desktop it is a centred panel. The `::backdrop`
+ * is the browser's own, which is why nothing here has to darken the page.
+ */
+.sheet {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--ink);
+  max-width: 100%;
+  max-height: 100%;
+  width: 100%;
+  margin: auto auto 0;
+}
+
+.sheet::backdrop {
+  background: rgba(15, 15, 15, 0.45);
+}
+
+.sheet-body {
+  background: var(--canvas);
+  border-radius: var(--rounded-xl) var(--rounded-xl) 0 0;
+  padding: var(--space-lg) var(--space-md) calc(var(--space-lg) + env(safe-area-inset-bottom, 0px));
+  max-height: 92dvh;
+  overflow-y: auto;
+}
+
+.sheet-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-md);
+  margin-bottom: var(--space-md);
+}
+
+.sheet-head h2 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.25;
+}
+
+.sheet-what {
+  margin: var(--space-xxs) 0 0;
+  font-size: 14px;
+  color: var(--slate);
+}
+
+.sheet-close {
+  margin: 0 0 0 auto;
+  min-width: 44px;
+  padding: 0;
+  font-size: 22px;
+  line-height: 1;
+  border-color: transparent;
+  background: var(--surface);
+  color: var(--slate);
+  flex: none;
+}
+
+/* Inside a sheet the form is the sheet, so it drops the composer surface. */
+.sheet form,
+.sheet section > form {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+@media (min-width: 700px) {
+  .sheet {
+    width: min(640px, calc(100vw - var(--space-xxl)));
+    margin: auto;
+  }
+
+  .sheet-body {
+    border-radius: var(--rounded-lg);
+    padding: var(--space-xl);
+    max-height: 86dvh;
+  }
+}
+
+/* ----------------------------------------------------------- the fields -- */
+
+/*
+ * Two columns once there is room for two, and one on a phone. A form of eight
+ * fields is the reason the edit screens read as long: half of them are a date
+ * or a number four characters wide sitting alone on a line.
+ */
+.fields {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0 var(--space-md);
+}
+
+.field {
+  min-width: 0;
+}
+
+.field-wide {
+  grid-column: 1 / -1;
+}
+
+.field input,
+.field select,
+.field textarea {
+  max-width: none;
+  width: 100%;
+}
+
+.field-optional {
+  margin-left: var(--space-xs);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--stone);
+}
+
+.field-hint {
+  margin: var(--space-xxs) 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--steel);
+}
+
+@media (min-width: 700px) {
+  .fields {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* ------------------------------------------------------------ the choice -- */
+
+/*
+ * A short closed list as buttons. The radio itself is hidden from sight and
+ * not from the page: it still takes focus, still answers to the arrow keys and
+ * still names the group, which is everything a custom control has to rebuild.
+ */
+.choice {
+  border: 0;
+  padding: 0;
+  margin: var(--space-sm) 0 0;
+  min-width: 0;
+}
+
+.choice legend {
+  padding: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--charcoal);
+  margin-bottom: var(--space-xxs);
+}
+
+.choice-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+
+.choice-options label {
+  margin: 0;
+  min-height: 0;
+  display: block;
+}
+
+.choice-options input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.choice-options span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 var(--space-md);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--rounded-md);
+  background: var(--canvas);
+  color: var(--charcoal);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background var(--motion),
+    border-color var(--motion),
+    color var(--motion);
+}
+
+.choice-options label:hover span {
+  background: var(--surface);
+}
+
+.choice-options input:checked + span {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+}
+
+.choice-options input:focus-visible + span {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* ----------------------------------------------------------- the actions -- */
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-top: var(--space-lg);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--hairline-soft);
+}
+
+.actions button {
+  margin: 0;
+}
+
+/* The save is first in the source and first under the thumb. */
+.actions button[type='submit'] {
+  order: -1;
+}
+
+.saved {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--success);
+  min-height: 1lh;
+}
+
+.saved:not(:empty)::before {
+  content: '\2713\a0';
+}
+
+@media (max-width: 699px) {
+  /* On a phone the sheet's actions stay under the thumb while the fields
+     scroll past them. */
+  .sheet .actions {
+    position: sticky;
+    bottom: 0;
+    background: var(--canvas);
+    margin: var(--space-lg) 0 0;
+    padding-bottom: var(--space-xs);
+  }
+
+  .sheet .actions button {
+    flex: 1 1 auto;
+  }
+}
+
+/* ------------------------------------------------------------ the filter -- */
+
+.filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs) var(--space-sm);
+  margin: 0 0 var(--space-sm);
+}
+
+.filter label {
+  margin: 0;
+}
+
+.filter input {
+  flex: 1 1 200px;
+  max-width: 320px;
+  min-height: 44px;
+}
+
+.filter-count {
+  margin: 0;
+  font-size: 13px;
+  color: var(--steel);
+  white-space: nowrap;
+}
+
+/* -------------------------------------------------- empty, loading, add -- */
+
+.empty {
+  background: var(--surface);
+  border: 1px dashed var(--hairline-strong);
+  border-radius: var(--rounded-lg);
+  color: var(--slate);
+  font-size: 14px;
+  padding: var(--space-lg) var(--space-md);
+  text-align: center;
+  margin: 0 0 var(--space-md);
+}
+
+.loading {
+  color: var(--steel);
+  font-size: 14px;
+  margin: 0 0 var(--space-md);
+}
+
+.add {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+  font-weight: 500;
+}
+
+.add:hover:not(:disabled) {
+  background: var(--primary-pressed);
+  border-color: var(--primary-pressed);
+}
+
+/*
+ * The heading of a list, with the one button that adds to it on the same line.
+ * Which is what lets the add form leave the top of the page: it was pushing
+ * the thing people came to read below the fold on every screen.
+ */
+.list-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  margin: var(--space-xl) 0 var(--space-sm);
+}
+
+.list-head h2 {
+  margin: 0;
+}
+
+.list-head button {
+  margin: 0;
+}
+
+/* A row's own buttons: quiet, and never wider than the words in them. */
+td .actions,
+td button {
+  margin: 0;
+}
+
+td button {
+  min-height: 36px;
+  padding: 6px 12px;
+}
+
+/* ------------------------------------------------------------- the lede -- */
+
+/*
+ * The sentence under a screen's title that says what the screen is for. Every
+ * admin screen already had one; it was reading as body text in the middle of
+ * a form.
+ */
+.lede {
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--slate);
+  max-width: 68ch;
+  margin: 0 0 var(--space-lg);
+}
+
+/* ========================================================= what to do now == */
+
+/*
+ * The card that answers *what do I do now*, at the top of home. It is the one
+ * place on the screen the accent colour is spent, which is what makes it the
+ * thing a volunteer's eye lands on first.
+ */
+.now {
+  background: var(--card-tint-lavender);
+  border: 0;
+  border-radius: var(--rounded-lg);
+  padding: var(--space-lg);
+  margin: 0 0 var(--space-lg);
+}
+
+.now-quiet {
+  background: var(--surface);
+}
+
+.now-when {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  margin: 0 0 var(--space-xxs);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--brand-purple-800);
+}
+
+.now-quiet .now-when {
+  color: var(--slate);
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.now-live {
+  background: var(--semantic-success, var(--success));
+  color: var(--on-primary);
+  border-radius: var(--rounded-full);
+  padding: 2px 8px;
+  font-size: 11px;
+  letter-spacing: 1px;
+}
+
+.now h2.now-what {
+  margin: 0;
+  font-size: 26px;
+  line-height: 1.2;
+  letter-spacing: -0.5px;
+  color: var(--ink);
+}
+
+.now-quiet .now-what {
+  margin: 0;
+  font-size: 14px;
+  color: var(--slate);
+  max-width: 58ch;
+}
+
+.now-why {
+  margin: var(--space-xxs) 0 0;
+  font-size: 14px;
+  color: var(--slate);
+}
+
+.now-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-top: var(--space-md);
+}
+
+/* The one purple button on the screen. Everything else defers to it. */
+.now-go {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0 var(--space-xl);
+  border-radius: var(--rounded-md);
+  background: var(--primary);
+  color: var(--on-primary);
+  font-size: 16px;
+  font-weight: 500;
+  transition: background var(--motion);
+}
+
+.now-go:hover {
+  text-decoration: none;
+  background: var(--primary-pressed);
+  color: var(--on-primary);
+}
+
+.now-more {
+  font-size: 14px;
+  color: var(--slate);
+}
+
+/* --------------------------------------------------------------- the desk -- */
+
+.desk {
+  border: 1px solid var(--hairline);
+  border-radius: var(--rounded-lg);
+  background: var(--canvas);
+  padding: 0;
+  margin: var(--space-lg) 0 var(--space-md);
+}
+
+.desk > summary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 56px;
+  padding: var(--space-sm) var(--space-md);
+  cursor: pointer;
+  list-style: none;
+  border-radius: var(--rounded-lg);
+}
+
+.desk > summary::-webkit-details-marker {
+  display: none;
+}
+
+/* The disclosure triangle, drawn rather than borrowed, so it can turn. */
+.desk > summary::after {
+  content: '';
+  position: absolute;
+  right: var(--space-lg);
+  width: 9px;
+  height: 9px;
+  border-right: 2px solid var(--steel);
+  border-bottom: 2px solid var(--steel);
+  transform: rotate(45deg);
+  transition: transform var(--motion);
+}
+
+.desk {
+  position: relative;
+}
+
+.desk[open] > summary::after {
+  transform: rotate(-135deg);
+}
+
+.desk > summary:hover {
+  background: var(--surface-soft);
+}
+
+.desk-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.desk-what {
+  font-size: 13px;
+  color: var(--steel);
+}
+
+.desk .tiles {
+  padding: 0 var(--space-md) var(--space-md);
+  margin: 0;
+}
+
+/* ====================================================== records and rows == */
+
+/*
+ * A record panel: one horse, one Volunteer, opened below the list it was
+ * opened from. Marked with the accent along its edge so it reads as *this row,
+ * expanded* rather than as a second page that arrived from nowhere.
+ */
+.record {
+  border-left: 3px solid var(--primary);
+  scroll-margin-top: calc(var(--shell-top) + var(--space-md));
+}
+
+.record-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  margin-bottom: var(--space-md);
+  padding-bottom: var(--space-md);
+  border-bottom: 1px solid var(--hairline-soft);
+}
+
+.record-head h2 {
+  margin: 0;
+  flex: 1;
+}
+
+.record-head button {
+  margin: 0;
+}
+
+.record-photo {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--rounded-md);
+  object-fit: cover;
+  flex: none;
+}
+
+.record form {
+  border-top: 1px solid var(--hairline-soft);
+  padding-top: var(--space-md);
+  margin-top: var(--space-lg);
+}
+
+.record form:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+  margin-top: 0;
+}
+
+/* The one-select-and-a-button forms: a stall, a field, a barn. */
+.assignments {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-sm);
+}
+
+.assign {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-xs);
+  border: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+.assign .field {
+  flex: 1;
+}
+
+.assign button {
+  margin: 0;
+  flex: none;
+}
+
+@media (min-width: 700px) {
+  .assignments {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* A repeated group of fields: one Feed Schedule line, one roster row. */
+.line {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0 var(--space-md);
+  align-items: end;
+  background: var(--surface-soft);
+  border: 1px solid var(--hairline);
+  border-radius: var(--rounded-md);
+  padding: var(--space-sm) var(--space-md);
+  margin: 0 0 var(--space-xs);
+}
+
+.line-remove {
+  justify-self: start;
+  margin: var(--space-xs) 0 var(--space-xs) !important;
+  min-height: 36px;
+  padding: 6px 12px;
+  color: var(--error);
+  border-color: var(--hairline-strong);
+}
+
+@media (min-width: 700px) {
+  .line {
+    grid-template-columns: 2fr 2fr 2fr auto;
+  }
+
+  .line-remove {
+    align-self: end;
+    margin-bottom: var(--space-sm) !important;
+  }
+}
+
+.schedule {
+  border: 1px solid var(--hairline);
+  border-radius: var(--rounded-md);
+  padding: var(--space-sm) var(--space-md);
+  margin: 0 0 var(--space-xs);
+}
+
+.schedule h4 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+  margin: 0 0 var(--space-xxs);
+}
+
+.schedule-from {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--steel);
+}
+
+.schedule-none {
+  margin: 0;
+  font-size: 14px;
+  color: var(--steel);
+}
+
+.publisher {
+  background: var(--surface-soft);
+  border: 1px solid var(--hairline);
+  border-radius: var(--rounded-md);
+  padding: var(--space-md);
+  margin-top: var(--space-md);
+}
+
+/*
+ * The forms that end something: a Departure, an obsoleting publish, a removal.
+ * Bordered in the error colour and never *coloured* in it, because the form is
+ * not itself a mistake; what it does is only hard to undo.
+ */
+.danger {
+  border: 1px solid color-mix(in srgb, var(--error) 30%, var(--canvas)) !important;
+  border-left: 3px solid var(--error) !important;
+  border-radius: var(--rounded-md);
+  background: color-mix(in srgb, var(--error) 4%, var(--canvas));
+  padding: var(--space-md) !important;
+  margin-top: var(--space-lg) !important;
+}
+
+.danger h3 {
+  margin-top: 0;
+}
+
+.danger p {
+  font-size: 14px;
+  color: var(--slate);
+}
+
+.danger label {
+  font-weight: 500;
+}
+
+/* A list row with its own action at the end of it. */
+li.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+li.row button {
+  margin: 0;
+  flex: none;
+}
+
+/* The row a record is open for, marked in the list it was opened from. */
+tr[data-open='true'] td {
+  background: var(--card-tint-lavender);
+}
+
+/* ---------------------------------------------------------- stats, grants -- */
+
+/*
+ * The figures a screen opens with. A count in a sentence is read at the same
+ * speed as the sentence; a count at 28px is read at a glance, which is what a
+ * Coordinator opening this screen actually wants from it.
+ */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--space-sm);
+  margin: 0 0 var(--space-lg);
+}
+
+.stat {
+  background: var(--surface);
+  border-radius: var(--rounded-lg);
+  padding: var(--space-md);
+}
+
+.stat-figure {
+  display: block;
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.5px;
+  color: var(--ink);
+}
+
+.stat-what {
+  display: block;
+  font-size: 13px;
+  color: var(--steel);
+}
+
+.grants {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 var(--space-md);
+  border: 1px solid var(--hairline);
+  border-radius: var(--rounded-md);
+  overflow: hidden;
+}
+
+.grants > li {
+  margin: 0;
+  padding: var(--space-xs) var(--space-md);
+  border-bottom: 1px solid var(--hairline-soft);
+  background: var(--canvas);
+}
+
+.grants > li:last-child {
+  border-bottom: 0;
+}
+
+.grants > li[data-held='true'] {
+  background: var(--surface-soft);
+}
+
+.grants span .badge {
+  margin-left: var(--space-xs);
+}
+
+/* --------------------------------------------------------- owed decisions -- */
+
+/*
+ * A question nobody has answered yet, which ADR 0013 and ADR 0015 both insist
+ * must never read as agreement or as no work. So it is tinted rather than
+ * plain: the same peach the Board spends on an unresolved rule.
+ */
+.owed,
+.owed-list {
+  background: var(--card-tint-peach);
+  border-radius: var(--rounded-md);
+  color: var(--brand-orange-deep);
+  font-size: 14px;
+  padding: var(--space-sm) var(--space-md);
+  margin: var(--space-sm) 0;
+}
+
+.owed-list {
+  list-style: none;
+  padding-left: var(--space-md);
+}
+
+.owed-list li {
+  margin: 0 0 var(--space-xxs);
+}
+
+.owed-list li:last-child {
+  margin-bottom: 0;
+}
+
+/* ========================================================== the preview === */
+
+/*
+ * What a run of records is about to create, shown in full before it is
+ * created. The names are the reassurance, so they get the room: a summary
+ * ("adds 10 stalls") is exactly the sentence somebody believes and then finds
+ * out was off by one.
+ */
+.preview {
+  background: var(--surface);
+  border-radius: var(--rounded-lg);
+  padding: var(--space-md);
+  margin: var(--space-lg) 0 0;
+}
+
+.preview-head {
+  margin: 0 0 var(--space-xs);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--charcoal);
+}
+
+.preview-names {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xxs);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 30dvh;
+  overflow-y: auto;
+}
+
+.preview-names li {
+  margin: 0;
+  padding: 4px 10px;
+  border-radius: var(--rounded-sm);
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  font-size: 14px;
+  color: var(--ink);
+}
+
+/* A name the rescue already has: struck through, because *skipped* has to be
+   visible at a glance and not only in the sentence above. */
+.preview-names li[data-held='true'] {
+  background: transparent;
+  border-style: dashed;
+  color: var(--stone);
+  text-decoration: line-through;
+}
+
+/* The pair of buttons a list heading can carry: the run, and the single. */
+.list-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+
+.list-head-actions button {
+  margin: 0;
+}

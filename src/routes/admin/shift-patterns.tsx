@@ -37,6 +37,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 
+import { Actions, Choice, Empty, Field, Fields, Loading } from '../../components/forms'
 import { client } from '../../shared/api-client'
 import { refusalText } from '../../shared/refusals'
 import {
@@ -142,7 +143,7 @@ function ShiftPatterns() {
     return (
       <main>
         <h1>Shifts</h1>
-        {problem === null ? <p>One moment…</p> : <p role="alert">{problem}</p>}
+        {problem === null ? <Loading what="the fortnight" /> : <p role="alert">{problem}</p>}
       </main>
     )
   }
@@ -303,28 +304,53 @@ function ShiftPatterns() {
             })
           }}
         >
-          <label htmlFor="popup-day">Day</label>
-          <input id="popup-day" name="day" type="date" required defaultValue={patterns.today} />
-          <label htmlFor="popup-start">Starts</label>
-          <input id="popup-start" name="startTime" type="time" required defaultValue="13:00" />
-          <label htmlFor="popup-headcount">People wanted</label>
-          <input
-            id="popup-headcount"
-            name="targetHeadcount"
-            type="number"
-            min="1"
-            required
-            defaultValue="2"
-          />
-          <label htmlFor="popup-purpose">What it is for</label>
-          <input id="popup-purpose" name="purpose" required maxLength={500} />
-          <button type="submit">Call a Pop-up</button>
+          <Fields>
+            <Field label="Day" htmlFor="popup-day">
+              <input id="popup-day" name="day" type="date" required defaultValue={patterns.today} />
+            </Field>
+            <Field label="Starts" htmlFor="popup-start">
+              <input id="popup-start" name="startTime" type="time" required defaultValue="13:00" />
+            </Field>
+            <Field label="People wanted" htmlFor="popup-headcount">
+              <input
+                id="popup-headcount"
+                name="targetHeadcount"
+                type="number"
+                inputMode="numeric"
+                min="1"
+                required
+                defaultValue="2"
+              />
+            </Field>
+            <div className="field-wide">
+              <Field
+                label="What it is for"
+                htmlFor="popup-purpose"
+                hint="This is what a volunteer reads when deciding to sign up."
+              >
+                <input
+                  id="popup-purpose"
+                  name="purpose"
+                  required
+                  maxLength={500}
+                  aria-describedby="popup-purpose-hint"
+                />
+              </Field>
+            </div>
+          </Fields>
+          <Actions>
+            <button type="submit">Call a Pop-up</button>
+          </Actions>
         </form>
       </section>
 
       <section>
         <h2>The Patterns</h2>
-        {patterns.patterns.length === 0 && <p>No Patterns yet.</p>}
+        {patterns.patterns.length === 0 && (
+          <Empty>
+            No Patterns yet. A Pattern is the recurring commitment the fortnight is filled from.
+          </Empty>
+        )}
         {patterns.patterns.map((pattern) => (
           <PatternCard key={pattern.id} pattern={pattern} people={people} act={act} />
         ))}
@@ -347,34 +373,45 @@ function ShiftPatterns() {
           }}
         >
           <h3>Add a Pattern</h3>
-          <label htmlFor="new-weekday">Day of the week</label>
-          <select id="new-weekday" name="weekday" defaultValue="monday">
-            {WEEKDAYS.map((weekday) => (
-              <option key={weekday} value={weekday}>
-                {WEEKDAY_LABEL[weekday]}
-              </option>
-            ))}
-          </select>
-          <label htmlFor="new-shift-type">Shift</label>
-          <select id="new-shift-type" name="shiftType" defaultValue="feed_am">
-            {SHIFT_TYPES.map((shiftType) => (
-              <option key={shiftType} value={shiftType}>
-                {SHIFT_TYPE_LABEL[shiftType]}
-              </option>
-            ))}
-          </select>
-          <label htmlFor="new-start">Starts</label>
-          <input id="new-start" name="startTime" type="time" required defaultValue="06:30" />
-          <label htmlFor="new-headcount">People wanted</label>
-          <input
-            id="new-headcount"
-            name="targetHeadcount"
-            type="number"
-            min="1"
-            required
-            defaultValue="3"
-          />
-          <button type="submit">Add</button>
+          <Fields>
+            <Field label="Day of the week" htmlFor="new-weekday">
+              <select id="new-weekday" name="weekday" defaultValue="monday">
+                {WEEKDAYS.map((weekday) => (
+                  <option key={weekday} value={weekday}>
+                    {WEEKDAY_LABEL[weekday]}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Starts" htmlFor="new-start">
+              <input id="new-start" name="startTime" type="time" required defaultValue="06:30" />
+            </Field>
+            <div className="field-wide">
+              <Choice
+                legend="Shift"
+                name="shiftType"
+                defaultValue="feed_am"
+                options={SHIFT_TYPES.map((shiftType) => ({
+                  value: shiftType,
+                  label: SHIFT_TYPE_LABEL[shiftType],
+                }))}
+              />
+            </div>
+            <Field label="People wanted" htmlFor="new-headcount">
+              <input
+                id="new-headcount"
+                name="targetHeadcount"
+                type="number"
+                inputMode="numeric"
+                min="1"
+                required
+                defaultValue="3"
+              />
+            </Field>
+          </Fields>
+          <Actions>
+            <button type="submit">Add</button>
+          </Actions>
         </form>
       </section>
     </main>
@@ -470,18 +507,22 @@ function PatternCard({
         </p>
       )}
 
-      <ul>
+      <ul className="grants">
         {pattern.roster.length === 0 && (
           <li>
-            <em>nobody on the standing roster</em>
+            <em>Nobody on the standing roster.</em>
           </li>
         )}
         {pattern.roster.map((member) => (
-          <li key={member.volunteerId}>
-            {member.name} — {POSITION_LABEL[member.position]}
-            {member.gaps.length > 0 && (
-              <strong> — {member.gaps.map((gap) => GAP_LABEL[gap]).join(', ')}</strong>
-            )}{' '}
+          <li key={member.volunteerId} className="row">
+            <span>
+              {member.name} &mdash; {POSITION_LABEL[member.position]}
+              {member.gaps.map((gap) => (
+                <span key={gap} className="badge badge-orange">
+                  {GAP_LABEL[gap]}
+                </span>
+              ))}
+            </span>
             <button
               type="button"
               onClick={() => {
@@ -498,7 +539,7 @@ function PatternCard({
                 )
               }}
             >
-              Take off {member.name}
+              Take off
             </button>
           </li>
         ))}
@@ -527,35 +568,45 @@ function PatternCard({
         }}
       >
         <h4>Put somebody on</h4>
-        <label htmlFor={`who-${pattern.id}`}>Volunteer</label>
-        <select id={`who-${pattern.id}`} name="volunteerId" required defaultValue="">
-          <option value="" disabled>
-            Choose somebody
-          </option>
-          {(people?.people ?? [])
-            .filter((person) => !onIt.has(person.id))
-            .map((person) => (
-              <option key={person.id} value={person.id}>
-                {person.name}
-                {person.rosterable
-                  ? ''
-                  : ` — ${person.gaps.map((gap) => GAP_LABEL[gap]).join(', ')}`}
+        <Fields>
+          <Field label="Volunteer" htmlFor={`who-${pattern.id}`}>
+            <select id={`who-${pattern.id}`} name="volunteerId" required defaultValue="">
+              <option value="" disabled>
+                Choose somebody
               </option>
-            ))}
-        </select>
-        <label htmlFor={`position-${pattern.id}`}>Position</label>
-        <select id={`position-${pattern.id}`} name="position" defaultValue="volunteer">
-          {ASSIGNABLE_POSITIONS.map((position) => (
-            <option key={position} value={position}>
-              {POSITION_LABEL[position]}
-            </option>
-          ))}
-        </select>
-        <label htmlFor={`apply-${pattern.id}`}>
-          <input id={`apply-${pattern.id}`} name="applyToScheduled" type="checkbox" />
-          Also put them on the Shifts already scheduled
-        </label>
-        <button type="submit">Put on the standing roster</button>
+              {(people?.people ?? [])
+                .filter((person) => !onIt.has(person.id))
+                .map((person) => (
+                  <option key={person.id} value={person.id}>
+                    {person.name}
+                    {person.rosterable
+                      ? ''
+                      : ` — ${person.gaps.map((gap) => GAP_LABEL[gap]).join(', ')}`}
+                  </option>
+                ))}
+            </select>
+          </Field>
+          <div className="field">
+            <Choice
+              legend="Position"
+              name="position"
+              defaultValue="volunteer"
+              options={ASSIGNABLE_POSITIONS.map((position) => ({
+                value: position,
+                label: POSITION_LABEL[position],
+              }))}
+            />
+          </div>
+          <div className="field-wide">
+            <label htmlFor={`apply-${pattern.id}`}>
+              <input id={`apply-${pattern.id}`} name="applyToScheduled" type="checkbox" />
+              Also put them on the Shifts already scheduled
+            </label>
+          </div>
+        </Fields>
+        <Actions>
+          <button type="submit">Put on the standing roster</button>
+        </Actions>
       </form>
 
       <form
@@ -576,28 +627,39 @@ function PatternCard({
         }}
       >
         <h4>Change it</h4>
-        <label htmlFor={`start-${pattern.id}`}>Starts</label>
-        <input
-          id={`start-${pattern.id}`}
-          name="startTime"
-          type="time"
-          required
-          defaultValue={pattern.startTime}
-        />
-        <label htmlFor={`headcount-${pattern.id}`}>People wanted</label>
-        <input
-          id={`headcount-${pattern.id}`}
-          name="targetHeadcount"
-          type="number"
-          min="1"
-          required
-          defaultValue={pattern.targetHeadcount}
-        />
-        <label htmlFor={`apply-edit-${pattern.id}`}>
-          <input id={`apply-edit-${pattern.id}`} name="applyToScheduled" type="checkbox" />
-          Also change the Shifts already scheduled
-        </label>
-        <button type="submit">Change the Pattern</button>
+        <Fields>
+          <Field label="Starts" htmlFor={`start-${pattern.id}`}>
+            <input
+              id={`start-${pattern.id}`}
+              name="startTime"
+              type="time"
+              required
+              defaultValue={pattern.startTime}
+            />
+          </Field>
+          <Field label="People wanted" htmlFor={`headcount-${pattern.id}`}>
+            <input
+              id={`headcount-${pattern.id}`}
+              name="targetHeadcount"
+              type="number"
+              inputMode="numeric"
+              min="1"
+              required
+              defaultValue={pattern.targetHeadcount}
+            />
+          </Field>
+          {/* ADR 0001's prompt, asked rather than assumed: without it the app
+              is quietly wrong in the most common editing case. */}
+          <div className="field-wide">
+            <label htmlFor={`apply-edit-${pattern.id}`}>
+              <input id={`apply-edit-${pattern.id}`} name="applyToScheduled" type="checkbox" />
+              Also change the Shifts already scheduled
+            </label>
+          </div>
+        </Fields>
+        <Actions>
+          <button type="submit">Change the Pattern</button>
+        </Actions>
       </form>
     </article>
   )

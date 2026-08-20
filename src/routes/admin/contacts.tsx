@@ -8,11 +8,24 @@
  *
  * There is no delete for either: a stale number is edited, not removed, the
  * same discipline every other current-state record in this application
- * follows.
+ * follows. Adding and editing are the same sheet and the same form, for both
+ * records.
  */
 import { createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 
+import {
+  Actions,
+  AddButton,
+  Empty,
+  Field,
+  Fields,
+  Loading,
+  SaveButton,
+  Saved,
+  Sheet,
+  useSaving,
+} from '../../components/forms'
 import { client } from '../../shared/api-client'
 import { refusalText } from '../../shared/refusals'
 import type { Answers, contract } from '../../shared/api-contract'
@@ -25,11 +38,15 @@ type ContactsPage = Answers<typeof contract, '/contacts'>
 type Contact = ContactsPage['contacts'][number]
 type StandingRule = ContactsPage['standingRules'][number]
 
+type Open =
+  | { readonly kind: 'contact'; readonly contact: Contact | null }
+  | { readonly kind: 'rule'; readonly rule: StandingRule | null }
+  | null
+
 function ContactsAdmin() {
   const [page, setPage] = useState<ContactsPage | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
-  const [editingContact, setEditingContact] = useState<string | null>(null)
-  const [editingRule, setEditingRule] = useState<string | null>(null)
+  const [open, setOpen] = useState<Open>(null)
 
   const load = useCallback(async () => {
     setPage(await client.get('/contacts'))
@@ -49,279 +66,286 @@ function ContactsAdmin() {
         await load()
       } catch (error: unknown) {
         setProblem(refusalText(error))
+        throw error
       }
     },
     [load],
   )
 
+  const close = () => {
+    setOpen(null)
+  }
+
   return (
     <main>
       <h1>Contacts</h1>
 
-      {problem !== null && <p role="alert">{problem}</p>}
-
-      <p>
-        A posted number, its hours and what it is for. This screen never resolves an Escalation to
-        anything here — that is the point of the Contacts screen (ADR 0010, ADR 0014).
+      <p className="lede">
+        A posted number, its hours and what it is for. Nothing here ever resolves an Escalation:
+        that is the point of the Contacts screen (ADR 0010, ADR 0014).
       </p>
 
-      <section>
+      {problem !== null && <p role="alert">{problem}</p>}
+
+      <div className="list-head">
         <h2>Posted numbers</h2>
-
-        <form
-          onSubmit={(event: FormEvent<HTMLFormElement>) => {
-            event.preventDefault()
-            const form = event.currentTarget
-            const data = new FormData(form)
-            void act(() =>
-              client.post('/contacts', {
-                name: String(data.get('name') ?? ''),
-                number: String(data.get('number') ?? ''),
-                hours: String(data.get('hours') ?? '') || null,
-                purpose: String(data.get('purpose') ?? ''),
-              }),
-            ).then(() => {
-              form.reset()
-            })
+        <AddButton
+          onClick={() => {
+            setOpen({ kind: 'contact', contact: null })
           }}
         >
-          <h3>Add a contact</h3>
-          <label htmlFor="new-contact-name">Name</label>
-          <input id="new-contact-name" name="name" required maxLength={200} />
-          <label htmlFor="new-contact-number">Number</label>
-          <input id="new-contact-number" name="number" required maxLength={50} />
-          <label htmlFor="new-contact-hours">Hours (optional)</label>
-          <input id="new-contact-hours" name="hours" maxLength={200} placeholder="9am–5pm M–F" />
-          <label htmlFor="new-contact-purpose">What it is for</label>
-          <input id="new-contact-purpose" name="purpose" required maxLength={500} />
-          <button type="submit">Add</button>
-        </form>
+          Add a contact
+        </AddButton>
+      </div>
 
-        {page === null ? (
-          <p>One moment…</p>
-        ) : (
-          <table>
-            <caption>Every posted number</caption>
-            <thead>
-              <tr>
-                <th scope="col">Name</th>
-                <th scope="col">Number</th>
-                <th scope="col">Hours</th>
-                <th scope="col">Purpose</th>
-                <th scope="col" />
-              </tr>
-            </thead>
-            <tbody>
-              {page.contacts.map((contact) => (
-                <tr key={contact.id}>
-                  {editingContact === contact.id ? (
-                    <EditContact
-                      contact={contact}
-                      onCancel={() => {
-                        setEditingContact(null)
-                      }}
-                      act={async (work) => {
-                        await act(work)
-                        setEditingContact(null)
-                      }}
-                    />
-                  ) : (
-                    <>
-                      <td>{contact.name}</td>
-                      <td>{contact.number}</td>
-                      <td>{contact.hours ?? '—'}</td>
-                      <td>{contact.purpose}</td>
-                      <td>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingContact(contact.id)
-                          }}
-                        >
-                          Edit
-                        </button>
-                      </td>
-                    </>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
-
-      <section>
-        <h2>Standing rules</h2>
-
-        <form
-          onSubmit={(event: FormEvent<HTMLFormElement>) => {
-            event.preventDefault()
-            const form = event.currentTarget
-            const data = new FormData(form)
-            void act(() =>
-              client.post('/standing-rules', { text: String(data.get('text') ?? '') }),
-            ).then(() => {
-              form.reset()
-            })
-          }}
-        >
-          <h3>Add a standing rule</h3>
-          <label htmlFor="new-rule-text">Text</label>
-          <input
-            id="new-rule-text"
-            name="text"
-            required
-            maxLength={500}
-            placeholder="No scissors in fields"
-          />
-          <button type="submit">Add</button>
-        </form>
-
-        {page === null ? (
-          <p>One moment…</p>
-        ) : (
-          <ul>
-            {page.standingRules.map((rule) =>
-              editingRule === rule.id ? (
-                <li key={rule.id}>
-                  <EditStandingRule
-                    rule={rule}
-                    onCancel={() => {
-                      setEditingRule(null)
-                    }}
-                    act={async (work) => {
-                      await act(work)
-                      setEditingRule(null)
-                    }}
-                  />
-                </li>
-              ) : (
-                <li key={rule.id}>
-                  {rule.text}{' '}
+      {page === null ? (
+        <Loading what="contacts" />
+      ) : page.contacts.length === 0 ? (
+        <Empty>No numbers posted yet. The vet is usually the first one.</Empty>
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Name</th>
+              <th scope="col">Number</th>
+              <th scope="col">Hours</th>
+              <th scope="col">Purpose</th>
+              <th scope="col" />
+            </tr>
+          </thead>
+          <tbody>
+            {page.contacts.map((contact) => (
+              <tr key={contact.id}>
+                <td>{contact.name}</td>
+                <td>{contact.number}</td>
+                <td>{contact.hours ?? 'Any time'}</td>
+                <td>{contact.purpose}</td>
+                <td>
                   <button
                     type="button"
                     onClick={() => {
-                      setEditingRule(rule.id)
+                      setOpen({ kind: 'contact', contact })
                     }}
                   >
                     Edit
                   </button>
-                </li>
-              ),
-            )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      <div className="list-head">
+        <h2>Standing rules</h2>
+        <AddButton
+          onClick={() => {
+            setOpen({ kind: 'rule', rule: null })
+          }}
+        >
+          Add a rule
+        </AddButton>
+      </div>
+
+      {page === null ? (
+        <Loading what="standing rules" />
+      ) : page.standingRules.length === 0 ? (
+        <Empty>No standing rules yet. These are the things that are always true in the barn.</Empty>
+      ) : (
+        <section>
+          <ul>
+            {page.standingRules.map((rule) => (
+              <li key={rule.id} className="row">
+                <span>{rule.text}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen({ kind: 'rule', rule })
+                  }}
+                >
+                  Edit
+                </button>
+              </li>
+            ))}
           </ul>
-        )}
-      </section>
+        </section>
+      )}
+
+      {open?.kind === 'contact' && (
+        <Sheet
+          title={open.contact === null ? 'Add a contact' : `Edit ${open.contact.name}`}
+          description="This is posted on the Contacts screen every volunteer reads."
+          onClose={close}
+        >
+          <ContactForm contact={open.contact} act={act} onSaved={close} />
+        </Sheet>
+      )}
+
+      {open?.kind === 'rule' && (
+        <Sheet
+          title={open.rule === null ? 'Add a standing rule' : 'Edit the rule'}
+          description="One sentence that is always true in this barn."
+          onClose={close}
+        >
+          <RuleForm rule={open.rule} act={act} onSaved={close} />
+        </Sheet>
+      )}
     </main>
   )
 }
 
-function EditContact({
+function ContactForm({
   contact,
-  onCancel,
   act,
+  onSaved,
 }: {
-  contact: Contact
-  onCancel: () => void
+  contact: Contact | null
   act: (work: () => Promise<unknown>) => Promise<void>
+  onSaved: () => void
 }) {
-  return (
-    <td colSpan={5}>
-      <form
-        onSubmit={(event: FormEvent<HTMLFormElement>) => {
-          event.preventDefault()
-          const data = new FormData(event.currentTarget)
-          void act(() =>
-            client.post('/contacts/edit', {
-              contactId: contact.id,
-              name: String(data.get('name') ?? ''),
-              number: String(data.get('number') ?? ''),
-              hours: String(data.get('hours') ?? '') || null,
-              purpose: String(data.get('purpose') ?? ''),
-              reason: String(data.get('reason') ?? '') || null,
-            }),
-          )
-        }}
-      >
-        <label htmlFor={`edit-contact-name-${contact.id}`}>Name</label>
-        <input
-          id={`edit-contact-name-${contact.id}`}
-          name="name"
-          defaultValue={contact.name}
-          required
-          maxLength={200}
-        />
-        <label htmlFor={`edit-contact-number-${contact.id}`}>Number</label>
-        <input
-          id={`edit-contact-number-${contact.id}`}
-          name="number"
-          defaultValue={contact.number}
-          required
-          maxLength={50}
-        />
-        <label htmlFor={`edit-contact-hours-${contact.id}`}>Hours</label>
-        <input
-          id={`edit-contact-hours-${contact.id}`}
-          name="hours"
-          defaultValue={contact.hours ?? ''}
-          maxLength={200}
-        />
-        <label htmlFor={`edit-contact-purpose-${contact.id}`}>What it is for</label>
-        <input
-          id={`edit-contact-purpose-${contact.id}`}
-          name="purpose"
-          defaultValue={contact.purpose}
-          required
-          maxLength={500}
-        />
-        <label htmlFor={`edit-contact-reason-${contact.id}`}>Reason (optional)</label>
-        <input id={`edit-contact-reason-${contact.id}`} name="reason" maxLength={500} />
-        <button type="submit">Save</button>
-        <button type="button" onClick={onCancel}>
-          Cancel
-        </button>
-      </form>
-    </td>
-  )
-}
+  const { pending, saved, save } = useSaving()
 
-function EditStandingRule({
-  rule,
-  onCancel,
-  act,
-}: {
-  rule: StandingRule
-  onCancel: () => void
-  act: (work: () => Promise<unknown>) => Promise<void>
-}) {
   return (
     <form
       onSubmit={(event: FormEvent<HTMLFormElement>) => {
         event.preventDefault()
         const data = new FormData(event.currentTarget)
-        void act(() =>
-          client.post('/standing-rules/edit', {
-            standingRuleId: rule.id,
-            text: String(data.get('text') ?? ''),
-            reason: String(data.get('reason') ?? '') || null,
-          }),
-        )
+        const common = {
+          name: String(data.get('name') ?? ''),
+          number: String(data.get('number') ?? ''),
+          hours: String(data.get('hours') ?? '') || null,
+          purpose: String(data.get('purpose') ?? ''),
+        }
+        void save(() =>
+          act(() =>
+            contact === null
+              ? client.post('/contacts', common)
+              : client.post('/contacts/edit', {
+                  contactId: contact.id,
+                  ...common,
+                  reason: String(data.get('reason') ?? '') || null,
+                }),
+          ).then(onSaved),
+        ).catch(() => {
+          // Already on the screen behind the sheet, put there by `act`.
+        })
       }}
     >
-      <label htmlFor={`edit-rule-text-${rule.id}`}>Text</label>
-      <input
-        id={`edit-rule-text-${rule.id}`}
-        name="text"
-        defaultValue={rule.text}
-        required
-        maxLength={500}
-      />
-      <label htmlFor={`edit-rule-reason-${rule.id}`}>Reason (optional)</label>
-      <input id={`edit-rule-reason-${rule.id}`} name="reason" maxLength={500} />
-      <button type="submit">Save</button>
-      <button type="button" onClick={onCancel}>
-        Cancel
-      </button>
+      <Fields>
+        <Field label="Name" htmlFor="contact-name">
+          <input
+            id="contact-name"
+            name="name"
+            defaultValue={contact?.name}
+            required
+            maxLength={200}
+            autoFocus
+          />
+        </Field>
+        <Field label="Number" htmlFor="contact-number">
+          <input
+            id="contact-number"
+            name="number"
+            type="tel"
+            inputMode="tel"
+            autoComplete="tel"
+            defaultValue={contact?.number}
+            required
+            maxLength={50}
+          />
+        </Field>
+        <Field label="Hours" htmlFor="contact-hours" optional hint="Blank means any time.">
+          <input
+            id="contact-hours"
+            name="hours"
+            defaultValue={contact?.hours ?? ''}
+            maxLength={200}
+            placeholder="9am to 5pm, Monday to Friday"
+            aria-describedby="contact-hours-hint"
+          />
+        </Field>
+        <Field label="What it is for" htmlFor="contact-purpose">
+          <input
+            id="contact-purpose"
+            name="purpose"
+            defaultValue={contact?.purpose}
+            required
+            maxLength={500}
+          />
+        </Field>
+        {contact !== null && (
+          <div className="field-wide">
+            <Field label="Reason" htmlFor="contact-reason" optional>
+              <input id="contact-reason" name="reason" maxLength={500} />
+            </Field>
+          </div>
+        )}
+      </Fields>
+      <Actions>
+        <SaveButton pending={pending}>{contact === null ? 'Add the contact' : 'Save'}</SaveButton>
+        <Saved saved={saved} />
+      </Actions>
+    </form>
+  )
+}
+
+function RuleForm({
+  rule,
+  act,
+  onSaved,
+}: {
+  rule: StandingRule | null
+  act: (work: () => Promise<unknown>) => Promise<void>
+  onSaved: () => void
+}) {
+  const { pending, saved, save } = useSaving()
+
+  return (
+    <form
+      onSubmit={(event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
+        const data = new FormData(event.currentTarget)
+        void save(() =>
+          act(() =>
+            rule === null
+              ? client.post('/standing-rules', { text: String(data.get('text') ?? '') })
+              : client.post('/standing-rules/edit', {
+                  standingRuleId: rule.id,
+                  text: String(data.get('text') ?? ''),
+                  reason: String(data.get('reason') ?? '') || null,
+                }),
+          ).then(onSaved),
+        ).catch(() => {
+          // Already on the screen behind the sheet, put there by `act`.
+        })
+      }}
+    >
+      <Fields>
+        <div className="field-wide">
+          <Field label="Text" htmlFor="rule-text">
+            <input
+              id="rule-text"
+              name="text"
+              defaultValue={rule?.text}
+              required
+              maxLength={500}
+              placeholder="No scissors in fields"
+              autoFocus
+            />
+          </Field>
+        </div>
+        {rule !== null && (
+          <div className="field-wide">
+            <Field label="Reason" htmlFor="rule-reason" optional>
+              <input id="rule-reason" name="reason" maxLength={500} />
+            </Field>
+          </div>
+        )}
+      </Fields>
+      <Actions>
+        <SaveButton pending={pending}>{rule === null ? 'Add the rule' : 'Save'}</SaveButton>
+        <Saved saved={saved} />
+      </Actions>
     </form>
   )
 }

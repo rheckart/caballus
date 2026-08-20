@@ -137,6 +137,75 @@ describe.skipIf(!reachable)('horses and Spaces, through the API', () => {
       )
     })
 
+    it('creates a run of Spaces in one act, with an audit entry each', async () => {
+      const api = await holder()
+      const created = await post(api, '/spaces/batch', {
+        kind: 'stall',
+        names: ['Run A 1', 'Run A 2', 'Run A 3'],
+      })
+      expect(created.status).toBe(201)
+      expect(created.body.spaceIds).toHaveLength(3)
+      expect(created.body.skipped).toEqual([])
+
+      const listed = await get(api, '/spaces')
+      for (const name of ['Run A 1', 'Run A 2', 'Run A 3']) {
+        expect(listed.body.spaces).toContainEqual(
+          expect.objectContaining({ name, kind: 'stall', occupants: [] }),
+        )
+      }
+
+      const audited = await owner`
+        select after from audit_entries
+        where entity = 'space' and after like 'Run A %'`
+      expect(audited.map((row) => row.after).sort()).toEqual(['Run A 1', 'Run A 2', 'Run A 3'])
+    })
+
+    it('skips a name the kind already carries rather than refusing the run', async () => {
+      // The ordinary case, not a mistake: somebody added one stall by hand and
+      // is now describing the barn they actually have.
+      const api = await holder()
+      await post(api, '/spaces', { kind: 'stall', name: 'Run B 1' })
+
+      const created = await post(api, '/spaces/batch', {
+        kind: 'stall',
+        names: ['Run B 1', 'Run B 2'],
+      })
+      expect(created.status).toBe(201)
+      expect(created.body.skipped).toEqual(['Run B 1'])
+      expect(created.body.spaceIds).toHaveLength(1)
+
+      // Counted in the table rather than in the answer: what must not happen
+      // is two rows, and the read could hide that behind a dedupe of its own.
+      const rows = await owner`select name from spaces where name = 'Run B 1'`
+      expect(rows).toHaveLength(1)
+    })
+
+    it('creates a repeated name once, however many times the run says it', async () => {
+      const api = await holder()
+      const created = await post(api, '/spaces/batch', {
+        kind: 'field',
+        names: ['Run C', 'Run C'],
+      })
+      expect(created.status).toBe(201)
+      expect(created.body.spaceIds).toHaveLength(1)
+      expect(created.body.skipped).toEqual(['Run C'])
+    })
+
+    it('takes the same name under a different kind, since a kind is its own list', async () => {
+      const api = await holder()
+      await post(api, '/spaces/batch', { kind: 'stall', names: ['Run D'] })
+      const created = await post(api, '/spaces/batch', { kind: 'barn', names: ['Run D'] })
+      expect(created.status).toBe(201)
+      expect(created.body.spaceIds).toHaveLength(1)
+      expect(created.body.skipped).toEqual([])
+    })
+
+    it('refuses to create a run without horse_care', async () => {
+      const api = await reader()
+      const created = await post(api, '/spaces/batch', { kind: 'stall', names: ['Run E'] })
+      expect(created.status).toBe(403)
+    })
+
     it('refuses to create a Space without horse_care', async () => {
       const api = await reader()
       const created = await post(api, '/spaces', { kind: 'stall', name: 'Stall 8' })

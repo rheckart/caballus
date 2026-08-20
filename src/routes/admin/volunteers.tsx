@@ -18,8 +18,23 @@
  * 6am (ADR 0021).
  */
 import { createFileRoute } from '@tanstack/react-router'
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 
+import {
+  Actions,
+  AddButton,
+  Choice,
+  Empty,
+  Field,
+  Fields,
+  Filter,
+  Loading,
+  SaveButton,
+  Saved,
+  Sheet,
+  matches,
+  useSaving,
+} from '../../components/forms'
 import { client } from '../../shared/api-client'
 import { refusalText } from '../../shared/refusals'
 import type { Answers, contract } from '../../shared/api-contract'
@@ -53,6 +68,8 @@ function Volunteers() {
   const [versions, setVersions] = useState<Versions | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
   const [openFor, setOpenFor] = useState<string | null>(null)
+  const [adding, setAdding] = useState(false)
+  const [filter, setFilter] = useState('')
 
   const load = useCallback(async () => {
     const [listed, published] = await Promise.all([
@@ -85,16 +102,25 @@ function Volunteers() {
         await load()
       } catch (error: unknown) {
         setProblem(refusalText(error))
+        throw error
       }
     },
     [load],
+  )
+
+  const shown = useMemo(
+    () =>
+      (people?.people ?? []).filter((person) =>
+        matches(filter, person.name, person.roles.map((role) => ROLE_NAMES[role]).join(' ')),
+      ),
+    [people, filter],
   )
 
   if (people === null) {
     return (
       <main>
         <h1>Volunteers</h1>
-        {problem === null ? <p>One moment…</p> : <p role="alert">{problem}</p>}
+        {problem === null ? <Loading what="people" /> : <p role="alert">{problem}</p>}
       </main>
     )
   }
@@ -111,58 +137,106 @@ function Volunteers() {
       {problem !== null && <p role="alert">{problem}</p>}
 
       {/* The two things the Coordinator opened this screen for, said before the
-          list rather than found in it. */}
-      <p>
-        {candidates.length} awaiting orientation, {flagged.length} rostered with a gap.
-      </p>
+          list rather than found in it, and as figures rather than as a
+          sentence to read past. */}
+      <div className="stats">
+        <div className="stat">
+          <span className="stat-figure">{candidates.length}</span>
+          <span className="stat-what">awaiting orientation</span>
+        </div>
+        <div className="stat">
+          <span className="stat-figure">{flagged.length}</span>
+          <span className="stat-what">rostered with a gap</span>
+        </div>
+        <div className="stat">
+          <span className="stat-figure">{people.people.length}</span>
+          <span className="stat-what">people in total</span>
+        </div>
+      </div>
+
       {people.unstaffedScopes.length > 0 && (
-        <p>
+        <p className="lede">
           Nobody but an officer holds: {people.unstaffedScopes.join(', ')}. That is a staffing
           question rather than a fault.
         </p>
       )}
 
-      <NewVolunteer onCreate={(details) => act(() => client.post('/volunteers', details))} />
+      <div className="list-head">
+        <h2>Everyone at the rescue</h2>
+        <AddButton
+          onClick={() => {
+            setAdding(true)
+          }}
+        >
+          Add a volunteer
+        </AddButton>
+      </div>
 
-      <table>
-        <caption>Everyone at the rescue</caption>
-        <thead>
-          <tr>
-            <th scope="col">Name</th>
-            <th scope="col">State</th>
-            <th scope="col">Rosterable</th>
-            <th scope="col">Roles</th>
-            <th scope="col">Medication</th>
-            <th scope="col" />
-          </tr>
-        </thead>
-        <tbody>
-          {people.people.map((person) => (
-            <tr key={person.id}>
-              <td>
-                {person.name}
-                {person.isMinor && <span> (under 18)</span>}
-              </td>
-              <td>{person.state === 'candidate' ? 'Candidate' : 'Volunteer'}</td>
-              <td>
-                {person.rosterable ? 'Yes' : person.gaps.map((gap) => GAP_TEXT[gap]).join('; ')}
-              </td>
-              <td>{person.roles.map((role) => ROLE_NAMES[role]).join(', ') || '—'}</td>
-              <td>{person.medicationAuthority ? 'Yes' : 'No'}</td>
-              <td>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setOpenFor(openFor === person.id ? null : person.id)
-                  }}
-                >
-                  {openFor === person.id ? 'Close' : 'Open'}
-                </button>
-              </td>
+      {people.people.length > 8 && (
+        <Filter
+          label="Find somebody"
+          value={filter}
+          onChange={setFilter}
+          showing={shown.length}
+          of={people.people.length}
+          noun="people"
+        />
+      )}
+
+      {shown.length === 0 ? (
+        <Empty>
+          {people.people.length === 0 ? 'Nobody at the rescue yet.' : `Nobody matches “${filter}”.`}
+        </Empty>
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Name</th>
+              <th scope="col">State</th>
+              <th scope="col">Rosterable</th>
+              <th scope="col">Roles</th>
+              <th scope="col">Medication</th>
+              <th scope="col" />
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {shown.map((person) => (
+              <tr key={person.id} data-open={openFor === person.id}>
+                <td>
+                  {person.name}
+                  {person.isMinor && <span className="badge">Under 18</span>}
+                </td>
+                <td>{person.state === 'candidate' ? 'Candidate' : 'Volunteer'}</td>
+                <td>
+                  {person.rosterable ? (
+                    <span className="badge badge-green">Yes</span>
+                  ) : (
+                    // Every open gate, each as its own tag: three of them run
+                    // together in one sentence is what made this column unread.
+                    person.gaps.map((gap) => (
+                      <span key={gap} className="badge badge-orange">
+                        {GAP_TEXT[gap]}
+                      </span>
+                    ))
+                  )}
+                </td>
+                <td>{person.roles.map((role) => ROLE_NAMES[role]).join(', ') || 'None'}</td>
+                <td>{person.medicationAuthority ? 'Yes' : 'No'}</td>
+                <td>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpenFor(openFor === person.id ? null : person.id)
+                    }}
+                  >
+                    {openFor === person.id ? 'Close' : 'Open'}
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
 
       {openFor !== null && (
         <PersonRecord
@@ -170,43 +244,90 @@ function Volunteers() {
           today={people.today}
           versions={versions?.versions ?? []}
           act={act}
+          onClose={() => {
+            setOpenFor(null)
+          }}
         />
+      )}
+
+      {adding && (
+        <Sheet
+          title="Add a volunteer"
+          description="A name and an email address is the whole of it. No account, no code, no login."
+          onClose={() => {
+            setAdding(false)
+          }}
+        >
+          <NewVolunteer
+            act={act}
+            onSaved={() => {
+              setAdding(false)
+            }}
+          />
+        </Sheet>
       )}
     </main>
   )
 }
 
 function NewVolunteer({
-  onCreate,
+  act,
+  onSaved,
 }: {
-  onCreate: (details: { name: string; email: string; mobile: string | null }) => Promise<void>
+  act: (work: () => Promise<unknown>) => Promise<void>
+  onSaved: () => void
 }) {
+  const { pending, saved, save } = useSaving()
+
   return (
     <form
       onSubmit={(event: FormEvent<HTMLFormElement>) => {
         event.preventDefault()
-        const form = event.currentTarget
-        const data = new FormData(form)
-        void onCreate({
-          name: String(data.get('name') ?? ''),
-          email: String(data.get('email') ?? ''),
-          mobile: String(data.get('mobile') ?? '') || null,
-        }).then(() => {
-          form.reset()
+        const data = new FormData(event.currentTarget)
+        void save(() =>
+          act(() =>
+            client.post('/volunteers', {
+              name: String(data.get('name') ?? ''),
+              email: String(data.get('email') ?? ''),
+              mobile: String(data.get('mobile') ?? '') || null,
+            }),
+          ).then(onSaved),
+        ).catch(() => {
+          // Already on the screen behind the sheet, put there by `act`.
         })
       }}
     >
-      <h2>Add a volunteer</h2>
       {/* A name and an email address is the whole of it: no Account, no code,
           no login (ADR 0008). They are rosterable once the three gates hold,
           and a Candidate until then. */}
-      <label htmlFor="new-name">Name</label>
-      <input id="new-name" name="name" required maxLength={200} />
-      <label htmlFor="new-email">Email address</label>
-      <input id="new-email" name="email" type="email" required maxLength={320} />
-      <label htmlFor="new-mobile">Mobile (optional)</label>
-      <input id="new-mobile" name="mobile" maxLength={50} />
-      <button type="submit">Add</button>
+      <Fields>
+        <Field label="Name" htmlFor="new-name">
+          <input id="new-name" name="name" required maxLength={200} autoFocus />
+        </Field>
+        <Field
+          label="Email address"
+          htmlFor="new-email"
+          hint="Where the six-digit sign-in code will go."
+        >
+          <input
+            id="new-email"
+            name="email"
+            type="email"
+            inputMode="email"
+            autoComplete="off"
+            required
+            maxLength={320}
+            aria-describedby="new-email-hint"
+          />
+        </Field>
+        <Field label="Mobile" htmlFor="new-mobile" optional>
+          <input id="new-mobile" name="mobile" type="tel" inputMode="tel" maxLength={50} />
+        </Field>
+      </Fields>
+      <Actions>
+        <SaveButton pending={pending}>Add the volunteer</SaveButton>
+        <Saved saved={saved} />
+      </Actions>
     </form>
   )
 }
@@ -217,18 +338,25 @@ function PersonRecord({
   today,
   versions,
   act,
+  onClose,
 }: {
   person: Person | null
   today: DayString
   versions: Versions['versions']
   act: (work: () => Promise<unknown>) => Promise<void>
+  onClose: () => void
 }) {
   if (person === null) return null
   const behind = person.behindRoster
 
   return (
-    <section>
-      <h2>{person.name}</h2>
+    <section className="record">
+      <header className="record-head">
+        <h2>{person.name}</h2>
+        <button type="button" onClick={onClose}>
+          Close
+        </button>
+      </header>
 
       {behind === null ? (
         // Absent rather than empty: the reader does not hold `roster`, and
@@ -275,25 +403,7 @@ function PersonRecord({
 
       <Grants person={person} act={act} />
 
-      <h3>Leaving the rescue</h3>
-      {/* A date rather than a delete: the work they did still happened, and it
-          still has to have a subject. Their grants go with them (ADR 0010). */}
-      <form
-        onSubmit={(event: FormEvent<HTMLFormElement>) => {
-          event.preventDefault()
-          const data = new FormData(event.currentTarget)
-          void act(() =>
-            client.post('/volunteers/removal', {
-              volunteerId: person.id,
-              reason: String(data.get('reason') ?? '') || null,
-            }),
-          )
-        }}
-      >
-        <label htmlFor="removal-reason">Reason (optional)</label>
-        <input id="removal-reason" name="reason" maxLength={500} />
-        <button type="submit">Remove from the rescue</button>
-      </form>
+      <Removal person={person} act={act} />
     </section>
   )
 }
@@ -307,35 +417,61 @@ function RecordDateOfBirth({
   today: DayString
   act: (work: () => Promise<unknown>) => Promise<void>
 }) {
+  const { pending, saved, save } = useSaving()
+
   return (
     <form
       onSubmit={(event: FormEvent<HTMLFormElement>) => {
         event.preventDefault()
         const data = new FormData(event.currentTarget)
-        void act(() =>
-          client.post('/volunteers/date-of-birth', {
-            volunteerId: person.id,
-            dateOfBirth: dayString(String(data.get('dateOfBirth') ?? '')),
-            provenance:
-              data.get('provenance') === 'parent_provided' ? 'parent_provided' : 'photo_id',
-            reason: String(data.get('reason') ?? '') || null,
-          }),
-        )
+        void save(() =>
+          act(() =>
+            client.post('/volunteers/date-of-birth', {
+              volunteerId: person.id,
+              dateOfBirth: dayString(String(data.get('dateOfBirth') ?? '')),
+              provenance:
+                data.get('provenance') === 'parent_provided' ? 'parent_provided' : 'photo_id',
+              reason: String(data.get('reason') ?? '') || null,
+            }),
+          ),
+        ).catch(() => {
+          // Already at the top of the screen, put there by `act`.
+        })
       }}
     >
       <h3>Date of birth</h3>
       {/* The app never holds the identity document — only how the date was
           established (ADR 0017). */}
-      <label htmlFor="dob">Date</label>
-      <input id="dob" name="dateOfBirth" type="date" max={today} required />
-      <label htmlFor="dob-provenance">How it was established</label>
-      <select id="dob-provenance" name="provenance" defaultValue="photo_id">
-        <option value="photo_id">Photo ID sighted</option>
-        <option value="parent_provided">Provided by a parent</option>
-      </select>
-      <label htmlFor="dob-reason">Reason (for a correction)</label>
-      <input id="dob-reason" name="reason" maxLength={500} />
-      <button type="submit">Record</button>
+      <Fields>
+        <Field label="Date" htmlFor="dob">
+          <input id="dob" name="dateOfBirth" type="date" max={today} required />
+        </Field>
+        <div className="field">
+          <Choice
+            legend="How it was established"
+            name="provenance"
+            defaultValue="photo_id"
+            options={[
+              { value: 'photo_id', label: 'Photo ID sighted' },
+              { value: 'parent_provided', label: 'Provided by a parent' },
+            ]}
+          />
+        </div>
+        <div className="field-wide">
+          <Field label="Reason" htmlFor="dob-reason" optional hint="Only needed for a correction.">
+            <input
+              id="dob-reason"
+              name="reason"
+              maxLength={500}
+              aria-describedby="dob-reason-hint"
+            />
+          </Field>
+        </div>
+      </Fields>
+      <Actions>
+        <SaveButton pending={pending}>Record</SaveButton>
+        <Saved saved={saved} />
+      </Actions>
     </form>
   )
 }
@@ -349,31 +485,48 @@ function RecordOrientation({
   today: DayString
   act: (work: () => Promise<unknown>) => Promise<void>
 }) {
+  const { pending, saved, save } = useSaving()
+
   return (
     <form
       onSubmit={(event: FormEvent<HTMLFormElement>) => {
         event.preventDefault()
         const data = new FormData(event.currentTarget)
-        void act(() =>
-          client.post('/volunteers/orientation', {
-            volunteerId: person.id,
-            orientedOn: dayString(String(data.get('orientedOn') ?? '')),
-          }),
-        )
+        void save(() =>
+          act(() =>
+            client.post('/volunteers/orientation', {
+              volunteerId: person.id,
+              orientedOn: dayString(String(data.get('orientedOn') ?? '')),
+            }),
+          ),
+        ).catch(() => {
+          // Already at the top of the screen, put there by `act`.
+        })
       }}
     >
       <h3>Orientation</h3>
       {/* It never lapses and is never revoked, so this appears once. */}
-      <label htmlFor="oriented-on">The date they were oriented</label>
-      <input
-        id="oriented-on"
-        name="orientedOn"
-        type="date"
-        defaultValue={today}
-        max={today}
-        required
-      />
-      <button type="submit">Record the orientation</button>
+      <Fields>
+        <Field
+          label="The date they were oriented"
+          htmlFor="oriented-on"
+          hint="It never lapses, so this is recorded once."
+        >
+          <input
+            id="oriented-on"
+            name="orientedOn"
+            type="date"
+            defaultValue={today}
+            max={today}
+            required
+            aria-describedby="oriented-on-hint"
+          />
+        </Field>
+      </Fields>
+      <Actions>
+        <SaveButton pending={pending}>Record the orientation</SaveButton>
+        <Saved saved={saved} />
+      </Actions>
     </form>
   )
 }
@@ -387,35 +540,48 @@ function RecordConsent({
   today: DayString
   act: (work: () => Promise<unknown>) => Promise<void>
 }) {
+  const { pending, saved, save } = useSaving()
+
   return (
     <form
       onSubmit={(event: FormEvent<HTMLFormElement>) => {
         event.preventDefault()
         const data = new FormData(event.currentTarget)
-        void act(() =>
-          client.post('/volunteers/consent', {
-            volunteerId: person.id,
-            consentedOn: dayString(String(data.get('consentedOn') ?? '')),
-            parentName: String(data.get('parentName') ?? ''),
-          }),
-        )
+        void save(() =>
+          act(() =>
+            client.post('/volunteers/consent', {
+              volunteerId: person.id,
+              consentedOn: dayString(String(data.get('consentedOn') ?? '')),
+              parentName: String(data.get('parentName') ?? ''),
+            }),
+          ),
+        ).catch(() => {
+          // Already at the top of the screen, put there by `act`.
+        })
       }}
     >
       <h3>Consent</h3>
       {/* A parent's permission, and a different record from the Release: one
           row cannot expire on two clocks (ADR 0017). */}
-      <label htmlFor="consented-on">Date given</label>
-      <input
-        id="consented-on"
-        name="consentedOn"
-        type="date"
-        defaultValue={today}
-        max={today}
-        required
-      />
-      <label htmlFor="parent-name">Parent or guardian</label>
-      <input id="parent-name" name="parentName" required maxLength={200} />
-      <button type="submit">Record the consent</button>
+      <Fields>
+        <Field label="Date given" htmlFor="consented-on">
+          <input
+            id="consented-on"
+            name="consentedOn"
+            type="date"
+            defaultValue={today}
+            max={today}
+            required
+          />
+        </Field>
+        <Field label="Parent or guardian" htmlFor="parent-name">
+          <input id="parent-name" name="parentName" required maxLength={200} />
+        </Field>
+      </Fields>
+      <Actions>
+        <SaveButton pending={pending}>Record the consent</SaveButton>
+        <Saved saved={saved} />
+      </Actions>
     </form>
   )
 }
@@ -432,6 +598,7 @@ function RecordRelease({
   act: (work: () => Promise<unknown>) => Promise<void>
 }) {
   const current = versions[0]
+  const { pending, saved, save } = useSaving()
 
   if (current === undefined) {
     return (
@@ -447,32 +614,54 @@ function RecordRelease({
       onSubmit={(event: FormEvent<HTMLFormElement>) => {
         event.preventDefault()
         const data = new FormData(event.currentTarget)
-        void act(() =>
-          client.post('/volunteers/release', {
-            volunteerId: person.id,
-            releaseVersionId: String(data.get('releaseVersionId') ?? ''),
-            signedOn: dayString(String(data.get('signedOn') ?? '')),
-            byParent: data.get('byParent') === 'on',
-          }),
-        )
+        void save(() =>
+          act(() =>
+            client.post('/volunteers/release', {
+              volunteerId: person.id,
+              releaseVersionId: String(data.get('releaseVersionId') ?? ''),
+              signedOn: dayString(String(data.get('signedOn') ?? '')),
+              byParent: data.get('byParent') === 'on',
+            }),
+          ),
+        ).catch(() => {
+          // Already at the top of the screen, put there by `act`.
+        })
       }}
     >
       <h3>Release</h3>
       {/* The record that a piece of paper exists — who signed, when, which
           version. The paper itself stays in the cabinet (ADR 0017). */}
-      <label htmlFor="release-version">Version signed</label>
-      <select id="release-version" name="releaseVersionId" defaultValue={current.id}>
-        {versions.map((version) => (
-          <option key={version.id} value={version.id}>
-            {version.label} (from {version.validFrom})
-          </option>
-        ))}
-      </select>
-      <label htmlFor="signed-on">Date on the paper</label>
-      <input id="signed-on" name="signedOn" type="date" defaultValue={today} max={today} required />
-      <label htmlFor="by-parent">Signed by a parent or guardian</label>
-      <input id="by-parent" name="byParent" type="checkbox" defaultChecked={person.isMinor} />
-      <button type="submit">Record the release</button>
+      <Fields>
+        <Field label="Version signed" htmlFor="release-version">
+          <select id="release-version" name="releaseVersionId" defaultValue={current.id}>
+            {versions.map((version) => (
+              <option key={version.id} value={version.id}>
+                {version.label} (from {version.validFrom})
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Date on the paper" htmlFor="signed-on">
+          <input
+            id="signed-on"
+            name="signedOn"
+            type="date"
+            defaultValue={today}
+            max={today}
+            required
+          />
+        </Field>
+        <div className="field-wide">
+          <label htmlFor="by-parent">
+            <input id="by-parent" name="byParent" type="checkbox" defaultChecked={person.isMinor} />
+            Signed by a parent or guardian
+          </label>
+        </div>
+      </Fields>
+      <Actions>
+        <SaveButton pending={pending}>Record the release</SaveButton>
+        <Saved saved={saved} />
+      </Actions>
     </form>
   )
 }
@@ -492,11 +681,13 @@ function Signatures({
       <h3>Signatures on file</h3>
       <ul>
         {signatures.map((signature) => (
-          <li key={signature.id}>
-            {signature.versionLabel}, signed {signature.signedOn}
-            {signature.byParent && ' by a parent or guardian'}
+          <li key={signature.id} className="row">
+            <span>
+              {signature.versionLabel}, signed {signature.signedOn}
+              {signature.byParent && ' by a parent or guardian'}
+            </span>
             {signature.revoked ? (
-              ' — revoked'
+              <span className="badge">Revoked</span>
             ) : (
               <button
                 type="button"
@@ -539,41 +730,38 @@ function Grants({
   return (
     <>
       <h3>Roles</h3>
-      <ul>
+      {/* One row per Role, held or not, with the act on it. A bulleted list of
+          fourteen names each trailing a button was a column of identical text
+          the Coordinator had to read to find the one they came for. */}
+      <ul className="grants">
         {ROLES.map((role) => (
-          <li key={role}>
-            {ROLE_NAMES[role]}
-            {held.has(role) ? (
-              <button
-                type="button"
-                onClick={() => {
-                  void act(() =>
-                    client.post('/volunteers/role-revocation', {
-                      volunteerId: person.id,
-                      role,
-                      reason: null,
-                    }),
-                  )
-                }}
-              >
-                Revoke
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  void act(() =>
-                    client.post('/volunteers/roles', {
-                      volunteerId: person.id,
-                      role,
-                      reason: null,
-                    }),
-                  )
-                }}
-              >
-                Grant
-              </button>
-            )}
+          <li key={role} className="row" data-held={held.has(role)}>
+            <span>
+              {ROLE_NAMES[role]}
+              {held.has(role) && <span className="badge badge-green">Held</span>}
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                void act(() =>
+                  held.has(role)
+                    ? client.post('/volunteers/role-revocation', {
+                        volunteerId: person.id,
+                        role,
+                        reason: null,
+                      })
+                    : client.post('/volunteers/roles', {
+                        volunteerId: person.id,
+                        role,
+                        reason: null,
+                      }),
+                ).catch(() => {
+                  // Already at the top of the screen, put there by `act`.
+                })
+              }}
+            >
+              {held.has(role) ? 'Revoke' : 'Grant'}
+            </button>
           </li>
         ))}
       </ul>
@@ -581,6 +769,9 @@ function Grants({
       <h3>Medication Authority</h3>
       {/* A qualification on the person, granted under `horse_care` and not a
           Domain Scope (ADR 0010). */}
+      <p className="field-hint">
+        Not a Role and not a Domain Scope. It is what lets somebody give medication on a Shift.
+      </p>
       <button
         type="button"
         onClick={() => {
@@ -590,11 +781,65 @@ function Grants({
               granted: !person.medicationAuthority,
               reason: null,
             }),
-          )
+          ).catch(() => {
+            // Already at the top of the screen, put there by `act`.
+          })
         }}
       >
         {person.medicationAuthority ? 'Revoke medication authority' : 'Grant medication authority'}
       </button>
     </>
+  )
+}
+
+/**
+ * Leaving the rescue: a date rather than a delete, because the work they did
+ * still happened and it still has to have a subject. Their grants go with them
+ * (ADR 0010).
+ */
+function Removal({
+  person,
+  act,
+}: {
+  person: Person
+  act: (work: () => Promise<unknown>) => Promise<void>
+}) {
+  const { pending, saved, save } = useSaving()
+
+  return (
+    <form
+      className="danger"
+      onSubmit={(event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
+        const data = new FormData(event.currentTarget)
+        void save(() =>
+          act(() =>
+            client.post('/volunteers/removal', {
+              volunteerId: person.id,
+              reason: String(data.get('reason') ?? '') || null,
+            }),
+          ),
+        ).catch(() => {
+          // Already at the top of the screen, put there by `act`.
+        })
+      }}
+    >
+      <h3>Leaving the rescue</h3>
+      <p>
+        Their record stays and so does everything they did. What they hold goes with them, and the
+        next request they make is refused.
+      </p>
+      <Fields>
+        <div className="field-wide">
+          <Field label="Reason" htmlFor="removal-reason" optional>
+            <input id="removal-reason" name="reason" maxLength={500} />
+          </Field>
+        </div>
+      </Fields>
+      <Actions>
+        <SaveButton pending={pending}>Remove from the rescue</SaveButton>
+        <Saved saved={saved} what="Removed" />
+      </Actions>
+    </form>
   )
 }

@@ -66,6 +66,7 @@ import {
   assignHorseSpace,
   createHorse,
   createSpace,
+  createSpaces,
   editHorseAttributes,
   editSpace,
   recordHorseDeparture,
@@ -992,6 +993,24 @@ export function buildApi(
     const outcome = await createSpace(db, context.orgId, actor.volunteerId, input)
     if (!outcome.ok) return horseRefusal(outcome.because)
     return json({ spaceId: outcome.value.id }, 201)
+  })
+
+  /**
+   * Several Spaces in one act — the ten-stalls-in-the-Big-Barn write. The
+   * names arrive already made (`seriesNames` on the screen), and what already
+   * existed comes back named rather than silently dropped.
+   */
+  api.mutation('/spaces/batch', domainScope('horse_care'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await createSpaces(db, context.orgId, actor.volunteerId, input)
+    if (!outcome.ok) return horseRefusal(outcome.because)
+    return json(
+      {
+        spaceIds: outcome.value.created.map((space) => space.id),
+        skipped: outcome.value.skipped,
+      },
+      201,
+    )
   })
 
   api.mutation('/spaces/edit', domainScope('horse_care'), async (input, { context, db }) => {

@@ -25,6 +25,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 
+import { Actions, Field, Fields, Loading } from '../components/forms'
 import { client } from '../shared/api-client'
 import { VISIT_CATEGORIES, type AttendanceCategory } from '../shared/attendance'
 import type { DomainScope } from '../shared/domain-scopes'
@@ -200,7 +201,7 @@ function VisitAttendance() {
     return (
       <main>
         <h1>Visit</h1>
-        {problem === null ? <p>One moment…</p> : <p role="alert">{problem}</p>}
+        {problem === null ? <Loading what="the sheet" /> : <p role="alert">{problem}</p>}
       </main>
     )
   }
@@ -244,30 +245,39 @@ function VisitAttendance() {
         }}
       >
         <h2>Sign in</h2>
-        <label htmlFor="sign-in-who">Who</label>
-        <select id="sign-in-who" name="volunteerId" defaultValue={me.volunteerId}>
-          <option value={me.volunteerId}>Me — {me.name}</option>
-          {everyone
-            .filter((person) => person.id !== me.volunteerId)
-            .map((person) => (
-              <option key={person.id} value={person.id}>
-                {person.name}
-              </option>
-            ))}
-        </select>
-        <label htmlFor="sign-in-description">What are you here to do?</label>
-        <input id="sign-in-description" name="description" required maxLength={1000} />
-        <label htmlFor="sign-in-category">Category</label>
-        <select id="sign-in-category" name="category" defaultValue="other">
-          {VISIT_CATEGORIES.map((category) => (
-            <option key={category} value={category}>
-              {CATEGORY_LABEL[category]}
-            </option>
-          ))}
-        </select>
-        <button type="submit" disabled={busy}>
-          Sign in
-        </button>
+        <Fields>
+          <div className="field-wide">
+            <Field label="What are you here to do?" htmlFor="sign-in-description">
+              <input id="sign-in-description" name="description" required maxLength={1000} />
+            </Field>
+          </div>
+          <Field label="Who" htmlFor="sign-in-who">
+            <select id="sign-in-who" name="volunteerId" defaultValue={me.volunteerId}>
+              <option value={me.volunteerId}>Me &mdash; {me.name}</option>
+              {everyone
+                .filter((person) => person.id !== me.volunteerId)
+                .map((person) => (
+                  <option key={person.id} value={person.id}>
+                    {person.name}
+                  </option>
+                ))}
+            </select>
+          </Field>
+          <Field label="Category" htmlFor="sign-in-category">
+            <select id="sign-in-category" name="category" defaultValue="other">
+              {VISIT_CATEGORIES.map((category) => (
+                <option key={category} value={category}>
+                  {CATEGORY_LABEL[category]}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </Fields>
+        <Actions>
+          <button type="submit" disabled={busy}>
+            {busy ? 'Signing in…' : 'Sign in'}
+          </button>
+        </Actions>
       </form>
 
       {attendanceId !== null && (

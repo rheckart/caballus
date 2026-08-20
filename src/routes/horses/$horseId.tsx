@@ -14,6 +14,7 @@
 import { Link, createFileRoute, useParams } from '@tanstack/react-router'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 
+import { Loading } from '../../components/forms'
 import { client } from '../../shared/api-client'
 import { MEASUREMENT_METHODS, type MeasurementKind } from '../../shared/measurements'
 import { refusalText } from '../../shared/refusals'
@@ -100,7 +101,7 @@ export function HorseProfile() {
   if (horse === null) {
     return (
       <main>
-        <p>One moment…</p>
+        <Loading what="the horse" />
       </main>
     )
   }

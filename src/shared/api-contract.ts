@@ -35,7 +35,7 @@ import { OBSERVATION_DISPOSITIONS, OBSERVATION_SUBJECT_KINDS } from './observati
 import { PRODUCT_KINDS } from './products'
 import { ROLES } from './roles'
 import { ROSTER_GAPS } from './rostering'
-import { SPACE_KINDS } from './spaces'
+import { MOST_SPACES_AT_ONCE, SPACE_KINDS } from './spaces'
 import { STAFFING_GAPS } from './staffing'
 import {
   ASSIGNABLE_POSITIONS,
@@ -1304,6 +1304,32 @@ export const contract = {
     '/spaces': {
       accepts: z.object({ kind: spaceKind, name: z.string().min(1).max(200) }),
       answers: z.object({ spaceId: z.string() }),
+    },
+    /**
+     * Several Spaces in one act: *ten stalls in the Big Barn*, which was ten
+     * trips through the form above.
+     *
+     * **The names are sent rather than a rule for making them**, which is what
+     * keeps the list the desk previewed and the list that lands identical.
+     * `src/shared/spaces.ts`'s `seriesNames` is where the numbering lives, and
+     * it runs on the screen; the server takes what it produced.
+     *
+     * One key and one transaction for the whole run (ADR 0020), so a repeat
+     * from a pocket cannot half-create a barn, and a name the rescue already
+     * has under that kind is **skipped rather than refused** — a Coordinator
+     * who already added Stall 1 and then asks for ten stalls means the nine
+     * that are missing.
+     */
+    '/spaces/batch': {
+      accepts: z.object({
+        kind: spaceKind,
+        names: z.array(z.string().min(1).max(200)).min(1).max(MOST_SPACES_AT_ONCE),
+      }),
+      answers: z.object({
+        spaceIds: z.array(z.string()),
+        /** The names that already existed under this kind, in the order sent. */
+        skipped: z.array(z.string()),
+      }),
     },
     /**
      * A rename, a change of kind, or both — the whole of how splitting or

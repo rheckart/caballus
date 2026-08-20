@@ -31,6 +31,7 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useState } from 'react'
 
+import { Loading } from '../components/forms'
 import { client } from '../shared/api-client'
 import { rosteredAbsent } from '../shared/attendance'
 import { refusalText } from '../shared/refusals'
@@ -215,7 +216,7 @@ function MyShifts() {
     return (
       <main>
         <h1>My shifts</h1>
-        {problem === null ? <p>One moment…</p> : <p role="alert">{problem}</p>}
+        {problem === null ? <Loading what="shifts" /> : <p role="alert">{problem}</p>}
       </main>
     )
   }

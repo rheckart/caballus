@@ -46,6 +46,65 @@ export async function createSpace(
 }
 
 /**
+ * Creates several Spaces at once: the whole of *ten stalls in the Big Barn*.
+ *
+ * **A name this kind already carries is skipped, never refused.** The batch
+ * exists because somebody is describing a barn they already have, and
+ * describing it twice — a Coordinator who added Stall 1 by hand last week and
+ * now says *ten stalls* — is the ordinary case rather than a mistake. Refusing
+ * the run would leave them to work out which nine to ask for; refusing nothing
+ * and inserting a second Stall 1 would leave two rows the Board cannot tell
+ * apart. So the run lands, and the answer says what it left alone.
+ *
+ * One transaction, because `mutation` opened it: ten Spaces and their ten
+ * audit entries commit together or not at all (ADR 0020). There is no partial
+ * barn.
+ */
+export async function createSpaces(
+  db: OrgScopedDatabase,
+  orgId: OrgId,
+  actorVolunteerId: string,
+  details: { readonly kind: SpaceKind; readonly names: readonly string[] },
+): Promise<Recorded<{ created: { id: string; name: string }[]; skipped: string[] }>> {
+  const wanted = details.names.map((name) => name.trim()).filter((name) => name !== '')
+
+  // Read inside the caller's transaction, so *what exists* and *what is
+  // inserted* cannot be answered from two different moments.
+  const existing = await db
+    .select({ name: spaces.name })
+    .from(spaces)
+    .where(eq(spaces.kind, details.kind))
+  const held = new Set(existing.map((row) => row.name))
+
+  const created: { id: string; name: string }[] = []
+  const skipped: string[] = []
+  for (const name of wanted) {
+    // `held` grows as it goes, so a run that names the same stall twice
+    // creates it once rather than twice.
+    if (held.has(name)) {
+      skipped.push(name)
+      continue
+    }
+    held.add(name)
+    created.push({ id: uuidv7(), name })
+  }
+
+  if (created.length > 0) {
+    await db
+      .insert(spaces)
+      .values(created.map((space) => ({ ...space, orgId, kind: details.kind })))
+    await audit(
+      db,
+      orgId,
+      actorVolunteerId,
+      created.map((space) => ({ entity: 'space', entityId: space.id, after: space.name })),
+    )
+  }
+
+  return recorded({ created, skipped })
+}
+
+/**
  * Edits a Space's kind and name — the whole of how splitting or merging a
  * joined Space happens: `2 & 3` becomes `2` and `3` again, or `C` and `D`
  * become `All of C + D`, by an edit of the row rather than a new one (ADR

@@ -21,6 +21,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 
+import { Actions, Empty, Field, Fields, SaveButton, Saved, useSaving } from '../../components/forms'
 import { client } from '../../shared/api-client'
 import { refusalText } from '../../shared/refusals'
 import {
@@ -105,7 +106,7 @@ function Thresholds() {
   return (
     <main>
       <h1>Thresholds</h1>
-      <p>
+      <p className="lede">
         The temperatures the weather rules turn at. An edit publishes a new version; the old one
         stays, so what a horse’s number was in January is still answerable.
       </p>
@@ -158,17 +159,30 @@ function Thresholds() {
           }}
         >
           <h3>Set one of the rescue’s numbers</h3>
-          <label htmlFor="default-kind">Which</label>
-          <select id="default-kind" name="kind" defaultValue="sheet">
-            {THRESHOLD_KINDS.map((kind) => (
-              <option key={kind} value={kind}>
-                {KIND_LABEL[kind]}
-              </option>
-            ))}
-          </select>
-          <label htmlFor="default-value">Degrees Fahrenheit</label>
-          <input id="default-value" name="value" type="number" required step="1" />
-          <button type="submit">Publish</button>
+          <Fields>
+            <Field label="Which" htmlFor="default-kind">
+              <select id="default-kind" name="kind" defaultValue="sheet">
+                {THRESHOLD_KINDS.map((kind) => (
+                  <option key={kind} value={kind}>
+                    {KIND_LABEL[kind]}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Degrees Fahrenheit" htmlFor="default-value">
+              <input
+                id="default-value"
+                name="value"
+                type="number"
+                inputMode="numeric"
+                required
+                step="1"
+              />
+            </Field>
+          </Fields>
+          <Actions>
+            <button type="submit">Publish</button>
+          </Actions>
         </form>
       </section>
 
@@ -192,9 +206,11 @@ function Thresholds() {
       <section>
         <h2>Decisions owed</h2>
         {owed.length === 0 ? (
-          <p>Every horse has a sheet and a blanket number, or has been put on the rescue’s.</p>
+          <p className="field-hint">
+            Every horse has a sheet and a blanket number, or has been put on the rescue’s.
+          </p>
         ) : (
-          <ul>
+          <ul className="owed-list">
             {owed.map((horse) => (
               <li key={horse.horseId}>
                 {horse.horseName} —{' '}
@@ -208,7 +224,7 @@ function Thresholds() {
 
       <section>
         <h2>Each horse</h2>
-        {listed.horses.length === 0 && <p>No horses yet.</p>}
+        {listed.horses.length === 0 && <Empty>No horses yet.</Empty>}
         {listed.horses.map((horse) => (
           <Horse key={horse.horseId} horse={horse} today={listed.today} act={act} />
         ))}
@@ -227,6 +243,7 @@ function Horse({
   act: (work: () => Promise<unknown>) => Promise<boolean>
 }) {
   const held = new Map(horse.records.map((record) => [record.kind, record]))
+  const { pending, saved, save } = useSaving()
 
   return (
     <article>
@@ -259,53 +276,83 @@ function Horse({
           const data = new FormData(form)
           const stance = data.get('stance') === 'follows_default' ? 'follows_default' : 'overridden'
           const value = String(data.get('value') ?? '')
-          void act(() =>
-            client.post('/thresholds', {
-              horseId: horse.horseId,
-              kind: data.get('kind') as ThresholdKind,
-              stance,
-              // A horse deliberately on the rescue's number carries none of its
-              // own: one copied here would stop moving when the default did.
-              value: stance === 'follows_default' || value === '' ? null : Number(value),
-              validFrom: today,
+          void save(() =>
+            act(() =>
+              client.post('/thresholds', {
+                horseId: horse.horseId,
+                kind: data.get('kind') as ThresholdKind,
+                stance,
+                // A horse deliberately on the rescue's number carries none of its
+                // own: one copied here would stop moving when the default did.
+                value: stance === 'follows_default' || value === '' ? null : Number(value),
+                validFrom: today,
+              }),
+            ).then((landed) => {
+              if (landed) form.reset()
             }),
-          ).then((landed) => {
-            if (landed) form.reset()
-          })
+          )
         }}
       >
-        <label htmlFor={`kind-${horse.horseId}`}>Which</label>
-        <select id={`kind-${horse.horseId}`} name="kind" defaultValue="sheet">
-          {PER_HORSE_THRESHOLD_KINDS.map((kind) => (
-            <option key={kind} value={kind}>
-              {KIND_LABEL[kind]} ({METRIC_LABEL[THRESHOLD_SPECS[kind].metric]})
-            </option>
-          ))}
-        </select>
+        <Fields>
+          <Field label="Which" htmlFor={`kind-${horse.horseId}`}>
+            <select id={`kind-${horse.horseId}`} name="kind" defaultValue="sheet">
+              {PER_HORSE_THRESHOLD_KINDS.map((kind) => (
+                <option key={kind} value={kind}>
+                  {KIND_LABEL[kind]} ({METRIC_LABEL[THRESHOLD_SPECS[kind].metric]})
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field
+            label="Degrees Fahrenheit"
+            htmlFor={`value-${horse.horseId}`}
+            hint="Left blank when this horse follows the rescue’s number."
+          >
+            <input
+              id={`value-${horse.horseId}`}
+              name="value"
+              type="number"
+              inputMode="numeric"
+              step="1"
+              aria-describedby={`value-${horse.horseId}-hint`}
+            />
+          </Field>
 
-        <label htmlFor={`stance-own-${horse.horseId}`}>
-          <input
-            id={`stance-own-${horse.horseId}`}
-            name="stance"
-            type="radio"
-            value="overridden"
-            defaultChecked
-          />
-          Its own number
-        </label>
-        <label htmlFor={`stance-default-${horse.horseId}`}>
-          <input
-            id={`stance-default-${horse.horseId}`}
-            name="stance"
-            type="radio"
-            value="follows_default"
-          />
-          The rescue’s number, deliberately
-        </label>
+          {/* The tri-state, as two buttons rather than two loose radios: the
+              third state is the absence of a row and is not offered here,
+              because a decision is what this form records (ADR 0015). */}
+          <fieldset className="choice field-wide">
+            <legend>Which number it follows</legend>
+            <div className="choice-options">
+              <label htmlFor={`stance-own-${horse.horseId}`}>
+                <input
+                  id={`stance-own-${horse.horseId}`}
+                  name="stance"
+                  type="radio"
+                  value="overridden"
+                  defaultChecked
+                />
+                <span>Its own number</span>
+              </label>
+              <label htmlFor={`stance-default-${horse.horseId}`}>
+                <input
+                  id={`stance-default-${horse.horseId}`}
+                  name="stance"
+                  type="radio"
+                  value="follows_default"
+                />
+                <span>The rescue’s number, deliberately</span>
+              </label>
+            </div>
+          </fieldset>
+        </Fields>
 
-        <label htmlFor={`value-${horse.horseId}`}>Degrees Fahrenheit</label>
-        <input id={`value-${horse.horseId}`} name="value" type="number" step="1" />
-        <button type="submit">Publish for {horse.horseName}</button>
+        <Actions>
+          <SaveButton pending={pending} pendingLabel="Publishing…">
+            {`Publish for ${horse.horseName}`}
+          </SaveButton>
+          <Saved saved={saved} what="Published" />
+        </Actions>
       </form>
     </article>
   )

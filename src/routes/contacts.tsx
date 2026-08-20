@@ -15,6 +15,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 
+import { Loading } from '../components/forms'
 import { client } from '../shared/api-client'
 import { refusalText } from '../shared/refusals'
 import type { Answers, contract } from '../shared/api-contract'
@@ -57,7 +58,7 @@ export function Contacts() {
     return (
       <main>
         <h1>Contacts</h1>
-        <p>One moment…</p>
+        <Loading what="contacts" />
       </main>
     )
   }
