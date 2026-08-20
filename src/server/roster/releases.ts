@@ -47,7 +47,7 @@ export interface PublishedVersion {
 export async function publishReleaseVersion(
   db: OrgScopedDatabase,
   orgId: OrgId,
-  actorVolunteerId: string,
+  actorVolunteerId: string | null,
   details: {
     readonly label: string
     readonly validFrom: DayString
@@ -104,11 +104,16 @@ export async function releaseVersionList(
  * `byParent` is the Parent/Guardian block, which does real work in Maryland
  * under *BJ's Wholesale Club v. Rosen* and is what an eighteenth birthday
  * obsoletes.
+ *
+ * `actorVolunteerId` is null for exactly one caller: `npm run bootstrap`,
+ * recording the founding President's own release with no actor behind it —
+ * the same floor `grantRoleIn` already carves out of *nobody grants themselves
+ * a role*. Every other caller has an actor, and the guard below still bites.
  */
 export async function recordReleaseSignature(
   db: OrgScopedDatabase,
   orgId: OrgId,
-  actorVolunteerId: string,
+  actorVolunteerId: string | null,
   about: {
     readonly volunteerId: string
     readonly releaseVersionId: string
@@ -116,7 +121,7 @@ export async function recordReleaseSignature(
     readonly byParent: boolean
   },
 ): Promise<Recorded<{ id: string }>> {
-  if (about.volunteerId === actorVolunteerId) {
+  if (actorVolunteerId !== null && about.volunteerId === actorVolunteerId) {
     return refused('self_recorded')
   }
 

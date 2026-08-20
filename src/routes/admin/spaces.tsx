@@ -6,6 +6,11 @@
  * or merging `C` and `D` into `All of C + D`, is an edit of the row's kind and
  * name rather than a new one, which is the whole of how ADR 0002 says a
  * physical change to the barn becomes a change to the record.
+ *
+ * A Space that stopped existing — a stall torn out, a field sold off — is
+ * Retired rather than deleted, the same call ADR 0002 makes for a horse's
+ * Departure: a date on the row, corrected rather than undone, so its history
+ * (who was ever assigned it) stays reachable here rather than vanishing.
  */
 import { createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
@@ -14,6 +19,7 @@ import { client } from '../../shared/api-client'
 import { refusalText } from '../../shared/refusals'
 import type { Answers, contract } from '../../shared/api-contract'
 import { SPACE_KINDS, type SpaceKind } from '../../shared/spaces'
+import { dayString } from '../../shared/time'
 
 export const Route = createFileRoute('/admin/spaces')({
   component: Spaces,
@@ -103,6 +109,7 @@ function Spaces() {
               <th scope="col">Name</th>
               <th scope="col">Kind</th>
               <th scope="col">Occupied by</th>
+              <th scope="col">Status</th>
               <th scope="col" />
             </tr>
           </thead>
@@ -130,6 +137,7 @@ function Spaces() {
                         ? '—'
                         : space.occupants.map((horse) => horse.name).join(', ')}
                     </td>
+                    <td>{space.retiredOn === null ? 'Active' : `Retired ${space.retiredOn}`}</td>
                     <td>
                       <button
                         type="button"
@@ -139,6 +147,7 @@ function Spaces() {
                       >
                         Edit
                       </button>
+                      <Retirement space={space} act={act} />
                     </td>
                   </>
                 )}
@@ -148,6 +157,55 @@ function Spaces() {
         </table>
       )}
     </main>
+  )
+}
+
+function Retirement({
+  space,
+  act,
+}: {
+  space: Space
+  act: (work: () => Promise<unknown>) => Promise<void>
+}) {
+  if (space.retiredOn !== null) {
+    return (
+      <form
+        onSubmit={(event: FormEvent<HTMLFormElement>) => {
+          event.preventDefault()
+          void act(() =>
+            client.post('/spaces/retirement', { spaceId: space.id, retiredOn: null, reason: null }),
+          )
+        }}
+      >
+        {/* A date is a correction, never a delete (ADR 0002) — the same as setting one below. */}
+        <button type="submit">Correct: not Retired</button>
+      </form>
+    )
+  }
+
+  return (
+    <form
+      onSubmit={(event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
+        const data = new FormData(event.currentTarget)
+        void act(() =>
+          client.post('/spaces/retirement', {
+            spaceId: space.id,
+            retiredOn: dayString(String(data.get('retiredOn') ?? '')),
+            reason: String(data.get('reason') ?? '') || null,
+          }),
+        )
+      }}
+    >
+      <label htmlFor={`retire-on-${space.id}`}>Retired on</label>
+      <input id={`retire-on-${space.id}`} name="retiredOn" type="date" required />
+      <label htmlFor={`retire-reason-${space.id}`}>Reason (optional)</label>
+      <input id={`retire-reason-${space.id}`} name="reason" maxLength={500} />
+      <button type="submit" disabled={space.occupants.length > 0}>
+        Retire
+      </button>
+      {space.occupants.length > 0 && <p>Move every horse out before retiring this Space.</p>}
+    </form>
   )
 }
 
@@ -163,7 +221,7 @@ function EditSpace({
   act: (work: () => Promise<unknown>) => Promise<void>
 }) {
   return (
-    <td colSpan={4}>
+    <td colSpan={5}>
       <form
         onSubmit={(event: FormEvent<HTMLFormElement>) => {
           event.preventDefault()

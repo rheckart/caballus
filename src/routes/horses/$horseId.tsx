@@ -40,7 +40,7 @@ const ROUTE_LABEL: Record<FeedSchedule['lines'][number]['route'], string> = {
   other: 'other',
 }
 
-export function HorseProfile() {
+function HorseProfile() {
   // `strict: false` rather than `Route.useParams()`: the route that supplies
   // `horseId` is whichever one matched, and a component test renders this
   // component under a harness route rather than this file's own.
@@ -249,3 +249,5 @@ function RecordMeasurement({
     </form>
   )
 }
+
+export default HorseProfile

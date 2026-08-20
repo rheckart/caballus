@@ -191,6 +191,66 @@ describe.skipIf(!reachable)('horses and Spaces, through the API', () => {
       const renamed = await post(api, '/spaces/edit', { spaceId, kind: 'stall', name: 'Stall 5A' })
       expect(renamed.status).toBe(204)
     })
+
+    it('retires a Space with a date, never deleting the record', async () => {
+      const api = await holder()
+      const stall = await post(api, '/spaces', { kind: 'stall', name: 'Stall 6' })
+      const spaceId = stall.body.spaceId as string
+
+      const retired = await post(api, '/spaces/retirement', {
+        spaceId,
+        retiredOn: '2020-06-01',
+        reason: 'torn out',
+      })
+      expect(retired.status).toBe(204)
+
+      const listed = await get(api, '/spaces')
+      const row = (listed.body.spaces as Record<string, unknown>[]).find((s) => s.id === spaceId)
+      expect(row?.retiredOn).toBe('2020-06-01')
+
+      const audited = await owner`
+        select field, before, after, reason from audit_entries
+        where entity = 'space' and entity_id = ${spaceId} and field = 'retired_on'
+      `
+      expect(audited).toHaveLength(1)
+      expect(audited[0]).toMatchObject({ before: null, after: '2020-06-01', reason: 'torn out' })
+    })
+
+    it('corrects a mistaken Retirement by clearing the date', async () => {
+      const api = await holder()
+      const stall = await post(api, '/spaces', { kind: 'stall', name: 'Stall 7' })
+      const spaceId = stall.body.spaceId as string
+      await post(api, '/spaces/retirement', { spaceId, retiredOn: '2020-06-01' })
+
+      const corrected = await post(api, '/spaces/retirement', { spaceId, retiredOn: null })
+      expect(corrected.status).toBe(204)
+
+      const listed = await get(api, '/spaces')
+      const row = (listed.body.spaces as Record<string, unknown>[]).find((s) => s.id === spaceId)
+      expect(row?.retiredOn).toBeNull()
+    })
+
+    it('refuses to retire a Space while a horse still holds it', async () => {
+      const api = await holder()
+      const stall = await post(api, '/spaces', { kind: 'stall', name: 'Stall 8' })
+      const spaceId = stall.body.spaceId as string
+      const horse = await post(api, '/horses', { name: 'Indigo' })
+      await post(api, '/horses/space', { horseId: horse.body.horseId, kind: 'stall', spaceId })
+
+      const retired = await post(api, '/spaces/retirement', { spaceId, retiredOn: '2020-06-01' })
+      expect(retired.status).toBe(409)
+      expect(retired.body.error).toBe('space_occupied')
+    })
+
+    it('refuses to retire a Space that does not exist', async () => {
+      const api = await holder()
+      const retired = await post(api, '/spaces/retirement', {
+        spaceId: crypto.randomUUID(),
+        retiredOn: '2020-06-01',
+      })
+      expect(retired.status).toBe(404)
+      expect(retired.body.error).toBe('space_not_found')
+    })
   })
 
   describe('Horses', () => {
