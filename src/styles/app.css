@@ -582,6 +582,11 @@ button[type='submit']:disabled {
   color: var(--brand-green);
 }
 
+.badge-blue {
+  background: var(--card-tint-sky);
+  color: var(--link-blue-pressed);
+}
+
 /* ----------------------------------------------------------- the app bar -- */
 
 /*

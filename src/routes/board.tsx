@@ -617,6 +617,7 @@ const STYLE = `
 .board-lines li[data-kind='feed'] { color: var(--brand-teal); }
 .board-lines li[data-kind='supplement'] { color: var(--link-blue); }
 .board-lines li[data-kind='medication'] { color: var(--error); font-weight: 600; }
+.board-lines li[data-kind='topical'] { color: var(--brand-purple); }
 .board-route { font-style: italic; }
 .board-announcements { margin: 0 0 var(--space-md); padding: var(--space-sm) var(--space-md); background: var(--card-tint-yellow-bold); border: 0; border-radius: var(--rounded-lg); color: var(--charcoal); }
 .board-announcements ul { margin: 0; padding-left: var(--space-lg); }
@@ -652,6 +653,7 @@ const STYLE = `
   .board-lines li[data-kind='feed'] { color: #45d6c2; }
   .board-lines li[data-kind='supplement'] { color: #86adff; }
   .board-lines li[data-kind='medication'] { color: #ff7385; }
+  .board-lines li[data-kind='topical'] { color: #c7a2ff; }
   .board-new { color: var(--brand-purple-300); }
   .board-announcements { background: var(--brand-navy-mid); color: var(--on-dark); }
   .board-weather { background: var(--brand-navy-mid); }

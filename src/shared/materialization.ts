@@ -29,6 +29,7 @@
 import type { ConditionName } from './weather'
 import { CONDITION_SPECS } from './weather'
 import type { ShiftType } from './feed-schedule'
+import { ITEM_FOR_PRODUCT_KIND, isProductKind } from './products'
 import type { DayString } from './time'
 
 /** Who a Task or an Item is about (ADR 0013). */
@@ -195,8 +196,14 @@ function feedingItems(input: MaterializeInput): readonly MaterializedItem[] {
     }
 
     for (const [horseId, lines] of byHorse) {
-      const feeding = lines.filter((line) => line.productKind !== 'medication')
-      const medicating = lines.filter((line) => line.productKind === 'medication')
+      // A kind this build does not know generates nothing, the same call
+      // `isProductKind` exists to let a read make: a row can outrun a deploy,
+      // and guessing it into the Feed Item is how a horse is told to eat
+      // something nobody here can name (#58).
+      const itemFor = (line: FeedLine): 'feed' | 'medicate' | null =>
+        isProductKind(line.productKind) ? ITEM_FOR_PRODUCT_KIND[line.productKind] : null
+      const feeding = lines.filter((line) => itemFor(line) === 'feed')
+      const medicating = lines.filter((line) => itemFor(line) === 'medicate')
 
       if (feeding.length > 0) {
         items.push(feedOrMedicateItem('feed', shift, horseId, false, input.day))

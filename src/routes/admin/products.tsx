@@ -47,6 +47,7 @@ const KIND_LABEL: Record<ProductKind, string> = {
   feed: 'Feed',
   supplement: 'Supplement',
   medication: 'Medication',
+  topical: 'Topical',
 }
 
 const KIND_OPTIONS = PRODUCT_KINDS.map((kind) => ({ value: kind, label: KIND_LABEL[kind] }))
@@ -242,7 +243,7 @@ function Products() {
       {open?.kind === 'product' && (
         <Sheet
           title={open.product === null ? 'Add a Product' : `Edit ${open.product.name}`}
-          description="Medication is the kind that needs Medication Authority to give."
+          description="Medication is the kind that needs Medication Authority to give. A Topical goes on a horse rather than in it, and is never fed."
           onClose={() => {
             setOpen(null)
           }}
@@ -266,6 +267,7 @@ const BADGE: Record<ProductKind, string> = {
   feed: 'green',
   supplement: 'purple',
   medication: 'orange',
+  topical: 'blue',
 }
 
 function SupplierForm({
@@ -333,6 +335,9 @@ function ProductForm({
   onSaved: () => void
 }) {
   const { pending, saved, save } = useSaving()
+  // The kind is state rather than an uncontrolled default because one other
+  // field depends on it: a Topical has no prescription to ask about.
+  const [kind, setKind] = useState<ProductKind>(product?.kind ?? 'feed')
 
   return (
     <form
@@ -343,9 +348,12 @@ function ProductForm({
         const reorderPointDays = String(data.get('reorderPointDays') ?? '')
         const common = {
           name: String(data.get('name') ?? ''),
-          kind: data.get('kind') as ProductKind,
+          kind,
           supplierId: supplierId === '' ? null : supplierId,
-          prescription: data.get('prescription') === 'on',
+          // A Topical is never a prescription — zinc oxide and fly spray are
+          // bought off a shelf — so the question is not asked and the answer
+          // is not carried over from whatever the kind was before (#58).
+          prescription: kind !== 'topical' && data.get('prescription') === 'on',
           reorderPointDays: reorderPointDays === '' ? null : Number(reorderPointDays),
           orderingNote: String(data.get('orderingNote') ?? '') || null,
         }
@@ -391,7 +399,8 @@ function ProductForm({
             legend="Kind"
             name="kind"
             options={KIND_OPTIONS}
-            defaultValue={product?.kind ?? 'feed'}
+            value={kind}
+            onChange={setKind}
           />
         </div>
         <Field
@@ -418,17 +427,19 @@ function ProductForm({
             defaultValue={product?.orderingNote ?? ''}
           />
         </Field>
-        <div className="field-wide">
-          <label htmlFor="product-prescription">
-            <input
-              id="product-prescription"
-              name="prescription"
-              type="checkbox"
-              defaultChecked={product?.prescription}
-            />
-            Needs a prescription
-          </label>
-        </div>
+        {kind !== 'topical' && (
+          <div className="field-wide">
+            <label htmlFor="product-prescription">
+              <input
+                id="product-prescription"
+                name="prescription"
+                type="checkbox"
+                defaultChecked={product?.prescription}
+              />
+              Needs a prescription
+            </label>
+          </div>
+        )}
         {product !== null && (
           <div className="field-wide">
             <Field

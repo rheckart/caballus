@@ -13,6 +13,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { stubApi } from '../test/api-stub'
 import { renderRoutes } from '../test/route-harness'
 import { BOARD_TOKEN_HEADER } from '../shared/board'
+import { PRODUCT_KINDS } from '../shared/products'
 import Board from './board'
 import HorseProfile from './horses/$horseId'
 
@@ -231,6 +232,23 @@ describe('the Board', () => {
     expect(medication.textContent).toContain('oral syringe')
     // The New marker, derived and ageing out on its own (`CONTEXT.md`'s New).
     expect(screen.getByText('New')).toBeTruthy()
+  })
+
+  it('paints every Product kind on purpose, in both schemes', async () => {
+    // A kind with no rule inherits body text, which reads as "we forgot"
+    // because the others are coloured deliberately (ADR 0022). Asserted
+    // against `PRODUCT_KINDS` rather than a list here, so a fifth kind fails
+    // this test rather than shipping colourless (#58).
+    stubApi({ '/board': GRID })
+    const { container } = renderBoard()
+    await screen.findByText('Main barn')
+
+    const stylesheet = container.ownerDocument.querySelector('style')?.textContent ?? ''
+    const [light = '', dark = ''] = stylesheet.split('@media (prefers-color-scheme: dark)')
+    for (const kind of PRODUCT_KINDS) {
+      expect(light).toContain(`.board-lines li[data-kind='${kind}']`)
+      expect(dark).toContain(`.board-lines li[data-kind='${kind}']`)
+    }
   })
 
   it('has no action anywhere on it', async () => {
