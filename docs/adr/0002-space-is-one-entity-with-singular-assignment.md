@@ -25,3 +25,11 @@ Per-area checklist items address Spaces, which is what the brief's separation of
 An unoccupied Space is a Space with no horse — representable, and visible, exactly as the board has it.
 
 Splitting a joined Space requires an edit by someone with the authority to make it, rather than falling out of a gate sensor or a checkbox on a shift. That is the intended trade: the model is quiet and occasionally manual, rather than chatty and often wrong.
+
+## Amendment: Pasture and Paddock are separate kinds
+
+The kinds were stall, field and barn, and `CONTEXT.md` recorded that "paddock and pasture mean the same thing in the barn". They do not. A **Paddock** is a smaller enclosure attached to a **Pasture**, the two are often connected, and a horse turned out is in both at once — which is exactly the fact a single `field` kind could not express, since a horse holds at most one Space per kind.
+
+So `field` is renamed to `pasture` and `paddock` is added, making four kinds. One-Space-per-kind is unchanged and now carries more: a horse may hold a Stall, a Pasture, a Paddock and a Barn simultaneously, and never two of any. The board's `FIELD` column reads as Pastures; the hay panel's `Paddocks A–D` are Paddocks, and they are no longer the same places by another name.
+
+Nothing is in production, so this is a migration and no data.

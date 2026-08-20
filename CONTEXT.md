@@ -215,12 +215,16 @@ _Avoid_: sign-off, verification, approval, endorsement
 ### Places
 
 **Space**:
-A physical area a horse occupies or uses, of one kind — stall, field or barn — composed of one or more named units that may be physically joined. Stalls 2 and 3 are one Space because the partition between them was removed; "all of C and D" is one Space because the gate between those fields is open. A horse is assigned exactly one Space of each kind.
+A physical area a horse occupies or uses, of one kind — stall, pasture, paddock or barn — composed of one or more named units that may be physically joined. Stalls 2 and 3 are one Space because the partition between them was removed; "all of C and D" is one Space because the gate between those fields is open. A horse is assigned exactly one Space of each kind, so a horse turned out holds a Pasture and the Paddock attached to it at the same time.
 _Avoid_: location, area, pen, enclosure
 
-**Field**:
-A Space of kind _field_ — a turnout area named by letter. Paddock and pasture mean the same thing in the barn; use Field.
-_Avoid_: paddock, pasture, turnout group
+**Pasture**:
+A Space of kind _pasture_ — a turnout area named by letter, where a horse grazes. Larger than the Paddock it connects to, and a different place: a horse may hold one of each at once.
+_Avoid_: field, turnout group, grazing
+
+**Paddock**:
+A Space of kind _paddock_ — a smaller enclosure attached to a Pasture, and the unit the board's hay amounts are counted against. The two are often connected, and a horse assigned one is frequently assigned the other.
+_Avoid_: field, pen, corral, dry lot
 
 **Stall**:
 A Space of kind _stall_ — an indoor space a horse is housed in. A Stall may stand empty and still exist; the feed board keeps a row for stall 7, which is OPEN.
@@ -243,12 +247,16 @@ _Avoid_: flag, note, warning, caution
 ### Feed and medication
 
 **Product**:
-Something the rescue buys and gives to a horse — a feed, a supplement or a medication. Its kind is a property of the Product, not of where it was written down: whether Bute is a medication is a fact about Bute. It is also the catalogue: a Supplier, whether it needs a prescription, an optional reorder point in days and a free-text ordering note hang off the same record, which is what makes _we're low on Senior_ connectable to _these nine horses eat Senior_ with no second list to maintain. Edited by holders of `horse_care` or `supplies`, and current state with an audit entry rather than versioned — what a Product used to cost or come from answers no question here. Deliberately does not stretch to what the rescue buys and does not feed a horse: shavings and light bulbs are an Observation, not a catalogue row.
+Something the rescue buys and gives to a horse — a feed, a supplement, a medication or a Topical. Its kind is a property of the Product, not of where it was written down: whether Bute is a medication is a fact about Bute. It is also the catalogue: a Supplier, whether it needs a prescription, an optional reorder point in days and a free-text ordering note hang off the same record, which is what makes _we're low on Senior_ connectable to _these nine horses eat Senior_ with no second list to maintain. Edited by holders of `horse_care` or `supplies`, and current state with an audit entry rather than versioned — what a Product used to cost or come from answers no question here. Deliberately does not stretch to what the rescue buys and never puts in or on a horse: shavings and light bulbs are an Observation, not a catalogue row.
 _Avoid_: item, feed type, med, supply
 
 **Feed Schedule**:
 The versioned set of lines describing what a horse is given at one Shift Type. Each line names a Product, an amount and a Route.
 _Avoid_: diet, ration, feed plan, meal plan
+
+**Topical**:
+A Product of kind _topical_ — something put on a horse's body rather than fed to it: fly spray, sunblock, zinc oxide. It is a Product so that Days of Supply can count it, and it is deliberately not a medication, because making it one would mean only a holder of Medication Authority could fly-spray a horse. A topical line on a Feed Schedule generates no Item; the work is a Task carrying an instruction, which is where fly spray and sunscreen already live.
+_Avoid_: ointment, cream, spray, horse care product
 
 **Route**:
 How a Product reaches the horse — in feed, orally by syringe or paste, topically, or otherwise. Medication is not always given in feed.
@@ -283,3 +291,9 @@ _Avoid_: the app, mobile view, shift screen
 **Unsent**:
 Work a volunteer has recorded on their phone that has not yet reached the server. Visible on the item it belongs to, never silently dropped, and blocks a Shift from closing — because a record that looks complete and isn't is the lie the paper system already tells.
 _Avoid_: pending, queued, unsynced, offline
+
+### Setting up
+
+**Whiteboard Read**:
+One photograph of one panel of a rescue's whiteboard, turned into records when a barn is first set up. The person holding the phone says which panel it is; the app writes what it can read clearly, leaves what it cannot read blank, and answers with what it created, what it skipped as already held, and what it could not place. Additive only — it never edits a record that already exists, so running it twice is safe and a correction somebody made by hand is never overwritten. Distinct from the Board, which is the tablet in the barn and reads nothing.
+_Avoid_: Board Read, import, migration, scan, OCR, ingest
