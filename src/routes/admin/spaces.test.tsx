@@ -28,7 +28,10 @@ function renderSpaces() {
 }
 
 function space(name: string, kind = 'stall') {
-  return { id: name, kind, name, occupants: [] }
+  // `retiredOn` is not optional on the wire: the client parses every answer
+  // against the contract, so a fixture missing it fails to parse and the screen
+  // sees no Spaces at all rather than a type error.
+  return { id: name, kind, name, occupants: [], retiredOn: null }
 }
 
 describe('adding several Spaces', () => {

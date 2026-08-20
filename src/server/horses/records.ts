@@ -173,6 +173,58 @@ export async function editSpace(
   return recorded(null)
 }
 
+/**
+ * Marks a Space Retired, or corrects a mistaken one — a date, never a delete
+ * (ADR 0002), the same call `recordHorseDeparture` makes for a horse. The row
+ * and its history are untouched; hiding it from a work surface is the
+ * reader's concern.
+ *
+ * Refused while occupied, the same as `editSpace`'s kind change: a Space a
+ * horse still holds going quietly off the assignment screens is the stale
+ * state that refusal already exists to prevent, not a fresh rule.
+ */
+export async function recordSpaceRetirement(
+  db: OrgScopedDatabase,
+  orgId: OrgId,
+  actorVolunteerId: string,
+  about: {
+    readonly spaceId: string
+    readonly retiredOn: DayString | null
+    readonly reason?: string | null
+  },
+): Promise<Recorded> {
+  const [existing] = await db
+    .select({ retiredOn: spaces.retiredOn })
+    .from(spaces)
+    .where(eq(spaces.id, about.spaceId))
+    .limit(1)
+  if (existing === undefined) return refused('space_not_found')
+
+  if (about.retiredOn !== null) {
+    const [occupant] = await db
+      .select({ horseId: horseSpaceAssignments.horseId })
+      .from(horseSpaceAssignments)
+      .where(eq(horseSpaceAssignments.spaceId, about.spaceId))
+      .limit(1)
+    if (occupant !== undefined) return refused('space_occupied')
+  }
+
+  await db.update(spaces).set({ retiredOn: about.retiredOn }).where(eq(spaces.id, about.spaceId))
+
+  await audit(db, orgId, actorVolunteerId, [
+    {
+      entity: 'space',
+      entityId: about.spaceId,
+      field: 'retired_on',
+      before: existing.retiredOn,
+      after: about.retiredOn,
+      reason: about.reason ?? null,
+    },
+  ])
+
+  return recorded(null)
+}
+
 export interface NewHorse {
   readonly name: string
   readonly halterColour?: string | null

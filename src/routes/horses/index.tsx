@@ -18,7 +18,7 @@ export const Route = createFileRoute('/horses/')({
 
 type Horses = Answers<typeof contract, '/horses'>
 
-export function HorseList() {
+function HorseList() {
   const [horses, setHorses] = useState<Horses | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
 
@@ -79,3 +79,5 @@ export function HorseList() {
     </main>
   )
 }
+
+export default HorseList

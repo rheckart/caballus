@@ -24,7 +24,7 @@ import { v7 as uuidv7 } from 'uuid'
 import { closeDb, forOrg, type OrgId } from '../../db/for-org'
 import { orgs } from '../../db/schema'
 import { isTimeZone } from '../time'
-import { createVolunteer, grantRole, volunteerByEmail } from './volunteers'
+import { createVolunteer, grantRole, recordFoundingRelease, volunteerByEmail } from './volunteers'
 
 export interface FirstMember {
   readonly orgId: OrgId
@@ -71,6 +71,12 @@ export async function bootstrap(details: {
   // this hands over the ability to make everybody else without inventing a
   // privilege that only one person has.
   await grantRole(details.orgId, volunteer.id, 'president')
+
+  // Holding `grants` is not enough to be rostered: ADR 0017's release gate is
+  // a hard block with no override, and the founding President is the only
+  // person who could ever record it — recordFoundingRelease is the same
+  // shell-access floor as the role grant above, applied to that one gate.
+  await recordFoundingRelease(details.orgId, volunteer.id, details.timeZone)
 
   return { orgId: details.orgId, volunteerId: volunteer.id, created: existing === null }
 }

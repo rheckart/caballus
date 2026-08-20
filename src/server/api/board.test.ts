@@ -265,6 +265,20 @@ describe.skipIf(!reachable)('the Board, through the API', () => {
       ])
     })
 
+    it('takes a Retired Space off the board entirely, unlike an OPEN one', async () => {
+      const api = await holder()
+      await seedSpace(api, 'stall', '5')
+      const retired = await seedSpace(api, 'stall', '6')
+      await post(api, '/spaces/retirement', { spaceId: retired, retiredOn: '2026-05-01' })
+
+      const grid = await boardAsTablet()
+      const stallNames = grid.sections.flatMap((section) =>
+        section.rows.map((row) => row.stall?.name),
+      )
+      expect(stallNames).toContain('5')
+      expect(stallNames).not.toContain('6')
+    })
+
     it('carries the halter colour, the field and the current feeding per Shift Type', async () => {
       const api = await holder()
       const stall = await seedSpace(api, 'stall', '1')

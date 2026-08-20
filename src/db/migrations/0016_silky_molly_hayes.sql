@@ -1,0 +1,1 @@
+ALTER TABLE "release_signatures" ALTER COLUMN "recorded_by" DROP NOT NULL;

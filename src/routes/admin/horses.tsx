@@ -701,7 +701,10 @@ function AssignSpace({
   act: (work: () => Promise<unknown>) => Promise<void>
 }) {
   const current = horse.spaces[kind]
-  const choices = options.filter((space) => space.kind === kind)
+  // A Retired Space stays off this list — `recordSpaceRetirement` already
+  // refuses to retire one still occupied, so the currently assigned Space is
+  // never among those excluded here.
+  const choices = options.filter((space) => space.kind === kind && space.retiredOn === null)
   const { pending, saved, save } = useSaving()
 
   return (

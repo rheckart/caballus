@@ -451,10 +451,14 @@ export const releaseVersions = pgTable(
  * on a stack whose restore window is thirty days (ADR 0006), would be worse
  * than the filing cabinet *and* look better than it.
  *
- * **Never self-recorded.** Unlike Attendance, where self-report is the norm,
- * this is a statement about a piece of paper that only the person holding the
- * paper can see, and a volunteer asserting their own release exists is evidence
- * of nothing. The check is in `src/server/roster/releases.ts`.
+ * **Never self-recorded**, with one floor beneath the rule rather than an
+ * exception to it. Unlike Attendance, where self-report is the norm, this is a
+ * statement about a piece of paper that only the person holding the paper can
+ * see, and a volunteer asserting their own release exists is evidence of
+ * nothing — but `npm run bootstrap`, run with no actor, is the same shell-access
+ * floor ADR 0010 already grants the first role from, and without it the
+ * founding President could never clear their own rostering gate. The check is
+ * in `src/server/roster/releases.ts`.
  *
  * Rows are kept indefinitely. Pruning is the only mechanism by which somebody
  * who needs this two years later gets told no — and the app never computes a
@@ -482,9 +486,12 @@ export const releaseSignatures = pgTable(
      * Wholesale Club v. Rosen* and is what an eighteenth birthday obsoletes.
      */
     byParent: boolean('by_parent').notNull().default(false),
-    recordedBy: uuid('recorded_by')
-      .notNull()
-      .references(() => volunteers.id),
+    /**
+     * Who recorded it. Null for the one act with no actor: `npm run bootstrap`
+     * recording the founding President's own release, the same floor
+     * `volunteer_roles.granted_by` already carves out for the first role grant.
+     */
+    recordedBy: uuid('recorded_by').references(() => volunteers.id),
     recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull().defaultNow(),
     /**
      * Expressly revoked in writing, which is how a release stops being
@@ -569,6 +576,11 @@ export const volunteerConsents = pgTable(
  *
  * An unoccupied Space is a row with nothing assigned to it, and stays exactly
  * that visible: nothing here ties a Space to whether a horse holds it.
+ *
+ * Retired is a date, never a delete — the same call ADR 0002 makes for a
+ * horse's Departure. The row and its history outlive the stall being torn
+ * out or the field being sold off; hiding it from a work surface is the
+ * reader's concern.
  */
 export const spaces = pgTable(
   'spaces',
@@ -580,6 +592,7 @@ export const spaces = pgTable(
     /** One of `SPACE_KINDS` in `src/shared/spaces.ts`. */
     kind: text('kind').notNull(),
     name: text('name').notNull(),
+    retiredOn: date('retired_on'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   () => [inScope('spaces_in_scope')],

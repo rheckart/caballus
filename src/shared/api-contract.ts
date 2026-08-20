@@ -308,6 +308,7 @@ export const space = z.object({
   kind: spaceKind,
   name: z.string(),
   occupants: z.array(z.object({ id: z.string(), name: z.string() })),
+  retiredOn: dayOfTheOrganisation.nullable(),
 })
 
 export const spaceList = z.object({ spaces: z.array(space) })
@@ -1338,6 +1339,11 @@ export const contract = {
      */
     '/spaces/edit': {
       accepts: z.object({ spaceId, kind: spaceKind, name: z.string().min(1).max(200), reason }),
+      answers: z.void(),
+    },
+    /** `retiredOn: null` corrects a mistaken Retirement — a date, never a delete (ADR 0002). */
+    '/spaces/retirement': {
+      accepts: z.object({ spaceId, retiredOn: dayOfTheOrganisation.nullable(), reason }),
       answers: z.void(),
     },
     '/horses': {

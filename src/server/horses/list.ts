@@ -163,13 +163,14 @@ export interface Space {
   readonly kind: SpaceKind
   readonly name: string
   readonly occupants: readonly SpaceOccupant[]
+  readonly retiredOn: DayString | null
 }
 
-/** Every Space, occupied or not — an empty Stall is exactly as visible (ADR 0002). */
+/** Every Space, current or Retired — hiding a Retired one is the reader's concern, not this read's (ADR 0002). */
 export async function spaceList(db: OrgScopedDatabase): Promise<readonly Space[]> {
   const [rows, occupantRows] = await Promise.all([
     db
-      .select({ id: spaces.id, kind: spaces.kind, name: spaces.name })
+      .select({ id: spaces.id, kind: spaces.kind, name: spaces.name, retiredOn: spaces.retiredOn })
       .from(spaces)
       .orderBy(spaces.name),
     db
@@ -195,6 +196,7 @@ export async function spaceList(db: OrgScopedDatabase): Promise<readonly Space[]
         id: entry.horseId,
         name: entry.horseName,
       })),
+      retiredOn: row.retiredOn === null ? null : dayString(row.retiredOn),
     }))
 }
 

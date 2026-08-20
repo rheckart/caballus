@@ -167,7 +167,7 @@ function kept(): string | null {
   }
 }
 
-export function Board() {
+function Board() {
   // Read once, at first render: the token decides how every poll below is
   // made, and re-reading storage on each one would buy nothing.
   const [token] = useState(heldToken)
@@ -663,3 +663,5 @@ const STYLE = `
   .board-garment-why { color: var(--on-dark-muted); }
 }
 `
+
+export default Board
