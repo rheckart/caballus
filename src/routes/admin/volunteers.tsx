@@ -170,6 +170,7 @@ function Volunteers() {
           today={people.today}
           versions={versions?.versions ?? []}
           act={act}
+          problem={problem}
         />
       )}
     </main>
@@ -217,11 +218,13 @@ function PersonRecord({
   today,
   versions,
   act,
+  problem,
 }: {
   person: Person | null
   today: DayString
   versions: Versions['versions']
   act: (work: () => Promise<unknown>) => Promise<void>
+  problem: string | null
 }) {
   if (person === null) return null
   const behind = person.behindRoster
@@ -229,6 +232,12 @@ function PersonRecord({
   return (
     <section>
       <h2>{person.name}</h2>
+
+      {/* The same message as the one at the top of the page, repeated here
+          because this is where the Coordinator is looking when an act on this
+          person's row fails — a banner above a table scrolled out of view
+          reads as nothing having happened. */}
+      {problem !== null && <p role="alert">{problem}</p>}
 
       {behind === null ? (
         // Absent rather than empty: the reader does not hold `roster`, and

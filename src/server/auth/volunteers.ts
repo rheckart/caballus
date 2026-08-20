@@ -14,8 +14,14 @@
 import { and, eq, isNotNull, isNull } from 'drizzle-orm'
 
 import { forOrg, type OrgId } from '../../db/for-org'
-import { volunteerAccounts, volunteers } from '../../db/schema'
+import { releaseSignatures, volunteerAccounts, volunteers } from '../../db/schema'
+import { todayIn } from '../../shared/time'
 import { grantRoleIn } from '../roster/grants'
+import {
+  publishReleaseVersion,
+  recordReleaseSignature,
+  releaseVersionList,
+} from '../roster/releases'
 import { createVolunteerIn, removeVolunteerIn } from '../roster/records'
 import type { Role } from '../api/authorization'
 
@@ -142,6 +148,55 @@ export async function grantRole(orgId: OrgId, volunteerId: string, role: Role): 
   if (!outcome.ok) {
     throw new Error(`${role} was not granted to ${volunteerId}: ${outcome.because}`)
   }
+}
+
+/**
+ * Records the founding President's own release, with no actor behind it —
+ * the same bootstrap floor `grantRole` stands on, applied to the one record
+ * type ADR 0017 is strictest about (*never self-recorded*, because a
+ * volunteer's own word that a paper exists is evidence of nothing). Without
+ * it the founding President — the only person who could ever record it —
+ * could never clear their own release gate.
+ *
+ * Idempotent: a Volunteer who already holds a signature is left alone, and an
+ * already-published Release Version is signed rather than a second one
+ * invented on every rerun of the bootstrap command.
+ */
+export async function recordFoundingRelease(
+  orgId: OrgId,
+  volunteerId: string,
+  timeZone: string,
+): Promise<void> {
+  await forOrg(orgId).run(async (db) => {
+    const [already] = await db
+      .select({ id: releaseSignatures.id })
+      .from(releaseSignatures)
+      .where(eq(releaseSignatures.volunteerId, volunteerId))
+      .limit(1)
+    if (already !== undefined) return
+
+    const today = todayIn(timeZone)
+    const versions = await releaseVersionList(db)
+    const current =
+      versions[0] ??
+      (await publishReleaseVersion(db, orgId, null, {
+        label: 'Release on file at founding',
+        validFrom: today,
+        obsoletesPrior: false,
+      }))
+
+    const outcome = await recordReleaseSignature(db, orgId, null, {
+      volunteerId,
+      releaseVersionId: current.id,
+      signedOn: today,
+      byParent: false,
+    })
+    if (!outcome.ok) {
+      throw new Error(
+        `The founding release was not recorded for ${volunteerId}: ${outcome.because}`,
+      )
+    }
+  })
 }
 
 /**
