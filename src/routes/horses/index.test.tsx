@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { stubApi } from '../../test/api-stub'
 import { renderRoute } from '../../test/route-harness'
-import { HorseList } from './index'
+import HorseList from './index'
 
 afterEach(() => {
   vi.unstubAllGlobals()

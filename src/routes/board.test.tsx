@@ -13,8 +13,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { stubApi } from '../test/api-stub'
 import { renderRoutes } from '../test/route-harness'
 import { BOARD_TOKEN_HEADER } from '../shared/board'
-import { Board } from './board'
-import { HorseProfile } from './horses/$horseId'
+import Board from './board'
+import HorseProfile from './horses/$horseId'
 
 afterEach(() => {
   vi.unstubAllGlobals()
