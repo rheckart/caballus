@@ -137,3 +137,17 @@ Permissions are scoped by **care domain** (medical/dental/farrier vs. maintenanc
 ## Source of truth
 
 `brainstorming_document.md` is the product brief and is more detailed than the summary above — read it before designing any feature area, since each care domain has specific fields listed there. It is aspirational scope, not a committed roadmap; the app is intended to eventually cover all aspects of rescue operations.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs live on the self-hosted Forgejo at `git.heckart.me/rob/caballus`, reached through the `forgejo-mcp` MCP tools — there is no `gh`/`tea`/`glab` CLI here. Blocking edges are a `## Blocked by` list in the child issue body. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical roles, each label string equal to its name: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context — `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
