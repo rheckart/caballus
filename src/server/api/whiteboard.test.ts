@@ -250,7 +250,7 @@ describe.skipIf(!reachable)('the Whiteboard Read, through the API', () => {
 
   describe('with no key set', () => {
     it('refuses in words rather than failing obscurely', async () => {
-      // `null` is exactly what an unset ANTHROPIC_API_KEY resolves to.
+      // `null` is exactly what an unset OPENROUTER_API_KEY resolves to.
       setWhiteboardReader(null)
       const api = await holder(['horse_care', 'roster'])
 

@@ -3,32 +3,66 @@
  * application that knows the model API** — the shape `src/server/weather/providers.ts`
  * holds for the forecast, and for the same reason (ADR 0023, #59).
  *
+ * **It goes through OpenRouter rather than the Anthropic API directly**, which
+ * is where #59's own `ANTHROPIC_API_KEY` was overruled: the rescue pays for one
+ * gateway subscription and would rather this call came out of it than out of a
+ * second account nobody else at the rescue can see. The model is still
+ * `claude-sonnet-5`, slugged `anthropic/claude-sonnet-5` there, and OpenRouter
+ * serves Anthropic's own Messages shape at `/api/v1/messages` — so this is a
+ * base URL and a key name, not a second dialect. Pointing it back at Anthropic
+ * is changing `BASE_URL` and the key.
+ *
  * The phone sends bytes; the server calls out. The key lives in the
  * environment beside `BOARD_TOKEN` and `BARN_LATITUDE`, and **unset fails
  * closed**: `whiteboardReader` answers `null` and the endpoint refuses in
  * words, rather than a development box quietly making a paid call or a
  * production one failing obscurely.
  *
- * **What comes back is loose on purpose.** Structured outputs guarantee the
- * JSON's shape; they cannot guarantee that `paddock` is a Space kind this build
- * knows or that `feed_am` is a Shift Type. So every enum here is a plain string
- * and `records.ts` parses each element against the contract's own schemas — a
- * field that does not parse is reported as could-not-place, never coerced
- * (ADR 0023). One misread cell costs that cell rather than the panel.
+ * **The reading arrives as a forced tool call**, not as Anthropic's own
+ * structured outputs. Tool use is the one JSON-shaping mechanism a gateway
+ * proxies faithfully for every model behind it; `output_config.format` is
+ * newer than most proxies and a field one silently drops — or rejects — is a
+ * failure at the desk rather than at the type checker.
+ *
+ * **What comes back is loose on purpose.** A JSON schema guarantees the shape;
+ * it cannot guarantee that `paddock` is a Space kind this build knows or that
+ * `feed_am` is a Shift Type. So every enum here is a plain string and
+ * `records.ts` parses each element against the contract's own schemas — a field
+ * that does not parse is reported as could-not-place, never coerced (ADR 0023).
+ * One misread cell costs that cell rather than the panel.
  */
 import Anthropic from '@anthropic-ai/sdk'
-import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
 import { z } from 'zod'
 
 import { PANEL_RECORDS, RECORD_LABEL, type WhiteboardPanel } from '../../shared/whiteboard'
 
 /**
- * `claude-sonnet-5`, named by #59 rather than chosen here.
+ * `claude-sonnet-5`, named by #59 rather than chosen here, under the slug
+ * OpenRouter lists it as.
  *
  * A Whiteboard Read is a one-time setup act reading a photograph of a
  * whiteboard, which is a transcription problem rather than a reasoning one.
  */
-const MODEL = 'claude-sonnet-5'
+const MODEL = 'anthropic/claude-sonnet-5'
+
+/**
+ * OpenRouter's Anthropic-compatible Messages endpoint. **The only URL in this
+ * application besides the two weather providers'**, and a constant rather than
+ * configuration for the same reason theirs are: nothing in the application
+ * edits where a provider lives, and a URL somebody can set at runtime is a URL
+ * somebody can set wrong.
+ */
+const BASE_URL = 'https://openrouter.ai/api/v1'
+
+/** What OpenRouter's own dashboard labels this spend, so the bill is readable. */
+const CALLER = 'Caballus'
+
+/**
+ * The one tool the model may call, and the whole of how the reading comes
+ * back. `tool_choice` names it, so there is no path where the model answers
+ * with prose instead.
+ */
+const TOOL = 'record_reading'
 
 /**
  * How long the model gets.
@@ -131,21 +165,39 @@ export function setWhiteboardReader(replacement: WhiteboardReader | null): void 
  */
 export function whiteboardReader(): WhiteboardReader | null {
   if (reader !== undefined) return reader
-  const key = process.env.ANTHROPIC_API_KEY ?? ''
+  const key = process.env.OPENROUTER_API_KEY ?? ''
   if (key === '') return null
   return (photograph) => askTheModel(key, photograph)
 }
 
 async function askTheModel(key: string, photograph: Photograph): Promise<WhiteboardReading> {
-  const client = new Anthropic({ apiKey: key, timeout: TIMEOUT_MILLIS, maxRetries: 0 })
+  const client = new Anthropic({
+    apiKey: key,
+    baseURL: BASE_URL,
+    timeout: TIMEOUT_MILLIS,
+    maxRetries: 0,
+    defaultHeaders: { 'X-Title': CALLER },
+  })
 
   let answer
   try {
-    answer = await client.messages.parse({
+    answer = await client.messages.create({
       model: MODEL,
       max_tokens: MAX_TOKENS,
       system: systemPrompt(photograph.panel),
-      output_config: { format: zodOutputFormat(reading) },
+      tools: [
+        {
+          name: TOOL,
+          description: 'Records everything legible on this panel of the whiteboard.',
+          // Derived from the schema above rather than hand-written beside it,
+          // so the shape the model is asked for and the shape this parses can
+          // never drift apart.
+          input_schema: z.toJSONSchema(reading, {
+            target: 'draft-7',
+          }) as Anthropic.Tool['input_schema'],
+        },
+      ],
+      tool_choice: { type: 'tool', name: TOOL },
       messages: [
         {
           role: 'user',
@@ -167,16 +219,23 @@ async function askTheModel(key: string, photograph: Photograph): Promise<Whitebo
     throw new ReadingFailed(error instanceof Error ? error.message : 'unknown failure')
   }
 
-  // A refusal is an HTTP 200 with no parsed output, so it is checked rather
-  // than caught (the SDK's own `stop_reason` note).
-  if (answer.parsed_output === null || answer.parsed_output === undefined) {
+  // A refusal is an HTTP 200 with no tool call in it, so it is checked rather
+  // than caught.
+  const call = answer.content.find((block) => block.type === 'tool_use' && block.name === TOOL)
+  if (call === undefined || call.type !== 'tool_use') {
     throw new ReadingFailed(
       answer.stop_reason === 'refusal'
         ? 'the model declined it'
         : 'the model answered with nothing',
     )
   }
-  return answer.parsed_output
+
+  // Parsed here rather than trusted: a schema is what the model was *asked*
+  // for, and a gateway that routed to a model which honoured it loosely is
+  // exactly the case this refuses on instead of writing rubbish.
+  const parsed = reading.safeParse(call.input)
+  if (!parsed.success) throw new ReadingFailed('the reading did not match the shape asked for')
+  return parsed.data
 }
 
 /**

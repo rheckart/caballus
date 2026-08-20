@@ -124,6 +124,6 @@ describe('the Whiteboard Read screen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Read this panel' }))
 
     const alert = await screen.findByRole('alert')
-    expect(alert.textContent).toContain('ANTHROPIC_API_KEY')
+    expect(alert.textContent).toContain('OPENROUTER_API_KEY')
   })
 })

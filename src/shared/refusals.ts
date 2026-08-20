@@ -79,7 +79,7 @@ const REFUSALS: Record<string, string> = {
     'You need Shift Authority here, or to hold the Scope you are escalating to.',
   escalation_not_found: 'That escalation is gone.',
   whiteboard_reader_not_set:
-    'Nobody has told this deployment how to read a whiteboard. Set ANTHROPIC_API_KEY.',
+    'Nobody has told this deployment how to read a whiteboard. Set OPENROUTER_API_KEY.',
   whiteboard_unreadable:
     'The photograph could not be read. Nothing was created. Try a straighter, brighter shot of the panel.',
   not_authorized_for_panel:
