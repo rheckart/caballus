@@ -140,7 +140,7 @@ const desk: readonly Destination[] = [
     to: '/admin/spaces',
     glyph: '\u{1F3E1}',
     name: 'Spaces',
-    what: 'Stalls, fields and barns',
+    what: 'Stalls, pastures, paddocks and barns',
     tint: 'gray',
   },
   {
@@ -190,6 +190,13 @@ const desk: readonly Destination[] = [
     glyph: '\u{1F4DE}',
     name: 'Contacts',
     what: 'Maintain the posted numbers',
+    tint: 'gray',
+  },
+  {
+    to: '/admin/whiteboard-read',
+    glyph: '\u{1F4F7}',
+    name: 'Read the whiteboard',
+    what: 'Photograph a panel of the paper board',
     tint: 'gray',
   },
   {

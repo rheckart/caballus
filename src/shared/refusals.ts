@@ -78,6 +78,12 @@ const REFUSALS: Record<string, string> = {
   not_authorized_to_escalate:
     'You need Shift Authority here, or to hold the Scope you are escalating to.',
   escalation_not_found: 'That escalation is gone.',
+  whiteboard_reader_not_set:
+    'Nobody has told this deployment how to read a whiteboard. Set ANTHROPIC_API_KEY.',
+  whiteboard_unreadable:
+    'The photograph could not be read. Nothing was created. Try a straighter, brighter shot of the panel.',
+  not_authorized_for_panel:
+    'You do not hold every scope that panel writes into. The horse grid needs horse care; the phone numbers need roster.',
   already_closed: 'That escalation is already closed.',
   not_the_addressed_scope: 'Only a holder of the Scope this was sent to may close it.',
   observations_undispositioned:

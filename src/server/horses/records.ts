@@ -27,6 +27,13 @@ export { type Recorded, type Refusal } from './outcome'
 export interface NewSpace {
   readonly kind: SpaceKind
   readonly name: string
+  /**
+   * Why, on the audit entry. Nothing on a form asks for it — a creation has no
+   * before to explain — but a Whiteboard Read carries one, because *read from
+   * the whiteboard photograph* is the whole of what a later reader needs to
+   * know about a record nobody typed (ADR 0023).
+   */
+  readonly reason?: string | null
 }
 
 /** Creates a Space. An empty Space — nothing assigned to it yet — is exactly as representable as any other (ADR 0002). */
@@ -40,7 +47,9 @@ export async function createSpace(
   const name = details.name.trim()
   await db.insert(spaces).values({ id, orgId, kind: details.kind, name })
 
-  await audit(db, orgId, actorVolunteerId, [{ entity: 'space', entityId: id, after: name }])
+  await audit(db, orgId, actorVolunteerId, [
+    { entity: 'space', entityId: id, after: name, reason: details.reason ?? null },
+  ])
 
   return recorded({ id, kind: details.kind, name })
 }
@@ -64,7 +73,11 @@ export async function createSpaces(
   db: OrgScopedDatabase,
   orgId: OrgId,
   actorVolunteerId: string,
-  details: { readonly kind: SpaceKind; readonly names: readonly string[] },
+  details: {
+    readonly kind: SpaceKind
+    readonly names: readonly string[]
+    readonly reason?: string | null
+  },
 ): Promise<Recorded<{ created: { id: string; name: string }[]; skipped: string[] }>> {
   const wanted = details.names.map((name) => name.trim()).filter((name) => name !== '')
 
@@ -97,7 +110,12 @@ export async function createSpaces(
       db,
       orgId,
       actorVolunteerId,
-      created.map((space) => ({ entity: 'space', entityId: space.id, after: space.name })),
+      created.map((space) => ({
+        entity: 'space',
+        entityId: space.id,
+        after: space.name,
+        reason: details.reason ?? null,
+      })),
     )
   }
 
@@ -231,6 +249,8 @@ export interface NewHorse {
   readonly blanketSize?: string | null
   readonly height?: string | null
   readonly photoUrl?: string | null
+  /** Why, on the audit entry — a Whiteboard Read's *read from the whiteboard photograph* (ADR 0023). */
+  readonly reason?: string | null
 }
 
 /** Creates a Horse. Space assignment and Departure are their own acts, below. */
@@ -252,7 +272,9 @@ export async function createHorse(
     photoUrl: normalised(details.photoUrl),
   })
 
-  await audit(db, orgId, actorVolunteerId, [{ entity: 'horse', entityId: id, after: name }])
+  await audit(db, orgId, actorVolunteerId, [
+    { entity: 'horse', entityId: id, after: name, reason: details.reason ?? null },
+  ])
 
   return recorded({ id, name })
 }
@@ -347,7 +369,12 @@ export async function assignHorseSpace(
   db: OrgScopedDatabase,
   orgId: OrgId,
   actorVolunteerId: string,
-  about: { readonly horseId: string; readonly kind: SpaceKind; readonly spaceId: string | null },
+  about: {
+    readonly horseId: string
+    readonly kind: SpaceKind
+    readonly spaceId: string | null
+    readonly reason?: string | null
+  },
 ): Promise<Recorded> {
   const [horse] = await db
     .select({ id: horses.id })
@@ -424,6 +451,7 @@ export async function assignHorseSpace(
       field: about.kind,
       before: current?.name ?? null,
       after: space.name,
+      reason: about.reason ?? null,
     },
   ])
 

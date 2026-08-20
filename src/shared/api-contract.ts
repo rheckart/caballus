@@ -36,6 +36,12 @@ import { PRODUCT_KINDS } from './products'
 import { ROLES } from './roles'
 import { ROSTER_GAPS } from './rostering'
 import { MOST_SPACES_AT_ONCE, SPACE_KINDS } from './spaces'
+import {
+  MOST_IMAGE_BASE64_CHARS,
+  WHITEBOARD_IMAGE_TYPES,
+  WHITEBOARD_PANELS,
+  WHITEBOARD_RECORDS,
+} from './whiteboard'
 import { STAFFING_GAPS } from './staffing'
 import {
   ASSIGNABLE_POSITIONS,
@@ -312,6 +318,40 @@ export const space = z.object({
 })
 
 export const spaceList = z.object({ spaces: z.array(space) })
+
+/** Which panel of the paper board was photographed, said by a person (ADR 0023). */
+const whiteboardPanel = z.enum(WHITEBOARD_PANELS)
+
+/** What a Whiteboard Read created, by kind (ADR 0023). */
+const whiteboardRecord = z.enum(WHITEBOARD_RECORDS)
+
+/**
+ * What a Whiteboard Read answers with: **the report is the answer, not a
+ * table** (ADR 0023).
+ *
+ * Four sections and a fifth for checking, because the durable trail is one
+ * audit entry per created record — a fifth log to remember an import that
+ * already left one is what ADR 0019 warned about. `blank` is the rule that
+ * stands in for a human confirming each record: a cell that is not clearly
+ * legible is left blank and named here, the same rule a blank Item follows,
+ * because a model's own confidence is not calibrated and would be trusted
+ * anyway.
+ */
+export const whiteboardReport = z.object({
+  created: z.array(z.object({ record: whiteboardRecord, name: z.string(), id: z.string() })),
+  /** Already held under that kind, and named back the way `/spaces/batch` names its own. */
+  skipped: z.array(z.object({ record: whiteboardRecord, name: z.string() })),
+  /** A cell that was not clearly legible, in the words somebody could go and check. */
+  blank: z.array(z.string()),
+  /** Read, but not something this panel writes, or not something that parsed. */
+  couldNotPlace: z.array(z.string()),
+  /**
+   * Every created `medication`: `prescription` is required on `/products` and
+   * no board says it, so the model proposes it from the drug name and a
+   * `horse_care` holder checks it here.
+   */
+  check: z.array(z.string()),
+})
 
 /** What a Product is, a fact about the Product and not about where it was written down (ADR 0019). */
 const productKind = z.enum(PRODUCT_KINDS)
@@ -2025,6 +2065,36 @@ export const contract = {
     '/reorders/close': {
       accepts: z.object({ reorderId, note: z.string().min(1).max(2000) }),
       answers: z.void(),
+    },
+    /**
+     * One photograph of one panel of a rescue's paper board, turned into
+     * records (ADR 0023, #59). Spec #32 said *migration is manual entry
+     * starting with the first horse; no importer*; this overturns it
+     * deliberately, and ADR 0023 is where the reasoning lives.
+     *
+     * **One endpoint, taking a declared panel.** A new panel kind later is a
+     * value, not a new path — and one call per panel, so a botched grain read
+     * cannot roll back the phone numbers and each payload stays small.
+     *
+     * **The image is base64 inside the payload**, not multipart: `ApiResponse`
+     * carries no headers (ADR 0020) and a second door outside `route.ts` would
+     * be the first hole in ADR 0016's fence. It is capped, refused over the cap
+     * in words, and **never stored** — there is no object storage, and adding
+     * it to serve a one-time act is the tail wagging the dog.
+     *
+     * **`neverQueued`**, keeping its idempotency key, under ADR 0018's rule as
+     * ADR 0005 leaves it: this is a desk act done once on wifi, and holding
+     * five megabytes in IndexedDB to retry would buy nothing and cost a second
+     * paid call.
+     */
+    '/whiteboard-read': {
+      accepts: z.object({
+        panel: whiteboardPanel,
+        mediaType: z.enum(WHITEBOARD_IMAGE_TYPES),
+        image: z.string().min(1).max(MOST_IMAGE_BASE64_CHARS),
+      }),
+      answers: whiteboardReport,
+      neverQueued: true,
     },
   },
 } as const satisfies Contract

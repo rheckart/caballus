@@ -62,6 +62,8 @@ export interface NewProduct {
   readonly prescription: boolean
   readonly reorderPointDays?: number | null
   readonly orderingNote?: string | null
+  /** Why, on the audit entry — a Whiteboard Read's *read from the whiteboard photograph* (ADR 0023). */
+  readonly reason?: string | null
 }
 
 /**
@@ -94,7 +96,9 @@ export async function createProduct(
     orderingNote: normalised(details.orderingNote),
   })
 
-  await audit(db, orgId, actorVolunteerId, [{ entity: 'product', entityId: id, after: name }])
+  await audit(db, orgId, actorVolunteerId, [
+    { entity: 'product', entityId: id, after: name, reason: details.reason ?? null },
+  ])
 
   return recorded({ id, name })
 }

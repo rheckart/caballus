@@ -157,6 +157,7 @@ import {
   recordSuppliesReading,
   type Refusal as SuppliesRefusal,
 } from '../supplies/records'
+import { recordWhiteboardRead, type Refusal as WhiteboardRefusal } from '../whiteboard-read/records'
 
 // The server's one entry point, so this is where reporting starts. It is a
 // no-op without a DSN, which is the state of every machine until one is set.
@@ -339,6 +340,16 @@ export function buildApi(
       because === 'reorder_not_found' ||
       because === 'escalation_not_found'
     return json({ error: because }, missing ? 404 : 409)
+  }
+
+  /**
+   * A Whiteboard Read refuses on one of three, and none of them is a missing
+   * record: an unset key, a model that would not answer, and a caller who does
+   * not hold every Scope the panel writes into. 409 for all three — none
+   * becomes true by retrying under the same key (ADR 0020).
+   */
+  function whiteboardRefusal(because: WhiteboardRefusal) {
+    return json({ error: because }, 409)
   }
 
   api.route('GET', '/day', readEverything(), async ({ context }) => {
@@ -1876,6 +1887,48 @@ export function buildApi(
     })
     return outcome.ok ? noContent() : suppliesRefusal(outcome.because)
   })
+
+  /**
+   * One photograph of one panel of the paper board, turned into records
+   * (ADR 0023, #59).
+   *
+   * `anyDomainScope(['horse_care', 'roster'])` is the door, and it is
+   * deliberately the looser of the two checks: **which** Scopes are actually
+   * needed depends on the payload's own `panel`, so the real check runs inside
+   * `recordWhiteboardRead` — the same data-dependent shape `escalateObservation`
+   * and `recordSuppliesReading` already resolve inside themselves, for the same
+   * reason (ADR 0010: no new Scope and no new axis).
+   *
+   * `PersonAuthorization`, like every write, which is what makes the caller the
+   * author of every record it creates (ADR 0022). The image is passed straight
+   * through and **never stored**.
+   */
+  api.mutation(
+    '/whiteboard-read',
+    anyDomainScope(['horse_care', 'roster']),
+    async (input, { context, db }) => {
+      const actor = actorOf(context)
+      const today = await dayHere(db)
+      const outcome = await recordWhiteboardRead(
+        db,
+        context.orgId,
+        actor,
+        { panel: input.panel, mediaType: input.mediaType, base64: input.image },
+        today,
+      )
+      if (!outcome.ok) return whiteboardRefusal(outcome.because)
+      return json(
+        {
+          created: outcome.value.created.map((entry) => ({ ...entry })),
+          skipped: outcome.value.skipped.map((entry) => ({ ...entry })),
+          blank: [...outcome.value.blank],
+          couldNotPlace: [...outcome.value.couldNotPlace],
+          check: [...outcome.value.check],
+        },
+        201,
+      )
+    },
+  )
 
   // Every path the contract declares now has a handler, or this throws and the
   // container does not start. Registering a path nothing declares is a type

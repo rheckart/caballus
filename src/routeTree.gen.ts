@@ -28,6 +28,7 @@ import { Route as AdminSpacesRouteImport } from './routes/admin/spaces'
 import { Route as AdminTasksRouteImport } from './routes/admin/tasks'
 import { Route as AdminThresholdsRouteImport } from './routes/admin/thresholds'
 import { Route as AdminVolunteersRouteImport } from './routes/admin/volunteers'
+import { Route as AdminWhiteboardReadRouteImport } from './routes/admin/whiteboard-read'
 import { Route as ApiSplatRouteImport } from './routes/api.$'
 import { Route as HorsesIndexRouteImport } from './routes/horses/index'
 import { Route as HorsesHorseIdRouteImport } from './routes/horses/$horseId'
@@ -128,6 +129,11 @@ const AdminVolunteersRoute = AdminVolunteersRouteImport.update({
   path: '/admin/volunteers',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminWhiteboardReadRoute = AdminWhiteboardReadRouteImport.update({
+  id: '/admin/whiteboard-read',
+  path: '/admin/whiteboard-read',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiSplatRoute = ApiSplatRouteImport.update({
   id: '/api/$',
   path: '/api/$',
@@ -169,6 +175,7 @@ export interface FileRoutesByFullPath {
   '/admin/tasks': typeof AdminTasksRoute
   '/admin/thresholds': typeof AdminThresholdsRoute
   '/admin/volunteers': typeof AdminVolunteersRoute
+  '/admin/whiteboard-read': typeof AdminWhiteboardReadRoute
   '/api/$': typeof ApiSplatRoute
   '/horses/$horseId': typeof HorsesHorseIdRoute
   '/shifts/$shiftId': typeof ShiftsShiftIdRoute
@@ -194,6 +201,7 @@ export interface FileRoutesByTo {
   '/admin/tasks': typeof AdminTasksRoute
   '/admin/thresholds': typeof AdminThresholdsRoute
   '/admin/volunteers': typeof AdminVolunteersRoute
+  '/admin/whiteboard-read': typeof AdminWhiteboardReadRoute
   '/api/$': typeof ApiSplatRoute
   '/horses/$horseId': typeof HorsesHorseIdRoute
   '/shifts/$shiftId': typeof ShiftsShiftIdRoute
@@ -220,6 +228,7 @@ export interface FileRoutesById {
   '/admin/tasks': typeof AdminTasksRoute
   '/admin/thresholds': typeof AdminThresholdsRoute
   '/admin/volunteers': typeof AdminVolunteersRoute
+  '/admin/whiteboard-read': typeof AdminWhiteboardReadRoute
   '/api/$': typeof ApiSplatRoute
   '/horses/$horseId': typeof HorsesHorseIdRoute
   '/shifts/$shiftId': typeof ShiftsShiftIdRoute
@@ -247,6 +256,7 @@ export interface FileRouteTypes {
     | '/admin/tasks'
     | '/admin/thresholds'
     | '/admin/volunteers'
+    | '/admin/whiteboard-read'
     | '/api/$'
     | '/horses/$horseId'
     | '/shifts/$shiftId'
@@ -272,6 +282,7 @@ export interface FileRouteTypes {
     | '/admin/tasks'
     | '/admin/thresholds'
     | '/admin/volunteers'
+    | '/admin/whiteboard-read'
     | '/api/$'
     | '/horses/$horseId'
     | '/shifts/$shiftId'
@@ -297,6 +308,7 @@ export interface FileRouteTypes {
     | '/admin/tasks'
     | '/admin/thresholds'
     | '/admin/volunteers'
+    | '/admin/whiteboard-read'
     | '/api/$'
     | '/horses/$horseId'
     | '/shifts/$shiftId'
@@ -323,6 +335,7 @@ export interface RootRouteChildren {
   AdminTasksRoute: typeof AdminTasksRoute
   AdminThresholdsRoute: typeof AdminThresholdsRoute
   AdminVolunteersRoute: typeof AdminVolunteersRoute
+  AdminWhiteboardReadRoute: typeof AdminWhiteboardReadRoute
   ApiSplatRoute: typeof ApiSplatRoute
   HorsesHorseIdRoute: typeof HorsesHorseIdRoute
   HorsesIndexRoute: typeof HorsesIndexRoute
@@ -463,6 +476,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminVolunteersRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/whiteboard-read': {
+      id: '/admin/whiteboard-read'
+      path: '/admin/whiteboard-read'
+      fullPath: '/admin/whiteboard-read'
+      preLoaderRoute: typeof AdminWhiteboardReadRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/$': {
       id: '/api/$'
       path: '/api/$'
@@ -525,6 +545,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminTasksRoute: AdminTasksRoute,
   AdminThresholdsRoute: AdminThresholdsRoute,
   AdminVolunteersRoute: AdminVolunteersRoute,
+  AdminWhiteboardReadRoute: AdminWhiteboardReadRoute,
   ApiSplatRoute: ApiSplatRoute,
   HorsesHorseIdRoute: HorsesHorseIdRoute,
   HorsesIndexRoute: HorsesIndexRoute,
