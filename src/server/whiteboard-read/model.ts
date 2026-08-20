@@ -39,7 +39,11 @@ const MODEL = 'claude-sonnet-5'
  * five seconds because it runs on a schedule; this is one person at a desk
  * pressing a button once, at setup, so a long call by one caller is what the
  * feature is. A ceiling all the same, because a request with no ceiling is a
- * connection held until the container restarts.
+ * connection held until the container restarts — and the ceiling is the whole
+ * of it, because `maxRetries` is zero: the SDK's own retry would double the
+ * hold to four minutes without the caller ever being told, and a person at a
+ * desk can press the button again for less than the price of a second paid
+ * call.
  */
 const TIMEOUT_MILLIS = 120_000
 
@@ -133,7 +137,7 @@ export function whiteboardReader(): WhiteboardReader | null {
 }
 
 async function askTheModel(key: string, photograph: Photograph): Promise<WhiteboardReading> {
-  const client = new Anthropic({ apiKey: key, timeout: TIMEOUT_MILLIS, maxRetries: 1 })
+  const client = new Anthropic({ apiKey: key, timeout: TIMEOUT_MILLIS, maxRetries: 0 })
 
   let answer
   try {

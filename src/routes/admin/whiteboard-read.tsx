@@ -100,7 +100,13 @@ function WhiteboardRead() {
 
   const send = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (photo === null) return
+    // In words, like everything else on this screen: the file input is not
+    // `required`, because a photograph rejected for its size clears the choice
+    // and the browser's own bubble would then say nothing useful about why.
+    if (photo === null) {
+      setProblem('Choose a photograph of the panel first.')
+      return
+    }
     setProblem(null)
     setReport(null)
     void save(() =>
@@ -193,8 +199,10 @@ function Report({ report }: { report: Report }) {
         <>
           <h3>Check these</h3>
           <ul role="list">
-            {report.check.map((sentence) => (
-              <li key={sentence}>{sentence}</li>
+            {report.check.map((sentence, at) => (
+              // Keyed by position: two rows that were unreadable in the same
+              // way produce the same sentence, and the list never reorders.
+              <li key={`${String(at)} ${sentence}`}>{sentence}</li>
             ))}
           </ul>
         </>
@@ -217,8 +225,8 @@ function Report({ report }: { report: Report }) {
         <>
           <h3>Already on file</h3>
           <ul role="list">
-            {report.skipped.map((entry) => (
-              <li key={`${entry.record} ${entry.name}`}>
+            {report.skipped.map((entry, at) => (
+              <li key={`${String(at)} ${entry.record} ${entry.name}`}>
                 <span className="badge">{RECORD_LABEL[entry.record]}</span> {entry.name}
               </li>
             ))}
@@ -233,8 +241,10 @@ function Report({ report }: { report: Report }) {
             Not clearly legible, so nothing was recorded. Go and look at the board.
           </p>
           <ul role="list">
-            {report.blank.map((sentence) => (
-              <li key={sentence}>{sentence}</li>
+            {report.blank.map((sentence, at) => (
+              // Keyed by position: two rows that were unreadable in the same
+              // way produce the same sentence, and the list never reorders.
+              <li key={`${String(at)} ${sentence}`}>{sentence}</li>
             ))}
           </ul>
         </>
@@ -244,8 +254,10 @@ function Report({ report }: { report: Report }) {
         <>
           <h3>Could not be placed</h3>
           <ul role="list">
-            {report.couldNotPlace.map((sentence) => (
-              <li key={sentence}>{sentence}</li>
+            {report.couldNotPlace.map((sentence, at) => (
+              // Keyed by position: two rows that were unreadable in the same
+              // way produce the same sentence, and the list never reorders.
+              <li key={`${String(at)} ${sentence}`}>{sentence}</li>
             ))}
           </ul>
         </>

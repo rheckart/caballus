@@ -270,11 +270,13 @@ describe.skipIf(!reachable)('the Whiteboard Read, through the API', () => {
       const named = (record: string) =>
         report.created.filter((entry) => entry.record === record).map((entry) => entry.name)
       expect(named('horse').sort()).toEqual(['Blue', 'Dawson'])
+      // Named by kind, not by the word *Space*: stall 7 and pasture 7 are two
+      // Spaces and the report has to be able to tell them apart.
       expect(named('space').sort()).toEqual([
-        'Space 2 & 3',
-        'Space 7',
-        'Space C',
-        'Space Small Barn',
+        'barn Small Barn',
+        'pasture C',
+        'stall 2 & 3',
+        'stall 7',
       ])
       expect(named('product').sort()).toEqual(['Previcox', 'Senior'])
       expect(named('feed_schedule')).toEqual(['Blue — Feed AM'])
@@ -384,6 +386,69 @@ describe.skipIf(!reachable)('the Whiteboard Read, through the API', () => {
       ).toEqual(['Blue', 'Dawson'])
       expect(report.couldNotPlace).toHaveLength(1)
       expect(report.couldNotPlace[0]).toContain('Apollo')
+    })
+
+    it('publishes one Feed Schedule per Shift Type, however many cells the board split it across', async () => {
+      // AM GRAIN and AM MEDICAL are two columns of one feeding. Two versions
+      // valid from the same day, created in the same transaction, would tie on
+      // `created_at` and one column's lines would silently vanish.
+      setWhiteboardReader(() =>
+        Promise.resolve(
+          nothingRead({
+            horses: [
+              {
+                name: 'Blue',
+                halterColour: null,
+                blanketSize: null,
+                height: null,
+                spaces: [],
+                feedings: [
+                  {
+                    shiftType: 'feed_am',
+                    lines: [
+                      {
+                        productName: 'Senior',
+                        productKind: 'feed',
+                        prescription: false,
+                        amount: '2 wells',
+                        route: 'in_feed',
+                      },
+                    ],
+                  },
+                  {
+                    shiftType: 'feed_am',
+                    lines: [
+                      {
+                        productName: 'Previcox',
+                        productKind: 'medication',
+                        prescription: true,
+                        amount: '1 tab',
+                        route: 'in_feed',
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          }),
+        ),
+      )
+      const api = await holder(['horse_care', 'roster'])
+
+      const report = (await shoot(api, 'grid')).report()
+      expect(report.created.filter((entry) => entry.record === 'feed_schedule')).toEqual([
+        { record: 'feed_schedule', name: 'Blue — Feed AM', id: expect.any(String) },
+      ])
+
+      const versions = await owner`
+        select id from feed_schedule_versions where org_id = ${FIELD_BARN}
+      `
+      expect(versions).toHaveLength(1)
+
+      const lines = await owner`
+        select amount from feed_schedule_lines where org_id = ${FIELD_BARN} order by amount
+      `
+      expect(lines.map((row) => row.amount)).toEqual(['1 tab', '2 wells'])
     })
 
     it('creates a topical Product, which generates no Item (#58)', async () => {

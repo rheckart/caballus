@@ -280,15 +280,14 @@ async function writeSpaces(
   for (const [kind, names] of byKind) {
     const outcome = await createSpaces(db, orgId, actorVolunteerId, { kind, names, reason: REASON })
     if (!outcome.ok) continue
+    // The kind, not the word *Space*: the screen already badges the record
+    // kind, and stall 7 and pasture 7 are two Spaces that would otherwise read
+    // identically in the report and collide as list keys.
     for (const space of outcome.value.created) {
-      sheet.created.push({
-        record: 'space',
-        name: `${RECORD_LABEL.space} ${space.name}`,
-        id: space.id,
-      })
+      sheet.created.push({ record: 'space', name: spaceKey(kind, space.name), id: space.id })
     }
     for (const name of outcome.value.skipped) {
-      sheet.skipped.push({ record: 'space', name: `${RECORD_LABEL.space} ${name}` })
+      sheet.skipped.push({ record: 'space', name: spaceKey(kind, name) })
     }
   }
 
@@ -305,7 +304,8 @@ async function writeSpaces(
 }
 
 type ParsedHorse = ReturnType<typeof readHorse.parse>
-type ParsedLine = ParsedHorse['feedings'][number]['lines'][number]
+type ParsedFeeding = ParsedHorse['feedings'][number]
+type ParsedLine = ParsedFeeding['lines'][number]
 
 async function writeProducts(
   db: OrgScopedDatabase,
@@ -450,13 +450,28 @@ async function writeFeedSchedules(
 ): Promise<void> {
   const { horseId, horseName, horse, productIds, today, sheet } = about
 
+  // Grouped first, because a Shift Type is **one** Feed Schedule and the board
+  // splits it across columns: AM GRAIN and AM MEDICAL are two cells of the
+  // same feeding. Publishing one version per cell would leave two versions of
+  // `feed_am` valid from the same day, created in the same transaction and so
+  // tying on `created_at` — and the current-schedule read breaks that tie by
+  // ordering, so one column's lines would silently vanish while the report
+  // claimed both had landed.
+  const byShiftType = new Map<ParsedFeeding['shiftType'], ParsedLine[]>()
   for (const feeding of horse.feedings) {
+    byShiftType.set(feeding.shiftType, [
+      ...(byShiftType.get(feeding.shiftType) ?? []),
+      ...feeding.lines,
+    ])
+  }
+
+  for (const [shiftType, read] of byShiftType) {
     const lines: { productId: string; amount: string; route: ParsedLine['route'] }[] = []
-    for (const line of feeding.lines) {
+    for (const line of read) {
       const productId = productIds.get(line.productName.trim())
       if (productId === undefined) {
         sheet.couldNotPlace.push(
-          `${horseName}'s ${SHIFT_TYPE_LABEL[feeding.shiftType]} line “${line.productName}” has no Product.`,
+          `${horseName}'s ${SHIFT_TYPE_LABEL[shiftType]} line “${line.productName}” has no Product.`,
         )
         continue
       }
@@ -468,19 +483,19 @@ async function writeFeedSchedules(
 
     const published = await publishFeedSchedule(db, orgId, actorVolunteerId, {
       horseId,
-      shiftType: feeding.shiftType,
+      shiftType,
       validFrom: today,
       lines,
     })
     if (!published.ok) {
       sheet.couldNotPlace.push(
-        `${horseName}'s ${SHIFT_TYPE_LABEL[feeding.shiftType]} feed schedule could not be published.`,
+        `${horseName}'s ${SHIFT_TYPE_LABEL[shiftType]} feed schedule could not be published.`,
       )
       continue
     }
     sheet.created.push({
       record: 'feed_schedule',
-      name: `${horseName} — ${SHIFT_TYPE_LABEL[feeding.shiftType]}`,
+      name: `${horseName} — ${SHIFT_TYPE_LABEL[shiftType]}`,
       id: published.value.id,
     })
   }
