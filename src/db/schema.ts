@@ -576,6 +576,11 @@ export const volunteerConsents = pgTable(
  *
  * An unoccupied Space is a row with nothing assigned to it, and stays exactly
  * that visible: nothing here ties a Space to whether a horse holds it.
+ *
+ * Retired is a date, never a delete — the same call ADR 0002 makes for a
+ * horse's Departure. The row and its history outlive the stall being torn
+ * out or the field being sold off; hiding it from a work surface is the
+ * reader's concern.
  */
 export const spaces = pgTable(
   'spaces',
@@ -587,6 +592,7 @@ export const spaces = pgTable(
     /** One of `SPACE_KINDS` in `src/shared/spaces.ts`. */
     kind: text('kind').notNull(),
     name: text('name').notNull(),
+    retiredOn: date('retired_on'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   () => [inScope('spaces_in_scope')],

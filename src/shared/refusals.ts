@@ -34,7 +34,7 @@ const REFUSALS: Record<string, string> = {
   horse_not_found: 'That horse is not here any more.',
   space_not_found: 'That Space is gone.',
   space_kind_mismatch: "That Space isn't the right kind for this assignment.",
-  space_occupied: 'A horse still holds that Space. Clear it before changing kind.',
+  space_occupied: 'A horse still holds that Space. Clear it first.',
   threshold_value_required: 'Give the number, or put the horse on the rescue’s number instead.',
   threshold_not_per_horse: 'That number is one answer for the whole barn, not a per-horse one.',
   coordinates_not_set:

@@ -69,6 +69,7 @@ import {
   editHorseAttributes,
   editSpace,
   recordHorseDeparture,
+  recordSpaceRetirement,
   type Refusal as HorseRefusal,
 } from '../horses/records'
 import { publishFeedSchedule } from '../horses/feed-schedules'
@@ -997,6 +998,12 @@ export function buildApi(
   api.mutation('/spaces/edit', domainScope('horse_care'), async (input, { context, db }) => {
     const actor = actorOf(context)
     const outcome = await editSpace(db, context.orgId, actor.volunteerId, input)
+    return outcome.ok ? noContent() : horseRefusal(outcome.because)
+  })
+
+  api.mutation('/spaces/retirement', domainScope('horse_care'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await recordSpaceRetirement(db, context.orgId, actor.volunteerId, input)
     return outcome.ok ? noContent() : horseRefusal(outcome.because)
   })
 

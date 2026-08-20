@@ -7,11 +7,12 @@
  * together from four reads is four chances for one of them to be a minute
  * older than the others on a wall people are reading across a barn.
  *
- * **Departed horses are left out here**, which is the one place this read
- * departs from `horseList`'s rule that hiding a horse is the reader's concern.
- * The Board *is* that reader: it is the whiteboard, and a horse that left the
- * rescue is off the whiteboard. Its record stays reachable at its profile,
- * where the history lives (ADR 0002).
+ * **Departed horses and Retired Spaces are left out here**, which is the one
+ * place this read departs from `horseList`'s and `spaceList`'s rule that
+ * hiding one is the reader's concern. The Board *is* that reader: it is the
+ * whiteboard, and a horse that left the rescue, or a stall that no longer
+ * exists, is off the whiteboard. Their records stay reachable at the horse's
+ * profile and the admin Spaces screen, where the history lives (ADR 0002).
  *
  * It records nothing and credits nobody (ADR 0022). **Today's Reading rides
  * along** (#38): the barn reads *staying in* off the wall, and a grid stitched
@@ -21,7 +22,7 @@
  * rows it sits beside, rather than a fifth request the tablet's poll has to
  * keep in step with the other four.
  */
-import { eq } from 'drizzle-orm'
+import { eq, isNull } from 'drizzle-orm'
 
 import type { OrgScopedDatabase } from '../../db/for-org'
 import { horseSpaceAssignments, horses, spaces } from '../../db/schema'
@@ -83,8 +84,11 @@ export async function boardGrid(db: OrgScopedDatabase, today: DayString): Promis
         .innerJoin(spaces, eq(spaces.id, horseSpaceAssignments.spaceId)),
       // Every Stall, not only the occupied ones: the row for the stall that
       // stands OPEN is information, and it is the row this read exists to keep
-      // (ADR 0002).
-      db.select({ id: spaces.id, kind: spaces.kind, name: spaces.name }).from(spaces),
+      // (ADR 0002). A Retired one is excluded, the same as a Departed horse.
+      db
+        .select({ id: spaces.id, kind: spaces.kind, name: spaces.name })
+        .from(spaces)
+        .where(isNull(spaces.retiredOn)),
       currentFeedSchedulesByHorse(db, today),
       readingFor(db, today),
       currentAnnouncements(db, today),
