@@ -183,7 +183,7 @@ describe.skipIf(!reachable)('horses and Spaces, through the API', () => {
     it('creates a repeated name once, however many times the run says it', async () => {
       const api = await holder()
       const created = await post(api, '/spaces/batch', {
-        kind: 'field',
+        kind: 'pasture',
         names: ['Run C', 'Run C'],
       })
       expect(created.status).toBe(201)
@@ -251,7 +251,7 @@ describe.skipIf(!reachable)('horses and Spaces, through the API', () => {
       const horse = await post(api, '/horses', { name: 'Harriet' })
       await post(api, '/horses/space', { horseId: horse.body.horseId, kind: 'stall', spaceId })
 
-      const changed = await post(api, '/spaces/edit', { spaceId, kind: 'field', name: 'Stall 5' })
+      const changed = await post(api, '/spaces/edit', { spaceId, kind: 'pasture', name: 'Stall 5' })
       expect(changed.status).toBe(409)
       expect(changed.body.error).toBe('space_occupied')
 
@@ -365,7 +365,7 @@ describe.skipIf(!reachable)('horses and Spaces, through the API', () => {
       const horse = await post(api, '/horses', { name: 'Comet' })
       const horseId = horse.body.horseId as string
       const stall = await post(api, '/spaces', { kind: 'stall', name: 'Stall 4' })
-      const field = await post(api, '/spaces', { kind: 'field', name: 'Field C' })
+      const pasture = await post(api, '/spaces', { kind: 'pasture', name: 'Pasture C' })
 
       const assigned = await post(api, '/horses/space', {
         horseId,
@@ -377,7 +377,7 @@ describe.skipIf(!reachable)('horses and Spaces, through the API', () => {
       const mismatched = await post(api, '/horses/space', {
         horseId,
         kind: 'stall',
-        spaceId: field.body.spaceId,
+        spaceId: pasture.body.spaceId,
       })
       expect(mismatched.status).toBe(409)
       expect(mismatched.body.error).toBe('space_kind_mismatch')
@@ -385,7 +385,8 @@ describe.skipIf(!reachable)('horses and Spaces, through the API', () => {
       const profile = await get(api, `/horses/${horseId}`)
       expect(profile.body.spaces).toMatchObject({
         stall: { name: 'Stall 4' },
-        field: null,
+        pasture: null,
+        paddock: null,
         barn: null,
       })
 
@@ -394,6 +395,41 @@ describe.skipIf(!reachable)('horses and Spaces, through the API', () => {
         (row) => row.id === stall.body.spaceId,
       )
       expect(stallRow?.occupants).toEqual([{ id: horseId, name: 'Comet' }])
+    })
+
+    it('holds a Pasture and a Paddock at once, and a second Pasture replaces the first', async () => {
+      // The whole of ADR 0002's amendment: a horse turned out is in both, so
+      // one kind could not say it — and one-Space-per-kind is untouched, so
+      // the second Pasture is a replacement rather than a second row.
+      const api = await holder()
+      const horse = await post(api, '/horses', { name: 'Blue' })
+      const horseId = horse.body.horseId as string
+      const pastureC = await post(api, '/spaces', { kind: 'pasture', name: 'Pasture C' })
+      const pastureD = await post(api, '/spaces', { kind: 'pasture', name: 'Pasture D' })
+      const paddockA = await post(api, '/spaces', { kind: 'paddock', name: 'Paddock A' })
+
+      await post(api, '/horses/space', { horseId, kind: 'pasture', spaceId: pastureC.body.spaceId })
+      await post(api, '/horses/space', { horseId, kind: 'paddock', spaceId: paddockA.body.spaceId })
+
+      const both = await get(api, `/horses/${horseId}`)
+      expect(both.body.spaces).toMatchObject({
+        pasture: { name: 'Pasture C' },
+        paddock: { name: 'Paddock A' },
+      })
+
+      await post(api, '/horses/space', { horseId, kind: 'pasture', spaceId: pastureD.body.spaceId })
+
+      const moved = await get(api, `/horses/${horseId}`)
+      expect(moved.body.spaces).toMatchObject({
+        pasture: { name: 'Pasture D' },
+        paddock: { name: 'Paddock A' },
+      })
+
+      const spaceRows = await get(api, '/spaces')
+      const stillEmpty = (spaceRows.body.spaces as Record<string, unknown>[]).find(
+        (row) => row.id === pastureC.body.spaceId,
+      )
+      expect(stillEmpty?.occupants).toEqual([])
     })
 
     it('clears a Space assignment, leaving the Space empty and visible', async () => {

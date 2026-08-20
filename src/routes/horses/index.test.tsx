@@ -25,7 +25,12 @@ const HORSES = {
       height: null,
       photoUrl: null,
       departedOn: null,
-      spaces: { stall: { id: 'stall-4', name: 'Stall 4' }, field: null, barn: null },
+      spaces: {
+        stall: { id: 'stall-4', name: 'Stall 4' },
+        pasture: null,
+        paddock: null,
+        barn: null,
+      },
     },
     {
       id: 'gone-1',
@@ -35,7 +40,7 @@ const HORSES = {
       height: null,
       photoUrl: null,
       departedOn: '2020-01-01',
-      spaces: { stall: null, field: null, barn: null },
+      spaces: { stall: null, pasture: null, paddock: null, barn: null },
     },
   ],
 }

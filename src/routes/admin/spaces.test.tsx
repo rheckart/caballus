@@ -91,16 +91,16 @@ describe('adding several Spaces', () => {
     expect(screen.getByRole('button', { name: 'Add 1 Space' })).toBeTruthy()
   })
 
-  it('letters a run of fields, since that is how a barn names them', async () => {
+  it('letters a run of pastures, since that is how a barn names them', async () => {
     stubApi({ '/spaces': { spaces: [] } })
     renderSpaces()
 
     fireEvent.click(await screen.findByRole('button', { name: 'Add several' }))
-    fireEvent.click(screen.getByLabelText('Field'))
+    fireEvent.click(screen.getByLabelText('Pasture'))
     fireEvent.change(screen.getByLabelText('How many?'), { target: { value: '2' } })
 
-    expect(screen.getByText('Field A')).toBeTruthy()
-    expect(screen.getByText('Field B')).toBeTruthy()
+    expect(screen.getByText('Pasture A')).toBeTruthy()
+    expect(screen.getByText('Pasture B')).toBeTruthy()
   })
 
   it('offers nothing to press when the whole run already exists', async () => {

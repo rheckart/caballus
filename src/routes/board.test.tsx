@@ -30,7 +30,7 @@ function horse(
   name: string,
   extra: Partial<{
     halterColour: string | null
-    field: { id: string; name: string } | null
+    pasture: { id: string; name: string } | null
     feedings: unknown[]
   }> = {},
 ) {
@@ -38,7 +38,7 @@ function horse(
     id: `${name.toLowerCase()}-1`,
     name,
     halterColour: 'halterColour' in extra ? extra.halterColour : 'green',
-    field: extra.field ?? null,
+    pasture: extra.pasture ?? null,
     feedings: extra.feedings ?? [],
   }
 }
@@ -173,7 +173,7 @@ describe('the Board', () => {
     expect(await screen.findByText('no lunch feeding')).toBeTruthy()
     expect(screen.getByText('no feed am feeding')).toBeTruthy()
     expect(screen.getByText('no halter colour')).toBeTruthy()
-    expect(screen.getByText('no field')).toBeTruthy()
+    expect(screen.getByText('no pasture')).toBeTruthy()
     // Alerts is a column with nothing under it yet (#35).
     expect(screen.getByText('no alerts')).toBeTruthy()
   })
@@ -287,7 +287,7 @@ describe('the Board', () => {
         height: null,
         photoUrl: null,
         departedOn: null,
-        spaces: { stall: null, field: null, barn: null },
+        spaces: { stall: null, pasture: null, paddock: null, barn: null },
         feedSchedules: [],
         measurements: { weights: [], bodyConditions: [] },
       },

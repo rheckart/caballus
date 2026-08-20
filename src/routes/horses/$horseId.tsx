@@ -127,7 +127,8 @@ function HorseProfile() {
       <h2>Space assignments</h2>
       <ul>
         <li>Stall: {horse.spaces.stall?.name ?? 'not assigned'}</li>
-        <li>Field: {horse.spaces.field?.name ?? 'not assigned'}</li>
+        <li>Pasture: {horse.spaces.pasture?.name ?? 'not assigned'}</li>
+        <li>Paddock: {horse.spaces.paddock?.name ?? 'not assigned'}</li>
         <li>Barn: {horse.spaces.barn?.name ?? 'not assigned'}</li>
       </ul>
 

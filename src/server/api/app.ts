@@ -732,7 +732,7 @@ export function buildApi(
                   id: row.horse.id,
                   name: row.horse.name,
                   halterColour: row.horse.halterColour,
-                  field: row.horse.field === null ? null : { ...row.horse.field },
+                  pasture: row.horse.pasture === null ? null : { ...row.horse.pasture },
                   feedings: row.horse.feedings.map((feeding) => ({
                     ...feeding,
                     lines: [...feeding.lines],

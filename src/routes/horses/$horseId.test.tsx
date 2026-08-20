@@ -27,7 +27,7 @@ const PROFILE = {
   height: '15.2 hh',
   photoUrl: null,
   departedOn: null,
-  spaces: { stall: { id: 'stall-4', name: 'Stall 4' }, field: null, barn: null },
+  spaces: { stall: { id: 'stall-4', name: 'Stall 4' }, pasture: null, paddock: null, barn: null },
   feedSchedules: [],
   measurements: { weights: [], bodyConditions: [] },
 }
@@ -48,7 +48,8 @@ describe('the horse profile', () => {
 
     expect(await screen.findByText('Halter colour: blue')).toBeTruthy()
     expect(screen.getByText('Stall: Stall 4')).toBeTruthy()
-    expect(screen.getByText('Field: not assigned')).toBeTruthy()
+    expect(screen.getByText('Pasture: not assigned')).toBeTruthy()
+    expect(screen.getByText('Paddock: not assigned')).toBeTruthy()
   })
 
   it('marks a Departed horse without hiding its record', async () => {
@@ -70,7 +71,12 @@ describe('the horse profile', () => {
             height: null,
             photoUrl: null,
             departedOn: null,
-            spaces: { stall: { id: 'stall-4', name: 'Stall 4' }, field: null, barn: null },
+            spaces: {
+              stall: { id: 'stall-4', name: 'Stall 4' },
+              pasture: null,
+              paddock: null,
+              barn: null,
+            },
           },
         ],
       },

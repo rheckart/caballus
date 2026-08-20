@@ -474,7 +474,8 @@ export const horse = z.object({
   departedOn: dayOfTheOrganisation.nullable(),
   spaces: z.object({
     stall: spaceRef.nullable(),
-    field: spaceRef.nullable(),
+    pasture: spaceRef.nullable(),
+    paddock: spaceRef.nullable(),
     barn: spaceRef.nullable(),
   }),
 })
@@ -516,7 +517,7 @@ const boardHorse = z.object({
   id: z.string(),
   name: z.string(),
   halterColour: z.string().nullable(),
-  field: spaceRef.nullable(),
+  pasture: spaceRef.nullable(),
   feedings: z.array(feedSchedule),
 })
 

@@ -53,7 +53,12 @@ type SpaceList = Answers<typeof contract, '/spaces'>
 type ProductList = Answers<typeof contract, '/products'>
 type HorseProfile = Answers<typeof contract, '/horses/:horseId'>
 
-const KIND_LABEL: Record<SpaceKind, string> = { stall: 'Stall', field: 'Field', barn: 'Barn' }
+const KIND_LABEL: Record<SpaceKind, string> = {
+  stall: 'Stall',
+  pasture: 'Pasture',
+  paddock: 'Paddock',
+  barn: 'Barn',
+}
 const SHIFT_TYPE_LABEL: Record<ShiftType, string> = {
   feed_am: 'Feed AM',
   feed_pm: 'Feed PM',
@@ -137,7 +142,8 @@ function Horses() {
           horse.name,
           horse.halterColour,
           horse.spaces.stall?.name ?? null,
-          horse.spaces.field?.name ?? null,
+          horse.spaces.pasture?.name ?? null,
+          horse.spaces.paddock?.name ?? null,
         ),
       ),
     [horses, filter],
@@ -198,7 +204,8 @@ function Horses() {
                   <th scope="col">Name</th>
                   <th scope="col">Halter</th>
                   <th scope="col">Stall</th>
-                  <th scope="col">Field</th>
+                  <th scope="col">Pasture</th>
+                  <th scope="col">Paddock</th>
                   <th scope="col">Barn</th>
                   <th scope="col">Status</th>
                   <th scope="col" />
@@ -210,7 +217,8 @@ function Horses() {
                     <td>{horse.name}</td>
                     <td>{horse.halterColour ?? 'Not set'}</td>
                     <td>{horse.spaces.stall?.name ?? 'None'}</td>
-                    <td>{horse.spaces.field?.name ?? 'None'}</td>
+                    <td>{horse.spaces.pasture?.name ?? 'None'}</td>
+                    <td>{horse.spaces.paddock?.name ?? 'None'}</td>
                     <td>{horse.spaces.barn?.name ?? 'None'}</td>
                     <td>
                       {horse.departedOn === null ? (

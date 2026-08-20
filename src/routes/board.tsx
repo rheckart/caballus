@@ -253,7 +253,7 @@ function Board() {
               <tr>
                 <th scope="col">Stall</th>
                 <th scope="col">Horse</th>
-                <th scope="col">Field</th>
+                <th scope="col">Pasture</th>
                 {COLUMNS.map((shiftType) => (
                   <th key={shiftType} scope="col">
                     {SHIFT_TYPE_LABEL[shiftType]}
@@ -513,7 +513,7 @@ function HorseRow({
           </span>
         )}
       </td>
-      <td>{horse.field === null ? <Blank>no field</Blank> : horse.field.name}</td>
+      <td>{horse.pasture === null ? <Blank>no pasture</Blank> : horse.pasture.name}</td>
       {COLUMNS.map((shiftType) => (
         <td key={shiftType} className="board-feed">
           <Feed feeding={feedings.get(shiftType) ?? null} shiftType={shiftType} />

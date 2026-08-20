@@ -25,7 +25,8 @@ export interface SpaceRef {
 
 export interface HorseSpaces {
   readonly stall: SpaceRef | null
-  readonly field: SpaceRef | null
+  readonly pasture: SpaceRef | null
+  readonly paddock: SpaceRef | null
   readonly barn: SpaceRef | null
 }
 
@@ -55,7 +56,12 @@ function spacesOf(assignments: readonly AssignmentRow[]): HorseSpaces {
     const row = by.get(kind)
     return row === undefined ? null : { id: row.spaceId, name: row.spaceName }
   }
-  return { stall: refOf('stall'), field: refOf('field'), barn: refOf('barn') }
+  return {
+    stall: refOf('stall'),
+    pasture: refOf('pasture'),
+    paddock: refOf('paddock'),
+    barn: refOf('barn'),
+  }
 }
 
 async function assignmentsFor(db: OrgScopedDatabase): Promise<readonly AssignmentRow[]> {

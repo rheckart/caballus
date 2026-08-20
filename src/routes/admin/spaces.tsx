@@ -1,5 +1,5 @@
 /**
- * Spaces: every stall, field and barn, occupied or not — and the desk where
+ * Spaces: every stall, pasture, paddock and barn, occupied or not — and the desk where
  * splitting or merging one happens.
  *
  * There is no delete here on purpose: splitting `2 & 3` back into `2` and `3`,
@@ -7,7 +7,7 @@
  * name rather than a new one, which is the whole of how ADR 0002 says a
  * physical change to the barn becomes a change to the record.
  *
- * A Space that stopped existing — a stall torn out, a field sold off — is
+ * A Space that stopped existing — a stall torn out, a pasture sold off — is
  * Retired rather than deleted, the same call ADR 0002 makes for a horse's
  * Departure: a date on the row, corrected rather than undone, so its history
  * (who was ever assigned it) stays reachable here rather than vanishing.
@@ -53,6 +53,7 @@ import type { Answers, contract } from '../../shared/api-contract'
 import { dayString } from '../../shared/time'
 import {
   DEFAULT_PREFIX,
+  LETTERED_KINDS,
   MOST_SPACES_AT_ONCE,
   NAME_SERIES_STYLES,
   SPACE_KINDS,
@@ -68,7 +69,12 @@ export const Route = createFileRoute('/admin/spaces')({
 type SpaceList = Answers<typeof contract, '/spaces'>
 type Space = SpaceList['spaces'][number]
 
-const KIND_LABEL: Record<SpaceKind, string> = { stall: 'Stall', field: 'Field', barn: 'Barn' }
+const KIND_LABEL: Record<SpaceKind, string> = {
+  stall: 'Stall',
+  pasture: 'Pasture',
+  paddock: 'Paddock',
+  barn: 'Barn',
+}
 
 const KIND_OPTIONS = SPACE_KINDS.map((kind) => ({ value: kind, label: KIND_LABEL[kind] }))
 
@@ -122,9 +128,9 @@ function Spaces() {
       <h1>Spaces</h1>
 
       <p className="lede">
-        A Space is one named area, a stall, a field or a barn, that may be more than one physical
-        unit joined together. An empty Space is shown exactly like an occupied one: nothing here is
-        removed for having nobody in it.
+        A Space is one named area — a stall, a pasture, a paddock or a barn — that may be more than
+        one physical unit joined together. An empty Space is shown exactly like an occupied one:
+        nothing here is removed for having nobody in it.
       </p>
 
       {problem !== null && <p role="alert">{problem}</p>}
@@ -457,9 +463,9 @@ function SeveralSpacesForm({
             onChange={(next) => {
               setKind(next)
               // The prefix follows the kind until somebody types their own, so
-              // picking Field does not leave the preview saying "Stall A".
+              // picking Pasture does not leave the preview saying "Stall A".
               setPrefix(DEFAULT_PREFIX[next])
-              setStyle(next === 'field' ? 'letters' : 'numbers')
+              setStyle(LETTERED_KINDS.includes(next) ? 'letters' : 'numbers')
             }}
           />
         </div>

@@ -1,13 +1,15 @@
 /**
- * The Space vocabulary (ADR 0002): a Space has a *kind*, and a horse is
- * assigned exactly one Space per kind.
+ * The Space vocabulary (ADR 0002, as its Pasture-and-Paddock amendment leaves
+ * it): a Space has a *kind*, and a horse is assigned exactly one Space per
+ * kind — so a horse turned out holds a Pasture *and* the Paddock attached to
+ * it, which is the fact the single `field` kind could not express.
  *
  * Lives here rather than beside the checks, for the reason `DOMAIN_SCOPES` and
  * `ROLES` do: a horse's Space assignments cross the wire (ADR 0021), and a
- * second copy of the three kinds in the contract is exactly the drift that
+ * second copy of the kinds in the contract is exactly the drift that
  * exists to remove.
  */
-export const SPACE_KINDS = ['stall', 'field', 'barn'] as const
+export const SPACE_KINDS = ['stall', 'pasture', 'paddock', 'barn'] as const
 
 export type SpaceKind = (typeof SPACE_KINDS)[number]
 
@@ -24,9 +26,9 @@ export function isSpaceKind(stored: string): stored is SpaceKind {
 /**
  * How a run of Spaces is numbered when several are added at once.
  *
- * Two, because a barn names its stalls with numbers and its fields with
- * letters, and asking somebody to type *Field A, Field B, Field C* one at a
- * time is the chore this exists to remove.
+ * Two, because a barn names its stalls with numbers and its turnout with
+ * letters, and asking somebody to type *Pasture A, Pasture B, Pasture C* one
+ * at a time is the chore this exists to remove.
  */
 export const NAME_SERIES_STYLES = ['numbers', 'letters'] as const
 
@@ -43,7 +45,7 @@ export const MOST_SPACES_AT_ONCE = 50
 
 /**
  * `A`, `B`, … `Z`, `AA`, `AB`: spreadsheet-column lettering, so a barn with
- * twenty-eight fields does not run out at Z.
+ * twenty-eight pastures does not run out at Z.
  *
  * `index` is zero-based.
  */
@@ -85,6 +87,16 @@ export function seriesNames(details: {
 /** The prefix a kind starts with, before anybody edits it. */
 export const DEFAULT_PREFIX: Record<SpaceKind, string> = {
   stall: 'Stall ',
-  field: 'Field ',
+  pasture: 'Pasture ',
+  paddock: 'Paddock ',
   barn: 'Barn ',
 }
+
+/**
+ * Which kinds a barn letters rather than numbers.
+ *
+ * Turnout is lettered — `Pasture A`, `Paddock C` — and stalls and barns are
+ * numbered, which is the whole of the rule and the reason it is a set rather
+ * than a comparison against one literal kind (ADR 0002's amendment made it two).
+ */
+export const LETTERED_KINDS: readonly SpaceKind[] = ['pasture', 'paddock']

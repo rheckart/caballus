@@ -39,7 +39,7 @@ export interface BoardHorse {
   readonly halterColour: string | null
   readonly stall: BoardSpaceRef | null
   readonly barn: BoardSpaceRef | null
-  readonly field: BoardSpaceRef | null
+  readonly pasture: BoardSpaceRef | null
   /** The current feeding per Shift Type, only for the ones this horse has (#36). */
   readonly feedings: readonly CurrentFeedSchedule[]
 }
@@ -116,7 +116,7 @@ export async function boardGrid(db: OrgScopedDatabase, today: DayString): Promis
         halterColour: row.halterColour,
         stall: placed(assignments, 'stall'),
         barn: placed(assignments, 'barn'),
-        field: placed(assignments, 'field'),
+        pasture: placed(assignments, 'pasture'),
         feedings: feedings.get(row.id) ?? [],
       }
     })
