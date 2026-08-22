@@ -98,7 +98,12 @@ const reading = z.object({
   spaces: z.array(z.object({ kind: z.string(), name: z.string() })),
   horses: z.array(
     z.object({
-      name: z.string(),
+      // **Nullable, and that is the point.** A grid has a row per stall and a
+      // stall's horse-name cell can be empty — the panel may not carry names
+      // at all. With no way to say *there was no name here*, a model writes
+      // `Unknown Horse Row 3`, which is a fabricated horse and exactly what
+      // ADR 0023 forbids. Null is the honest answer and the writer drops it.
+      name: z.string().nullable(),
       halterColour: z.string().nullable(),
       blanketSize: z.string().nullable(),
       height: z.string().nullable(),
@@ -258,9 +263,10 @@ function systemPrompt(panel: WhiteboardPanel): string {
     '',
     'Rules, in order of importance:',
     '1. If a cell is not clearly legible, LEAVE IT OUT and add a short sentence to `blank` saying which cell it was, in words somebody could use to go and look at the board. Never guess. Never score your own confidence.',
-    '2. Anything you can read but cannot place in the fields below goes verbatim into `couldNotPlace`.',
-    '3. Amounts are free text. Copy `2 cups Senior` and `2 wells` exactly as written. Never do arithmetic and never convert a unit.',
-    '4. Standing rules are copied verbatim, with no interpretation.',
+    '2. NEVER invent a value to fill a field. If a horse row has no legible name, set `name` to null — do not write `Unknown`, `Unknown Horse Row 3`, `N/A`, `?`, or a name from another row. A panel with no horse-name column at all yields horses with null names, or no horses. The same goes for every other field: absent is null or omitted, never a placeholder.',
+    '3. Anything you can read but cannot place in the fields below goes verbatim into `couldNotPlace`.',
+    '4. Amounts are free text. Copy `2 cups Senior` and `2 wells` exactly as written. Never do arithmetic and never convert a unit.',
+    '5. Standing rules are copied verbatim, with no interpretation.',
     '',
     'Spaces read as:',
     '- `2 & 3` is ONE Space of kind `stall` named `2 & 3`. Never two.',

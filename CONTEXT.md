@@ -157,7 +157,7 @@ _Avoid_: handover, comments, log, remarks
 ### Checklists
 
 **Task**:
-A kind of work the rescue does — feeding, watering, mucking, grooming, checking the salt blocks. Catalogue data the rescue edits rather than a list in the app, because the whiteboard's list was already longer than the brief's. A Task fixes what the app acts on: what kind of thing it applies to, whether it is Essential or Discretionary, whether it is wanted once a Shift or once a day, whether it needs Medication Authority, what Condition it waits for, its tolerance, and what it says to do. The rescue chooses among those; it does not add to them.
+A kind of work the rescue does — feeding, watering, mucking, grooming, checking the salt blocks. Catalogue data the rescue edits rather than a list in the app, because the whiteboard's list was already longer than the brief's. A Task fixes what the app acts on: what kind of thing it applies to, whether it is Essential or Discretionary, whether it is wanted once a Shift or once a day, whether it needs Medication Authority, what Condition it waits for, its tolerance, and what it says to do. The rescue chooses among those; it does not add to them. A standing fact about a horse that generates no work is not a Task; it is an Alert.
 _Avoid_: chore, job, activity, checklist type
 
 **Item**:
@@ -241,7 +241,7 @@ The status of a horse no longer at the rescue, carrying a departure date. The re
 _Avoid_: inactive, archived, removed, deleted
 
 **Alert**:
-A standing warning on a horse that a volunteer must read before working with it — a care alert, a prohibition ("no treats"), or an allergy. Not a medical condition; those are out of scope.
+A standing warning on a horse that a volunteer must read before working with it, and one of exactly three kinds: a prohibition ("no treats"), a care alert, or an allergy. Not a medical condition; those are out of scope. It stands until a person ends it and never expires on its own, because an Alert that quietly lapsed is a horse that bites and nobody was told. It is its own record rather than an Observation grown up — an Observation is frozen the moment it lands and says what somebody saw once, where an Alert says what is always true and has to be endable. Read wherever a volunteer meets the horse, not only where somebody goes looking for it. The line against a Task is whether it generates work: an Alert has nothing to tick, where "fly spray daily" is a Task carrying an instruction. Raised and ended by holders of `horse_care` alone — the floor's door for a horse that has started biting is the Observation it already has, because an Alert anybody may post is a wall nobody reads.
 _Avoid_: flag, note, warning, caution
 
 ### Feed and medication

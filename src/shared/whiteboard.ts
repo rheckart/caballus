@@ -185,6 +185,12 @@ export const readSpace = z.object({
  * the same *partial writes are the point* rule one row up (ADR 0023).
  */
 export const readHorse = z.object({
+  /**
+   * `min(1)`, so a row the board left nameless never becomes a horse: the
+   * model answers null there and this refuses it, which is the two halves of
+   * *the app never fabricates* meeting (ADR 0023). The row is named as a blank
+   * instead.
+   */
   name: z.string().min(1).max(200),
   halterColour: z.string().max(100).nullable(),
   blanketSize: z.string().max(100).nullable(),
@@ -201,3 +207,16 @@ export const readContact = z.object({
 })
 
 export const readStandingRule = z.object({ text: z.string().min(1).max(500) })
+
+/**
+ * A name's identity for the *already held* check, which is case- and
+ * whitespace-insensitive.
+ *
+ * A whiteboard is handwriting: `Cosequin` on one panel and `CoseQuin` on the
+ * next are one Product, and creating both is the additive-only rule failing at
+ * exactly the moment it was supposed to hold. The row keeps the name as
+ * written — this is only how two of them are compared.
+ */
+export function sameName(name: string): string {
+  return name.trim().toLocaleLowerCase()
+}

@@ -45,6 +45,7 @@ import {
   readLine,
   readSpace,
   readStandingRule,
+  sameName,
   scopesForPanel,
   type WhiteboardPanel,
   type WhiteboardRecord,
@@ -160,23 +161,27 @@ async function write(
   // parsed one at a time, so an unreadable cell in one column costs that cell
   // rather than the horse it was written beside (ADR 0023).
   const parsedHorses = mayWrite('horse')
-    ? parseEach(reading.horses, readHorse, 'horse', sheet).map((horse) =>
+    ? parseEach(named(reading.horses, sheet), readHorse, 'horse', sheet).map((horse) =>
         withParsedLines(horse, sheet),
       )
     : []
 
-  // The stall column *is* the stall list, so a Space named on a horse's row
-  // counts as much as one in the Spaces array — a grid panel that listed
-  // neither would place nobody.
+  // The stall column *is* the stall list, so a Space named on a row counts as
+  // much as one in the Spaces array — a grid panel that listed neither would
+  // place nobody. Taken from **every** row rather than only the named ones,
+  // because a stall is real whether or not a horse stands in it: that is the
+  // whole of why `7 OPEN` keeps its row on the Board (ADR 0002).
   const spaceIds = mayWrite('space')
     ? await writeSpaces(
         db,
         orgId,
         actorVolunteerId,
-        [
-          ...parseEach(reading.spaces, readSpace, 'space', sheet),
-          ...parsedHorses.flatMap((horse) => horse.spaces),
-        ],
+        parseEach(
+          [...reading.spaces, ...reading.horses.flatMap((row) => row.spaces)],
+          readSpace,
+          'space',
+          sheet,
+        ),
         sheet,
       )
     : new Map<string, string>()
@@ -240,6 +245,32 @@ function countOf(reading: WhiteboardReading, record: WhiteboardRecord): number {
 }
 
 /**
+ * The rows the board actually named, and a blank for each one it did not.
+ *
+ * A grid has a row per stall and a stall's name cell can be empty — a whole
+ * panel may carry no names at all. A row with no name is **not a horse**: it is
+ * a cell somebody has to go and look at, which is the same answer an illegible
+ * cell gets. Reported here rather than left to `readHorse` so the sentence says
+ * something useful instead of quoting JSON at somebody.
+ */
+function named(rows: WhiteboardReading['horses'], sheet: Sheet): unknown[] {
+  const kept: unknown[] = []
+  for (const [at, row] of rows.entries()) {
+    if (row.name !== null && row.name.trim() !== '') {
+      kept.push(row)
+      continue
+    }
+    const where = row.spaces.map((space) => `${space.kind} ${space.name}`).join(', ')
+    sheet.blank.push(
+      where === ''
+        ? `Row ${String(at + 1)} of the grid names no horse.`
+        : `The row for ${where} names no horse.`,
+    )
+  }
+  return kept
+}
+
+/**
  * Parses each element on its own, moving what does not parse to
  * could-not-place rather than coercing it (ADR 0023).
  */
@@ -283,7 +314,28 @@ async function writeSpaces(
     byKind.set(space.kind, held)
   }
 
-  for (const [kind, names] of byKind) {
+  // Read first and compare case-insensitively — `createSpaces` matches names
+  // exactly, which is right for a desk screen previewing what it will make and
+  // wrong for handwriting, where `Small Barn` and `SMALL BARN` are one Space.
+  const alreadyHeld = await db.select({ kind: spaces.kind, name: spaces.name }).from(spaces)
+  const heldByKind = new Map<string, Set<string>>()
+  for (const row of alreadyHeld) {
+    heldByKind.set(row.kind, (heldByKind.get(row.kind) ?? new Set()).add(sameName(row.name)))
+  }
+
+  for (const [kind, all] of byKind) {
+    const held = heldByKind.get(kind) ?? new Set<string>()
+    const names: string[] = []
+    for (const name of all) {
+      if (held.has(sameName(name))) {
+        sheet.skipped.push({ record: 'space', name: spaceKey(kind, name) })
+        continue
+      }
+      held.add(sameName(name))
+      names.push(name)
+    }
+    if (names.length === 0) continue
+
     const outcome = await createSpaces(db, orgId, actorVolunteerId, { kind, names, reason: REASON })
     if (!outcome.ok) continue
     // The kind, not the word *Space*: the screen already badges the record
@@ -306,7 +358,7 @@ async function writeSpaces(
     .select({ id: spaces.id, kind: spaces.kind, name: spaces.name })
     .from(spaces)
     .where(inArray(spaces.kind, kinds))
-  return new Map(rows.map((row) => [`${row.kind} ${row.name}`, row.id]))
+  return new Map(rows.map((row) => [sameName(`${row.kind} ${row.name}`), row.id]))
 }
 
 type ParsedLine = ReturnType<typeof readLine.parse>
@@ -351,7 +403,7 @@ async function writeProducts(
     for (const feeding of horse.feedings) {
       for (const line of feeding.lines) {
         const name = line.productName.trim()
-        if (!wanted.has(name)) {
+        if (![...wanted.keys()].some((held) => sameName(held) === sameName(name))) {
           wanted.set(name, { kind: line.productKind, prescription: line.prescription })
         }
       }
@@ -359,14 +411,13 @@ async function writeProducts(
   }
   if (wanted.size === 0) return new Map()
 
-  const existing = await db
-    .select({ id: products.id, name: products.name })
-    .from(products)
-    .where(inArray(products.name, [...wanted.keys()]))
-  const ids = new Map(existing.map((row) => [row.name, row.id]))
+  // Every Product, not just the names asked for: the match is case-insensitive
+  // and a `where name in (…)` could only ever find the exact spellings.
+  const existing = await db.select({ id: products.id, name: products.name }).from(products)
+  const ids = new Map(existing.map((row) => [sameName(row.name), row.id]))
 
   for (const [name, about] of wanted) {
-    if (ids.has(name)) {
+    if (ids.has(sameName(name))) {
       sheet.skipped.push({ record: 'product', name })
       continue
     }
@@ -382,7 +433,7 @@ async function writeProducts(
       sheet.couldNotPlace.push(`The Product ${name} could not be created.`)
       continue
     }
-    ids.set(name, outcome.value.id)
+    ids.set(sameName(name), outcome.value.id)
     sheet.created.push({ record: 'product', name, id: outcome.value.id })
     // `prescription` is required on `/products` and no board says it, so every
     // created medication is named for a `horse_care` holder to check.
@@ -411,21 +462,18 @@ async function writeHorses(
 ): Promise<void> {
   const { parsedHorses, spaceIds, productIds, panel, today, sheet } = about
   const names = parsedHorses.map((horse) => horse.name.trim())
-  const existing =
-    names.length === 0
-      ? []
-      : await db.select({ name: horses.name }).from(horses).where(inArray(horses.name, names))
-  const held = new Set(existing.map((row) => row.name))
+  const existing = names.length === 0 ? [] : await db.select({ name: horses.name }).from(horses)
+  const held = new Set(existing.map((row) => sameName(row.name)))
 
   for (const horse of parsedHorses) {
     const name = horse.name.trim()
     // Skipped **whole**, feed lines and all: this act never edits an existing
     // record, so a second run cannot overwrite a correction (ADR 0023).
-    if (held.has(name)) {
+    if (held.has(sameName(name))) {
       sheet.skipped.push({ record: 'horse', name })
       continue
     }
-    held.add(name)
+    held.add(sameName(name))
 
     const created = await createHorse(db, orgId, actorVolunteerId, {
       name,
@@ -442,7 +490,7 @@ async function writeHorses(
     sheet.created.push({ record: 'horse', name, id: horseId })
 
     for (const place of horse.spaces) {
-      const spaceId = spaceIds.get(spaceKey(place.kind, place.name))
+      const spaceId = spaceIds.get(sameName(spaceKey(place.kind, place.name)))
       if (spaceId === undefined) {
         sheet.couldNotPlace.push(`${name}'s ${place.kind} “${place.name}” is not a Space here.`)
         continue
@@ -500,7 +548,7 @@ async function writeFeedSchedules(
   for (const [shiftType, read] of byShiftType) {
     const lines: { productId: string; amount: string; route: ParsedLine['route'] }[] = []
     for (const line of read) {
-      const productId = productIds.get(line.productName.trim())
+      const productId = productIds.get(sameName(line.productName))
       if (productId === undefined) {
         sheet.couldNotPlace.push(
           `${horseName}'s ${SHIFT_TYPE_LABEL[shiftType]} line “${line.productName}” has no Product.`,
@@ -552,19 +600,16 @@ async function writeContacts(
   sheet: Sheet,
 ): Promise<void> {
   const names = parsed.map((contact) => contact.name.trim())
-  const existing =
-    names.length === 0
-      ? []
-      : await db.select({ name: contacts.name }).from(contacts).where(inArray(contacts.name, names))
-  const held = new Set(existing.map((row) => row.name))
+  const existing = names.length === 0 ? [] : await db.select({ name: contacts.name }).from(contacts)
+  const held = new Set(existing.map((row) => sameName(row.name)))
 
   for (const contact of parsed) {
     const name = contact.name.trim()
-    if (held.has(name)) {
+    if (held.has(sameName(name))) {
       sheet.skipped.push({ record: 'contact', name })
       continue
     }
-    held.add(name)
+    held.add(sameName(name))
     const created = await createContact(db, orgId, actorVolunteerId, {
       ...contact,
       name,
@@ -589,15 +634,15 @@ async function writeStandingRules(
   // bucket lands verbatim, with no interpretation, and a second run of the
   // same panel recognises the same sentence.
   const existing = await db.select({ text: standingRules.text }).from(standingRules)
-  const held = new Set(existing.map((row) => row.text))
+  const held = new Set(existing.map((row) => sameName(row.text)))
 
   for (const rule of parsed) {
     const text = rule.text.trim()
-    if (held.has(text)) {
+    if (held.has(sameName(text))) {
       sheet.skipped.push({ record: 'standing_rule', name: text })
       continue
     }
-    held.add(text)
+    held.add(sameName(text))
     const created = await createStandingRule(db, orgId, actorVolunteerId, { text, reason: REASON })
     if (!created.ok) {
       sheet.couldNotPlace.push(`The standing rule “${text}” could not be created.`)

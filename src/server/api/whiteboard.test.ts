@@ -451,6 +451,106 @@ describe.skipIf(!reachable)('the Whiteboard Read, through the API', () => {
       expect(lines.map((row) => row.amount)).toEqual(['1 tab', '2 wells'])
     })
 
+    it('never invents a name for a row the board left nameless', async () => {
+      // The failure this exists against: a panel with no horse-name column
+      // produced `Unknown Horse Row 1` … `Row 8`, eight fabricated horses in a
+      // real rescue. A nameless row is a blank to go and look at, not a horse
+      // (ADR 0023 — *the app never fabricates*).
+      setWhiteboardReader(() =>
+        Promise.resolve(
+          nothingRead({
+            horses: [
+              {
+                name: null,
+                halterColour: null,
+                blanketSize: null,
+                height: null,
+                spaces: [{ kind: 'stall', name: '4' }],
+                feedings: [],
+              },
+              {
+                name: '   ',
+                halterColour: null,
+                blanketSize: null,
+                height: null,
+                spaces: [],
+                feedings: [],
+              },
+            ],
+          }),
+        ),
+      )
+      const api = await holder(['horse_care', 'roster'])
+
+      const report = (await shoot(api, 'grid')).report()
+      expect(report.created.filter((entry) => entry.record === 'horse')).toEqual([])
+      expect(report.blank).toHaveLength(2)
+      expect(report.blank[0]).toContain('stall 4')
+
+      const rows = await owner`select id from horses where org_id = ${FIELD_BARN}`
+      expect(rows).toHaveLength(0)
+
+      // The Stall on that row is still real and still created — the row named
+      // no horse, it did not fail to be a row.
+      const stalls = await owner`select name from spaces where org_id = ${FIELD_BARN}`
+      expect(stalls.map((row) => row.name)).toEqual(['4'])
+    })
+
+    it('treats a name that differs only in case as already held', async () => {
+      // A whiteboard is handwriting: `Cosequin` on one panel and `CoseQuin` on
+      // the next are one Product, and creating both is additive-only failing
+      // at the moment it was meant to hold.
+      const reading = (spelling: string): WhiteboardReading =>
+        nothingRead({
+          spaces: [{ kind: 'barn', name: spelling === 'Cosequin' ? 'Small Barn' : 'SMALL BARN' }],
+          horses: [
+            {
+              name: spelling === 'Cosequin' ? 'Blue' : 'BLUE',
+              halterColour: null,
+              blanketSize: null,
+              height: null,
+              spaces: [],
+              feedings: [
+                {
+                  shiftType: 'feed_am',
+                  lines: [
+                    {
+                      productName: spelling,
+                      productKind: 'supplement',
+                      prescription: false,
+                      amount: '1 scoop',
+                      route: 'in_feed',
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        })
+
+      const api = await holder(['horse_care', 'roster'])
+      setWhiteboardReader(() => Promise.resolve(reading('Cosequin')))
+      await shoot(api, 'grid')
+
+      setWhiteboardReader(() => Promise.resolve(reading('CoseQuin')))
+      const second = (await shoot(api, 'grid')).report()
+
+      expect(second.created).toEqual([])
+      expect(second.skipped.map((entry) => entry.record).sort()).toEqual([
+        'horse',
+        'product',
+        'space',
+      ])
+
+      // One of each, spelled the way the first panel had it.
+      const products = await owner`select name from products where org_id = ${FIELD_BARN}`
+      expect(products.map((row) => row.name)).toEqual(['Cosequin'])
+      const horseRows = await owner`select name from horses where org_id = ${FIELD_BARN}`
+      expect(horseRows.map((row) => row.name)).toEqual(['Blue'])
+      const spaceRows = await owner`select name from spaces where org_id = ${FIELD_BARN}`
+      expect(spaceRows.map((row) => row.name)).toEqual(['Small Barn'])
+    })
+
     it('keeps the horse when one of its feed cells is unreadable', async () => {
       // The granularity ADR 0023 asks for, one level further down than the
       // horse: a smudged cell in the medical column costs that cell, not
