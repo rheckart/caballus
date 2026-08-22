@@ -160,7 +160,15 @@ export const readLine = z.object({
   productName: z.string().min(1).max(200),
   productKind: z.enum(PRODUCT_KINDS),
   prescription: z.boolean(),
-  amount: z.string().min(1).max(200),
+  /**
+   * Free text, and **empty is allowed here though `/feed-schedules` forbids
+   * it**: a board really does say `fly spray` in a feed cell with no quantity
+   * beside it. The Product is still real and Days of Supply still wants to
+   * count it, so the line parses, the Product is created, and only the
+   * schedule line is dropped — named as a blank rather than given an amount
+   * nobody wrote (ADR 0023).
+   */
+  amount: z.string().max(200),
   route: z.enum(ROUTES),
 })
 
@@ -169,13 +177,20 @@ export const readSpace = z.object({
   name: z.string().min(1).max(200),
 })
 
+/**
+ * A horse, with its feed **lines left unparsed**.
+ *
+ * Deliberate: a line is parsed on its own afterwards, so a single unreadable
+ * cell in one feed column costs that cell rather than the horse it was on —
+ * the same *partial writes are the point* rule one row up (ADR 0023).
+ */
 export const readHorse = z.object({
   name: z.string().min(1).max(200),
   halterColour: z.string().max(100).nullable(),
   blanketSize: z.string().max(100).nullable(),
   height: z.string().max(50).nullable(),
   spaces: z.array(readSpace),
-  feedings: z.array(z.object({ shiftType: z.enum(SHIFT_TYPES), lines: z.array(readLine) })),
+  feedings: z.array(z.object({ shiftType: z.enum(SHIFT_TYPES), lines: z.array(z.unknown()) })),
 })
 
 export const readContact = z.object({

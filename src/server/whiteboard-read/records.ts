@@ -42,6 +42,7 @@ import {
   RECORD_LABEL,
   readContact,
   readHorse,
+  readLine,
   readSpace,
   readStandingRule,
   scopesForPanel,
@@ -155,9 +156,14 @@ async function write(
   const writes = PANEL_RECORDS[panel]
   const mayWrite = (record: WhiteboardRecord): boolean => writes.includes(record)
 
-  // Every horse this panel could read, parsed once. A horse that does not
-  // parse is one horse lost rather than the panel.
-  const parsedHorses = mayWrite('horse') ? parseEach(reading.horses, readHorse, 'horse', sheet) : []
+  // Every horse this panel could read, parsed once — then its feed lines
+  // parsed one at a time, so an unreadable cell in one column costs that cell
+  // rather than the horse it was written beside (ADR 0023).
+  const parsedHorses = mayWrite('horse')
+    ? parseEach(reading.horses, readHorse, 'horse', sheet).map((horse) =>
+        withParsedLines(horse, sheet),
+      )
+    : []
 
   // The stall column *is* the stall list, so a Space named on a horse's row
   // counts as much as one in the Spaces array — a grid panel that listed
@@ -303,9 +309,35 @@ async function writeSpaces(
   return new Map(rows.map((row) => [`${row.kind} ${row.name}`, row.id]))
 }
 
-type ParsedHorse = ReturnType<typeof readHorse.parse>
-type ParsedFeeding = ParsedHorse['feedings'][number]
-type ParsedLine = ParsedFeeding['lines'][number]
+type ParsedLine = ReturnType<typeof readLine.parse>
+type ParsedFeeding = { shiftType: ShiftType; lines: ParsedLine[] }
+type ParsedHorse = Omit<ReturnType<typeof readHorse.parse>, 'feedings'> & {
+  feedings: ParsedFeeding[]
+}
+
+/**
+ * One horse's feed lines, parsed individually.
+ *
+ * A line that does not parse is named and dropped; the horse, its Space
+ * assignments and its other lines all still land. `readHorse` leaves the lines
+ * `unknown` precisely so that this can be the granularity.
+ */
+function withParsedLines(horse: ReturnType<typeof readHorse.parse>, sheet: Sheet): ParsedHorse {
+  return {
+    ...horse,
+    feedings: horse.feedings.map((feeding) => ({
+      shiftType: feeding.shiftType,
+      lines: feeding.lines.flatMap((line) => {
+        const parsed = readLine.safeParse(line)
+        if (parsed.success) return [parsed.data]
+        sheet.couldNotPlace.push(
+          `A line on ${horse.name}'s ${SHIFT_TYPE_LABEL[feeding.shiftType]} did not parse: ${brief(line)}`,
+        )
+        return []
+      }),
+    })),
+  }
+}
 
 async function writeProducts(
   db: OrgScopedDatabase,
@@ -475,9 +507,20 @@ async function writeFeedSchedules(
         )
         continue
       }
-      // `amount` is free text, so `2 cups Senior` and the board's own
-      // `2 wells` land as written and nothing here divides a sack (ADR 0019).
-      lines.push({ productId, amount: line.amount, route: line.route })
+      // A cell that named a Product and no quantity — `fly spray` on its own —
+      // is a blank amount, and a blank is shown as a blank rather than filled
+      // in. The Product above is still created, so Days of Supply can count
+      // it; only the schedule line is dropped (ADR 0023).
+      const amount = line.amount.trim()
+      if (amount === '') {
+        sheet.blank.push(
+          `${horseName}'s ${SHIFT_TYPE_LABEL[shiftType]} cell says “${line.productName}” with no amount.`,
+        )
+        continue
+      }
+      // Otherwise free text, so `2 cups Senior` and the board's own `2 wells`
+      // land as written and nothing here divides a sack (ADR 0019).
+      lines.push({ productId, amount, route: line.route })
     }
     if (lines.length === 0) continue
 

@@ -451,6 +451,109 @@ describe.skipIf(!reachable)('the Whiteboard Read, through the API', () => {
       expect(lines.map((row) => row.amount)).toEqual(['1 tab', '2 wells'])
     })
 
+    it('keeps the horse when one of its feed cells is unreadable', async () => {
+      // The granularity ADR 0023 asks for, one level further down than the
+      // horse: a smudged cell in the medical column costs that cell, not
+      // Blue's whole record and not the grain beside it.
+      setWhiteboardReader(() =>
+        Promise.resolve(
+          nothingRead({
+            horses: [
+              {
+                name: 'Blue',
+                halterColour: null,
+                blanketSize: null,
+                height: null,
+                spaces: [],
+                feedings: [
+                  {
+                    shiftType: 'feed_am',
+                    lines: [
+                      {
+                        productName: 'Senior',
+                        productKind: 'feed',
+                        prescription: false,
+                        amount: '2 wells',
+                        route: 'in_feed',
+                      },
+                      // A Route nothing in this build knows.
+                      {
+                        productName: 'Mystery',
+                        productKind: 'feed',
+                        prescription: false,
+                        amount: '1 scoop',
+                        route: 'by_hand',
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          }),
+        ),
+      )
+      const api = await holder(['horse_care', 'roster'])
+
+      const report = (await shoot(api, 'grid')).report()
+      expect(report.created.some((entry) => entry.name === 'Blue')).toBe(true)
+      expect(report.created.some((entry) => entry.name === 'Senior')).toBe(true)
+      expect(report.created.some((entry) => entry.name === 'Mystery')).toBe(false)
+      expect(report.couldNotPlace.join(' ')).toContain('Blue')
+
+      const lines = await owner`
+        select amount from feed_schedule_lines where org_id = ${FIELD_BARN}
+      `
+      expect(lines.map((row) => row.amount)).toEqual(['2 wells'])
+    })
+
+    it('calls a feed cell with no amount a blank, and still creates its Product', async () => {
+      // A real board says `fly spray` in a feed cell with nothing beside it.
+      // `/feed-schedules` requires an amount, so the line is dropped and named
+      // — never given a quantity nobody wrote — while the Product still lands,
+      // because Days of Supply wants to count fly spray (ADR 0019, ADR 0023).
+      setWhiteboardReader(() =>
+        Promise.resolve(
+          nothingRead({
+            horses: [
+              {
+                name: 'Apollo',
+                halterColour: null,
+                blanketSize: null,
+                height: null,
+                spaces: [],
+                feedings: [
+                  {
+                    shiftType: 'feed_am',
+                    lines: [
+                      {
+                        productName: 'fly spray',
+                        productKind: 'topical',
+                        prescription: false,
+                        amount: '',
+                        route: 'topical',
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          }),
+        ),
+      )
+      const api = await holder(['horse_care', 'roster'])
+
+      const report = (await shoot(api, 'grid')).report()
+      expect(report.created.some((entry) => entry.name === 'Apollo')).toBe(true)
+      expect(report.created.some((entry) => entry.name === 'fly spray')).toBe(true)
+      expect(report.created.some((entry) => entry.record === 'feed_schedule')).toBe(false)
+      expect(report.blank.join(' ')).toContain('no amount')
+
+      const lines = await owner`
+        select id from feed_schedule_lines where org_id = ${FIELD_BARN}
+      `
+      expect(lines).toHaveLength(0)
+    })
+
     it('creates a topical Product, which generates no Item (#58)', async () => {
       setWhiteboardReader(() =>
         Promise.resolve(

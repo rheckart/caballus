@@ -46,13 +46,19 @@ import { PANEL_RECORDS, RECORD_LABEL, type WhiteboardPanel } from '../../shared/
 const MODEL = 'anthropic/claude-sonnet-5'
 
 /**
- * OpenRouter's Anthropic-compatible Messages endpoint. **The only URL in this
+ * Where OpenRouter serves Anthropic's own Messages API. **The only URL in this
  * application besides the two weather providers'**, and a constant rather than
  * configuration for the same reason theirs are: nothing in the application
  * edits where a provider lives, and a URL somebody can set at runtime is a URL
  * somebody can set wrong.
+ *
+ * **No `/v1` on the end.** The SDK appends `/v1/messages` itself, so the
+ * version belongs to it and not to this — and the doubled `/api/v1/v1/messages`
+ * that results from writing it here does not fail as a 404: OpenRouter answers
+ * its own marketing page, which arrives as HTML the SDK cannot parse and a
+ * refusal that names nothing useful.
  */
-const BASE_URL = 'https://openrouter.ai/api/v1'
+const BASE_URL = 'https://openrouter.ai/api'
 
 /** What OpenRouter's own dashboard labels this spend, so the bill is readable. */
 const CALLER = 'Caballus'
