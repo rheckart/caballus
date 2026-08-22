@@ -96,6 +96,7 @@ describe.skipIf(!reachable)('horses and Spaces, through the API', () => {
 
   async function wipe({ keepOrg = false }: { keepOrg?: boolean } = {}): Promise<void> {
     await owner`delete from audit_entries where org_id = ${FIELD_BARN}`
+    await owner`delete from alerts where org_id = ${FIELD_BARN}`
     await owner`delete from horse_space_assignments where org_id = ${FIELD_BARN}`
     await owner`delete from horses where org_id = ${FIELD_BARN}`
     await owner`delete from spaces where org_id = ${FIELD_BARN}`
@@ -502,6 +503,219 @@ describe.skipIf(!reachable)('horses and Spaces, through the API', () => {
     })
   })
 
+  describe('Alerts', () => {
+    async function horseCalled(api: ReturnType<typeof apiAs>, name: string): Promise<string> {
+      const created = await post(api, '/horses', { name })
+      return created.body.horseId as string
+    }
+
+    it('raises one, and it stands in full at the top of the profile', async () => {
+      const api = await holder()
+      const horseId = await horseCalled(api, 'Biter')
+
+      const raised = await post(api, '/alerts', {
+        horseId,
+        kind: 'prohibition',
+        text: 'No treats by hand — she bites.',
+      })
+      expect(raised.status).toBe(201)
+
+      const profile = await get(api, `/horses/${horseId}`)
+      expect(profile.body.alerts).toEqual([
+        expect.objectContaining({
+          kind: 'prohibition',
+          // The full words, never a count: that is the whole of ADR 0024.
+          text: 'No treats by hand — she bites.',
+          raisedByName: 'Priya Chandra',
+          endedAt: null,
+          endingReason: null,
+        }),
+      ])
+      expect(profile.body.endedAlerts).toEqual([])
+
+      const audited = await owner`
+        select field, after from audit_entries
+        where entity = 'alert' and entity_id = ${raised.body.alertId as string}
+      `
+      expect(audited).toHaveLength(1)
+      expect(audited[0]).toMatchObject({ field: null, after: 'No treats by hand — she bites.' })
+    })
+
+    it('orders prohibition, then care, then allergy — the same on every surface', async () => {
+      const api = await holder()
+      const horseId = await horseCalled(api, 'Ordered')
+      await post(api, '/alerts', { horseId, kind: 'allergy', text: 'Bee stings' })
+      await post(api, '/alerts', { horseId, kind: 'care', text: 'Left eye drops' })
+      await post(api, '/alerts', { horseId, kind: 'prohibition', text: 'No treats' })
+
+      const profile = await get(api, `/horses/${horseId}`)
+      expect((profile.body.alerts as { kind: string }[]).map((entry) => entry.kind)).toEqual([
+        'prohibition',
+        'care',
+        'allergy',
+      ])
+    })
+
+    it("reaches the Board in the horse's own cell, in full", async () => {
+      const api = await holder()
+      const horseId = await horseCalled(api, 'On The Wall')
+      await post(api, '/alerts', { horseId, kind: 'care', text: 'Ties in the aisle only' })
+
+      const grid = await get(api, '/board')
+      const sections = grid.body.sections as { rows: { horse: Record<string, unknown> | null }[] }[]
+      const found = sections
+        .flatMap((section) => section.rows)
+        .map((row) => row.horse)
+        .find((horse) => horse?.id === horseId)
+      expect(found?.alerts).toEqual([
+        expect.objectContaining({ kind: 'care', text: 'Ties in the aisle only' }),
+      ])
+    })
+
+    it('edits text and kind in place, auditing only what changed', async () => {
+      const api = await holder()
+      const horseId = await horseCalled(api, 'Reclassified')
+      const raised = await post(api, '/alerts', { horseId, kind: 'care', text: 'Watch the hind' })
+      const alertId = raised.body.alertId as string
+
+      const edited = await post(api, '/alerts/edit', {
+        alertId,
+        kind: 'prohibition',
+        text: 'Watch the hind',
+      })
+      expect(edited.status).toBe(204)
+
+      const audited = await owner`
+        select field, before, after from audit_entries
+        where entity = 'alert' and entity_id = ${alertId} and field is not null
+      `
+      expect(audited).toHaveLength(1)
+      expect(audited[0]).toMatchObject({ field: 'kind', before: 'care', after: 'prohibition' })
+    })
+
+    it('ends one with a reason — the row stays, and it leaves the standing list', async () => {
+      const api = await holder()
+      const horseId = await horseCalled(api, 'Reformed')
+      const raised = await post(api, '/alerts', { horseId, kind: 'prohibition', text: 'No treats' })
+      const alertId = raised.body.alertId as string
+
+      const ended = await post(api, '/alerts/end', {
+        alertId,
+        reason: 'Six months without an incident; the vet agrees.',
+      })
+      expect(ended.status).toBe(204)
+
+      const rows = await owner`select count(*)::int as n from alerts where id = ${alertId}`
+      expect(rows[0]?.n).toBe(1)
+
+      const profile = await get(api, `/horses/${horseId}`)
+      expect(profile.body.alerts).toEqual([])
+      expect(profile.body.endedAlerts).toEqual([
+        expect.objectContaining({
+          text: 'No treats',
+          endingReason: 'Six months without an incident; the vet agrees.',
+          endedByName: 'Priya Chandra',
+        }),
+      ])
+
+      const grid = await get(api, '/board')
+      const sections = grid.body.sections as { rows: { horse: Record<string, unknown> | null }[] }[]
+      const found = sections
+        .flatMap((section) => section.rows)
+        .map((row) => row.horse)
+        .find((horse) => horse?.id === horseId)
+      expect(found?.alerts).toEqual([])
+    })
+
+    it('refuses a second ending, and refuses editing what is already ended', async () => {
+      const api = await holder()
+      const horseId = await horseCalled(api, 'Twice Ended')
+      const raised = await post(api, '/alerts', { horseId, kind: 'care', text: 'Slow feeder' })
+      const alertId = raised.body.alertId as string
+      await post(api, '/alerts/end', { alertId, reason: 'Eats normally now.' })
+
+      const again = await post(api, '/alerts/end', { alertId, reason: 'Again.' })
+      expect(again.status).toBe(409)
+      expect(again.body.error).toBe('alert_already_ended')
+
+      const edited = await post(api, '/alerts/edit', { alertId, kind: 'care', text: 'Rewritten' })
+      expect(edited.status).toBe(409)
+      expect(edited.body.error).toBe('alert_already_ended')
+    })
+
+    it('refuses an ending with no reason at the contract, before any handler', async () => {
+      const api = await holder()
+      const horseId = await horseCalled(api, 'Unreasoned')
+      const raised = await post(api, '/alerts', { horseId, kind: 'care', text: 'Slow feeder' })
+      const alertId = raised.body.alertId as string
+
+      const blank = await post(api, '/alerts/end', { alertId, reason: '' })
+      expect(blank.status).toBe(400)
+
+      // And a reason of three spaces is not a reason: it would store as an
+      // empty string and render as *Ended:* with nothing after it.
+      const spaces = await post(api, '/alerts/end', { alertId, reason: '   ' })
+      expect(spaces.status).toBe(400)
+
+      const rows = await owner`select ended_at from alerts where id = ${alertId}`
+      expect(rows[0]?.ended_at).toBeNull()
+    })
+
+    it('refuses a fourth kind — the fence is closed (ADR 0024)', async () => {
+      const api = await holder()
+      const horseId = await horseCalled(api, 'Fenced')
+      const refused = await post(api, '/alerts', {
+        horseId,
+        kind: 'behaviour',
+        text: 'Not a kind this build knows',
+      })
+      expect(refused.status).toBe(400)
+    })
+
+    it('refuses all three writes from a Volunteer holding nothing, who still reads every Alert', async () => {
+      const api = await holder()
+      const horseId = await horseCalled(api, 'Read By All')
+      const raised = await post(api, '/alerts', { horseId, kind: 'care', text: 'Slow feeder' })
+      const alertId = raised.body.alertId as string
+
+      const volunteer = await reader()
+      // The floor's own door is the Observation, which escalates and mails
+      // this Scope's holders — never a wall anybody may post to (ADR 0024).
+      for (const attempt of [
+        post(volunteer, '/alerts', { horseId, kind: 'care', text: 'Mine' }),
+        post(volunteer, '/alerts/edit', { alertId, kind: 'care', text: 'Mine' }),
+        post(volunteer, '/alerts/end', { alertId, reason: 'Mine' }),
+      ]) {
+        expect((await attempt).status).toBe(403)
+      }
+
+      const profile = await get(volunteer, `/horses/${horseId}`)
+      expect(profile.body.alerts).toHaveLength(1)
+    })
+
+    it("keeps a Departed horse's Alerts standing on her profile — she is gone, not cured", async () => {
+      const api = await holder()
+      const horseId = await horseCalled(api, 'Departed With A Warning')
+      await post(api, '/alerts', { horseId, kind: 'prohibition', text: 'No treats' })
+      await post(api, '/horses/departure', { horseId, departedOn: '2026-08-01' })
+
+      const profile = await get(api, `/horses/${horseId}`)
+      expect(profile.body.alerts).toHaveLength(1)
+      expect(profile.body.endedAlerts).toEqual([])
+    })
+
+    it('refuses raising one on a horse that does not exist', async () => {
+      const api = await holder()
+      const refused = await post(api, '/alerts', {
+        horseId: crypto.randomUUID(),
+        kind: 'care',
+        text: 'Nobody',
+      })
+      expect(refused.status).toBe(404)
+      expect(refused.body.error).toBe('horse_not_found')
+    })
+  })
+
   describe('the tenancy guarantee', () => {
     it('sees no Horse of another organisation', async () => {
       const elsewhere = '00000000-0000-0000-0000-0000000000e6'
@@ -528,7 +742,7 @@ describe.skipIf(!reachable)('horses and Spaces, through the API', () => {
     it('has row-level security and a policy on every table this ticket added', async () => {
       // ADR 0007's one structural guarantee, asserted against the catalogue
       // rather than against behaviour, the same as roster.test.ts.
-      const added = ['spaces', 'horses', 'horse_space_assignments']
+      const added = ['spaces', 'horses', 'horse_space_assignments', 'alerts']
 
       const rows = await owner`
         select c.relname as table, c.relrowsecurity as enabled, count(p.polname) as policies

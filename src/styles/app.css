@@ -1869,3 +1869,93 @@ tr[data-open='true'] td {
 .list-head-actions button {
   margin: 0;
 }
+
+/* --------------------------------------------------------------- alerts -- */
+
+/*
+ * A standing warning on a horse (ADR 0024). It is above the work on every
+ * surface that shows it and it carries the full words, because *2 alerts* on a
+ * wall read across a barn tells nobody the horse bites.
+ *
+ * The three kinds differ by colour and by the word in front of them, never by
+ * colour alone: the Board is read at distance and in a barn's light, and a
+ * volunteer who cannot tell a Prohibition from an Allergy has been given a
+ * decoration rather than a warning.
+ */
+.alerts {
+  list-style: none;
+  margin: 0 0 var(--space-md);
+  padding: 0;
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.alert {
+  margin: 0;
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--rounded-md);
+  border-left: 4px solid var(--error);
+  background: var(--card-tint-rose);
+  color: var(--ink);
+  font-size: 16px;
+}
+
+/* One cascade for both surfaces: the profile's list and the Board's cell
+   differ in size and never in what a kind means. */
+.alert[data-kind='care'],
+.board-alert[data-kind='care'] {
+  border-left-color: var(--warning);
+  background: var(--card-tint-peach);
+}
+
+.alert[data-kind='allergy'],
+.board-alert[data-kind='allergy'] {
+  border-left-color: var(--brand-purple);
+  background: var(--card-tint-lavender);
+}
+
+.alert strong,
+.board-alert strong {
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  font-size: 13px;
+  margin-right: var(--space-xxs);
+}
+
+/* The Board's own cell: stacked lines, the same colours, sized for the wall. */
+.board-alerts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xxs);
+}
+
+.board-alert {
+  padding: 2px var(--space-xs);
+  border-radius: var(--rounded-sm);
+  border-left: 4px solid var(--error);
+  background: var(--card-tint-rose);
+}
+
+/*
+ * Ended ones are history, and they read as history: no tint, no rule down the
+ * side, nothing that competes with a warning that is still true. The reason
+ * rides with each, because it is the only place the answer to *why is the
+ * biting alert gone* lives.
+ */
+.alerts-ended {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-xxs);
+  color: var(--slate);
+  font-size: 14px;
+}
+
+.alerts-ended li {
+  margin: 0;
+}
+
+.alert-ending {
+  color: var(--steel);
+}

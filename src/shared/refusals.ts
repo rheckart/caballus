@@ -32,6 +32,8 @@ const REFUSALS: Record<string, string> = {
   release_version_not_found: 'That release version is gone.',
   signature_not_found: 'That signature is gone.',
   horse_not_found: 'That horse is not here any more.',
+  alert_not_found: 'That alert is gone.',
+  alert_already_ended: 'That alert has already been ended. Raise a new one if it is true again.',
   space_not_found: 'That Space is gone.',
   space_kind_mismatch: "That Space isn't the right kind for this assignment.",
   space_occupied: 'A horse still holds that Space. Clear it first.',

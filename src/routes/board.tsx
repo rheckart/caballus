@@ -33,6 +33,7 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useState } from 'react'
 
+import { ALERT_KIND_LABEL } from '../shared/alerts'
 import { client } from '../shared/api-client'
 import { BOARD_TOKEN_HEADER } from '../shared/board'
 import { refusalText } from '../shared/refusals'
@@ -519,11 +520,19 @@ function HorseRow({
           <Feed feeding={feedings.get(shiftType) ?? null} shiftType={shiftType} />
         </td>
       ))}
-      {/* Alerts is a column with nothing under it yet: nothing writes one, and
-          the Board holds the place rather than the schema inventing a field
-          nobody populates (#35). */}
-      <td>
-        <Blank>no alerts</Blank>
+      {/* The full words, never a count: *2 alerts* on a wall read across a
+          barn tells nobody the horse bites, which is the failure ADR 0024
+          exists to prevent. The paper board writes the words. */}
+      <td className="board-alerts">
+        {horse.alerts.length === 0 ? (
+          <Blank>no alerts</Blank>
+        ) : (
+          horse.alerts.map((alert) => (
+            <span key={alert.id} className="board-alert" data-kind={alert.kind}>
+              <strong>{ALERT_KIND_LABEL[alert.kind]}</strong> {alert.text}
+            </span>
+          ))
+        )}
       </td>
     </>
   )

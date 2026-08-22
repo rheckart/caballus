@@ -19,6 +19,7 @@
  */
 import { z } from 'zod'
 
+import { ALERT_KINDS } from './alerts'
 import { ATTENDANCE_CATEGORIES, ATTESTATION_RELATIONSHIPS } from './attendance'
 import { DOMAIN_SCOPES } from './domain-scopes'
 import { ROUTES, SHIFT_TYPES } from './feed-schedule'
@@ -495,13 +496,47 @@ const horseMeasurements = z.object({
   bodyConditions: z.array(bodyConditionEntry),
 })
 
+/** One of the three kinds an Alert may be — a closed fence (ADR 0024). */
+const alertKind = z.enum(ALERT_KINDS)
+
+/**
+ * A standing warning on a horse, in **full text** wherever it is shown (ADR
+ * 0024, #60). One shape for all three surfaces: a count on a wall read across
+ * a barn tells nobody the horse bites, and two shapes would be two chances to
+ * disagree about what a Prohibition is.
+ *
+ * `endedAt` null is standing. An ended Alert always carries all three of
+ * `endedAt`, `endedBy` and `endingReason` — the audit entry answers who and
+ * when, and only the reason answers *why the biting Alert is gone*.
+ */
+export const alert = z.object({
+  id: z.string(),
+  horseId: z.string(),
+  kind: alertKind,
+  text: z.string(),
+  raisedBy: z.string(),
+  raisedByName: z.string(),
+  /** Epoch milliseconds. A day belongs to the organisation, and this is not one. */
+  raisedAt: z.number(),
+  /** Epoch milliseconds, or null while standing. */
+  endedAt: z.number().nullable(),
+  endedBy: z.string().nullable(),
+  endedByName: z.string().nullable(),
+  endingReason: z.string().nullable(),
+})
+
 /**
  * A horse, as ADR 0003's current-state tier and #32's stories carry it for
  * this ticket. `photoUrl` is where the photo is hosted, not the photo itself —
  * this application has no object storage yet (the same gap #34 left the
- * release template pointing at). Alerts is deliberately absent: nothing writes
- * one yet, and the profile screen holds a place for it rather than this
- * schema inventing a field nobody populates.
+ * release template pointing at).
+ *
+ * **No Alerts field**, and this is the one shape that deliberately has none:
+ * the directory screen does not show them, and a promise nothing reads is a
+ * promise that goes stale unwitnessed — the same call this file already makes
+ * about the Board and a horse's blanket size. They are on `horseProfile`
+ * below, on `boardHorse`, and on the Shift's own checklist: the three surfaces
+ * #60 names.
  */
 export const horse = z.object({
   id: z.string(),
@@ -530,9 +565,24 @@ export const horseList = z.object({ horses: z.array(horse) })
  * feed lines, and the phone's list screen never asked for them.
  */
 export const horseProfile = horse.extend({
+  /**
+   * Standing Alerts, in the order `compareAlerts` fixes — never a count, and
+   * riding here rather than on a read of its own: a second call would leave a
+   * horse looking alert-free whenever it is slow, which is the wrong direction
+   * to fail (#36, ADR 0024).
+   */
+  alerts: z.array(alert),
   /** Only the Shift Types this horse currently has a schedule for (#36). */
   feedSchedules: z.array(feedSchedule),
   measurements: horseMeasurements,
+  /**
+   * Ended Alerts, newest ending first — the profile alone, and on the
+   * read-everything floor (ADR 0024). The history must not leave with the
+   * record, which is ADR 0002's own argument for a departure date, and *she
+   * used to bite and we stopped saying so* is care history the floor already
+   * reads everything of.
+   */
+  endedAlerts: z.array(alert),
 })
 
 /**
@@ -543,9 +593,10 @@ export const horseProfile = horse.extend({
  * distances, and two schemas for it would be two chances to disagree about
  * what a Route is.
  *
- * **No Alerts field**, for the reason `horse` above has none: nothing writes an
- * Alert yet, and the Board holds the column rather than this schema inventing a
- * field nobody populates (#35).
+ * `alerts` is the standing ones in full text, because the Board's own column
+ * writes the words rather than a count: *2 alerts* on a wall read across a barn
+ * tells nobody the horse bites, which is the failure ADR 0024 exists to
+ * prevent, and the paper board writes the words.
  *
  * No blanket size and no height either, though the whiteboard's rows carry
  * both: #37 names what this surface shows, the grid does not show them, and a
@@ -559,6 +610,8 @@ const boardHorse = z.object({
   halterColour: z.string().nullable(),
   pasture: spaceRef.nullable(),
   feedings: z.array(feedSchedule),
+  /** Standing only — an ended Alert leaves the wall (ADR 0024). */
+  alerts: z.array(alert),
 })
 
 /**
@@ -1036,6 +1089,14 @@ export const shiftChecklist = z.object({
   undispositionedObservationCount: z.number(),
   /** Recent Shift Notes, newest first — this Shift's own day and the day before (ADR 0013, #45). */
   shiftNotes: z.array(shiftNote),
+  /**
+   * Standing Alerts on every horse this Shift has a card for, flat — the card
+   * groups them by `horseId` (ADR 0024, #60). They ride on this read rather
+   * than a second one, for the reason the Board's do: a card that renders
+   * before its warnings arrive is a volunteer who has already walked into the
+   * stall.
+   */
+  alerts: z.array(alert),
 })
 
 /** An optional note on a grant, a revocation or a correction (ADR 0010). */
@@ -1210,6 +1271,7 @@ export const reorderList = z.object({ reorders: z.array(reorder) })
 const announcementId = z.uuid()
 const contactId = z.uuid()
 const standingRuleId = z.uuid()
+const alertId = z.uuid()
 const observationId = z.uuid()
 const escalationId = z.uuid()
 const reorderId = z.uuid()
@@ -1418,6 +1480,43 @@ export const contract = {
     /** `departedOn: null` corrects a mistaken Departure — a date, never a delete (ADR 0002, #32). */
     '/horses/departure': {
       accepts: z.object({ horseId, departedOn: dayOfTheOrganisation.nullable(), reason }),
+      answers: z.void(),
+    },
+    /**
+     * Raises an Alert on a horse: a standing warning a volunteer reads before
+     * working with it (ADR 0024). `horse_care` and nobody else — a deliberate
+     * narrowing of ADR 0014, because an Alert anybody may post is a wall
+     * nobody reads, and it is permanent where a Saturday's delay is not. The
+     * floor's own door is the Observation, which escalates and already mails
+     * this Scope's holders.
+     */
+    '/alerts': {
+      accepts: z.object({
+        horseId,
+        kind: alertKind,
+        // Trimmed before it is measured: a warning of three spaces is a blank
+        // line at the top of a profile, and `min(1)` alone lets one through.
+        text: z.string().trim().min(1).max(2000),
+      }),
+      answers: z.object({ alertId: z.string() }),
+    },
+    /** Edits an Alert's text and kind in place — current state with an audit entry (ADR 0003, 0024). */
+    '/alerts/edit': {
+      accepts: z.object({
+        alertId,
+        kind: alertKind,
+        text: z.string().trim().min(1).max(2000),
+      }),
+      answers: z.void(),
+    },
+    /**
+     * Ends an Alert: never a delete, and the reason is **required** rather
+     * than the optional `reason` every other edit here carries (ADR 0024). The
+     * audit entry answers who and when; only this answers *why the biting
+     * Alert is gone*, which is the question asked six months later.
+     */
+    '/alerts/end': {
+      accepts: z.object({ alertId, reason: z.string().trim().min(1).max(500) }),
       answers: z.void(),
     },
     '/suppliers': {

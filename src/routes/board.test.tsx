@@ -33,6 +33,7 @@ function horse(
     halterColour: string | null
     pasture: { id: string; name: string } | null
     feedings: unknown[]
+    alerts: unknown[]
   }> = {},
 ) {
   return {
@@ -41,6 +42,7 @@ function horse(
     halterColour: 'halterColour' in extra ? extra.halterColour : 'green',
     pasture: extra.pasture ?? null,
     feedings: extra.feedings ?? [],
+    alerts: extra.alerts ?? [],
   }
 }
 
@@ -175,8 +177,50 @@ describe('the Board', () => {
     expect(screen.getByText('no feed am feeding')).toBeTruthy()
     expect(screen.getByText('no halter colour')).toBeTruthy()
     expect(screen.getByText('no pasture')).toBeTruthy()
-    // Alerts is a column with nothing under it yet (#35).
+    // A horse carrying no Alert says so, the same as every other blank.
     expect(screen.getByText('no alerts')).toBeTruthy()
+  })
+
+  it('writes an Alert on the wall in full words, never as a count (ADR 0024)', async () => {
+    stubApi({
+      '/board': {
+        today: '2026-08-18',
+        weather: null,
+        announcements: [],
+        sections: [
+          {
+            heading: 'Main barn',
+            rows: [
+              {
+                stall: { id: 's1', name: '1' },
+                horse: horse('Biter', {
+                  alerts: [
+                    {
+                      id: 'alert-1',
+                      horseId: 'biter-1',
+                      kind: 'prohibition',
+                      text: 'No treats by hand — she bites.',
+                      raisedBy: 'priya-1',
+                      raisedByName: 'Priya Chandra',
+                      raisedAt: 1_755_000_000_000,
+                      endedAt: null,
+                      endedBy: null,
+                      endedByName: null,
+                      endingReason: null,
+                    },
+                  ],
+                }),
+              },
+            ],
+          },
+        ],
+      },
+    })
+    renderBoard()
+
+    // *2 alerts* on a wall read across a barn tells nobody the horse bites.
+    expect(await screen.findByText('No treats by hand — she bites.')).toBeTruthy()
+    expect(screen.queryByText('no alerts')).toBeNull()
   })
 
   it('paints a line from its Product kind and says when it is not in feed', async () => {
@@ -306,8 +350,10 @@ describe('the Board', () => {
         photoUrl: null,
         departedOn: null,
         spaces: { stall: null, pasture: null, paddock: null, barn: null },
+        alerts: [],
         feedSchedules: [],
         measurements: { weights: [], bodyConditions: [] },
+        endedAlerts: [],
       },
     })
     renderRoutes(

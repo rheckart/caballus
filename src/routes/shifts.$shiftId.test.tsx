@@ -74,6 +74,7 @@ function checklistBody(overrides: Record<string, unknown> = {}) {
     openAttendanceCount: 0,
     undispositionedObservationCount: 0,
     shiftNotes: [],
+    alerts: [],
     ...overrides,
   }
 }
@@ -154,6 +155,47 @@ describe('opening a Shift', () => {
     expect(await screen.findByRole('heading', { name: 'Apollo' })).toBeTruthy()
     expect(screen.getByText(/Feed per the current Feed Schedule\./)).toBeTruthy()
     expect(screen.getByText(/needs Medication Authority/)).toBeTruthy()
+  })
+
+  it("puts a horse's standing Alerts above her work, in full (ADR 0024)", async () => {
+    stubApi({
+      '/shifts/shift-1': checklistBody({
+        items: [item()],
+        alerts: [
+          {
+            id: 'alert-1',
+            horseId: 'apollo',
+            kind: 'prohibition',
+            text: 'No treats by hand — she bites.',
+            raisedBy: 'priya-1',
+            raisedByName: 'Priya Chandra',
+            raisedAt: 1_755_000_000_000,
+            endedAt: null,
+            endedBy: null,
+            endedByName: null,
+            endingReason: null,
+          },
+        ],
+      }),
+    })
+    renderAt('shift-1')
+
+    const warnings = await screen.findByRole('list', { name: 'Alerts — Apollo' })
+    expect(warnings.textContent).toContain('No treats by hand — she bites.')
+    // Above the work, not beside it: a volunteer who reads the card and not
+    // the warning has already walked into the stall.
+    const card = await screen.findByRole('heading', { name: 'Apollo' })
+    expect(card.nextElementSibling).toBe(warnings)
+  })
+
+  it('shows no Alert block at all on a horse that carries none', async () => {
+    stubApi({ '/shifts/shift-1': checklistBody({ items: [item()] }) })
+    renderAt('shift-1')
+
+    await screen.findByRole('heading', { name: 'Apollo' })
+    // A card that says *no alerts* on every horse teaches a volunteer to skip
+    // the place the words appear.
+    expect(screen.queryByRole('list', { name: 'Alerts — Apollo' })).toBeNull()
   })
 
   it('groups Items per Space', async () => {

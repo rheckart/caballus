@@ -31,6 +31,7 @@ import {
   matches,
   useSaving,
 } from '../../components/forms'
+import { ALERT_KINDS, ALERT_KIND_LABEL, type AlertKind } from '../../shared/alerts'
 import { client } from '../../shared/api-client'
 import {
   ROUTES,
@@ -52,6 +53,12 @@ type Horse = HorseList['horses'][number]
 type SpaceList = Answers<typeof contract, '/spaces'>
 type ProductList = Answers<typeof contract, '/products'>
 type HorseProfile = Answers<typeof contract, '/horses/:horseId'>
+
+/** The three, as the radio group takes them (ADR 0024). */
+const ALERT_KIND_OPTIONS = ALERT_KINDS.map((kind) => ({
+  value: kind,
+  label: ALERT_KIND_LABEL[kind],
+}))
 
 const KIND_LABEL: Record<SpaceKind, string> = {
   stall: 'Stall',
@@ -363,6 +370,8 @@ function HorseRecord({
         </button>
       </header>
 
+      <Alerts horse={horse} profile={profile} act={act} />
+
       <EditAttributes horse={horse} act={act} />
 
       <h3>Space assignments</h3>
@@ -607,6 +616,223 @@ function PublishFeedSchedule({
         <Saved saved={saved} what="Published" />
       </Actions>
     </form>
+  )
+}
+
+/**
+ * The one desk where an Alert is raised, edited and ended (ADR 0024, #60).
+ *
+ * `horse_care` and nobody else, which is why this is here rather than on the
+ * phone's profile: a volunteer who finds on a Saturday that a horse has
+ * started biting records an Observation, which escalates and mails this
+ * Scope's holders. An Alert anybody may post is a wall nobody reads.
+ *
+ * The standing list is read off the profile rather than the row, because the
+ * row is one of sixty and this panel is open on exactly one horse.
+ */
+function Alerts({
+  horse,
+  profile,
+  act,
+}: {
+  horse: Horse
+  profile: HorseProfile | null
+  act: (work: () => Promise<unknown>) => Promise<void>
+}) {
+  return (
+    <div>
+      <h3>Alerts</h3>
+      <p>
+        A standing warning a volunteer reads before working with this horse. It shows in full on the
+        profile, the shift work surface and the Board, and it stays until somebody ends it.
+      </p>
+      {profile === null ? (
+        <Loading what="the alerts" />
+      ) : profile.alerts.length === 0 ? (
+        <Empty>No alerts on this horse.</Empty>
+      ) : (
+        <ul className="alerts">
+          {profile.alerts.map((alert) => (
+            <li key={alert.id} className="alert" data-kind={alert.kind}>
+              <EditAlert alert={alert} act={act} />
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <RaiseAlert horse={horse} act={act} />
+
+      {/* Ended ones are not shown here. They appear on the horse profile and
+          on no other surface (ADR 0024), which is where a history belongs. */}
+    </div>
+  )
+}
+
+function RaiseAlert({
+  horse,
+  act,
+}: {
+  horse: Horse
+  act: (work: () => Promise<unknown>) => Promise<void>
+}) {
+  const { pending, saved, save } = useSaving()
+
+  return (
+    <form
+      onSubmit={(event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
+        const form = event.currentTarget
+        const data = new FormData(form)
+        void save(() =>
+          act(() =>
+            client.post('/alerts', {
+              horseId: horse.id,
+              kind: String(data.get('kind') ?? 'care') as AlertKind,
+              text: String(data.get('text') ?? ''),
+            }),
+          ),
+        )
+          .then(() => {
+            form.reset()
+          })
+          .catch(() => {
+            // Already at the top of the screen, put there by `act`.
+          })
+      }}
+    >
+      <Fields>
+        <div className="field">
+          <Choice legend="Kind" name="kind" options={ALERT_KIND_OPTIONS} defaultValue="care" />
+        </div>
+        <Field label="What a volunteer must know" htmlFor="raise-alert-text">
+          <input id="raise-alert-text" name="text" required maxLength={2000} />
+        </Field>
+      </Fields>
+      <Actions>
+        <SaveButton pending={pending}>Raise an alert</SaveButton>
+        <Saved saved={saved} />
+      </Actions>
+    </form>
+  )
+}
+
+/**
+ * One standing Alert: edited in place, or ended with a reason.
+ *
+ * Ending is its own form because the reason is **required** — the audit entry
+ * answers who and when, and only the reason answers *why the biting Alert is
+ * gone* (ADR 0024). It is never a delete, and there is no un-ending: a warning
+ * that is true again is a new Alert.
+ */
+function EditAlert({
+  alert,
+  act,
+}: {
+  alert: HorseProfile['alerts'][number]
+  act: (work: () => Promise<unknown>) => Promise<void>
+}) {
+  const { pending, saved, save } = useSaving()
+  const ending = useSaving()
+  const [endingOpen, setEndingOpen] = useState(false)
+
+  return (
+    <>
+      <form
+        onSubmit={(event: FormEvent<HTMLFormElement>) => {
+          event.preventDefault()
+          const data = new FormData(event.currentTarget)
+          void save(() =>
+            act(() =>
+              client.post('/alerts/edit', {
+                alertId: alert.id,
+                kind: String(data.get('kind') ?? alert.kind) as AlertKind,
+                text: String(data.get('text') ?? ''),
+              }),
+            ),
+          ).catch(() => {
+            // Already at the top of the screen, put there by `act`.
+          })
+        }}
+      >
+        <Fields>
+          <div className="field">
+            <Choice
+              legend="Kind"
+              name="kind"
+              options={ALERT_KIND_OPTIONS}
+              defaultValue={alert.kind}
+            />
+          </div>
+          <Field label="Text" htmlFor={`alert-text-${alert.id}`}>
+            <input
+              id={`alert-text-${alert.id}`}
+              name="text"
+              defaultValue={alert.text}
+              required
+              maxLength={2000}
+            />
+          </Field>
+        </Fields>
+        <Actions>
+          <SaveButton pending={pending}>Save</SaveButton>
+          <Saved saved={saved} />
+          {!endingOpen && (
+            <button
+              type="button"
+              onClick={() => {
+                setEndingOpen(true)
+              }}
+            >
+              End this alert
+            </button>
+          )}
+        </Actions>
+      </form>
+
+      {endingOpen && (
+        <form
+          className="danger"
+          onSubmit={(event: FormEvent<HTMLFormElement>) => {
+            event.preventDefault()
+            const data = new FormData(event.currentTarget)
+            void ending
+              .save(() =>
+                act(() =>
+                  client.post('/alerts/end', {
+                    alertId: alert.id,
+                    reason: String(data.get('reason') ?? ''),
+                  }),
+                ),
+              )
+              .catch(() => {
+                // Already at the top of the screen, put there by `act`.
+              })
+          }}
+        >
+          <p>
+            The row stays and the profile keeps showing it under <em>ended</em>. Say why — it is the
+            only place the answer lives.
+          </p>
+          <Fields>
+            <Field label="Why it is no longer true" htmlFor={`alert-end-${alert.id}`}>
+              <input id={`alert-end-${alert.id}`} name="reason" required maxLength={500} />
+            </Field>
+          </Fields>
+          <Actions>
+            <SaveButton pending={ending.pending}>End it</SaveButton>
+            <Saved saved={ending.saved} />
+            <button
+              type="button"
+              onClick={() => {
+                setEndingOpen(false)
+              }}
+            >
+              Keep it
+            </button>
+          </Actions>
+        </form>
+      )}
+    </>
   )
 }
 

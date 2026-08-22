@@ -61,6 +61,13 @@ import {
 } from '../roster/releases'
 import { startObservability } from '../observability'
 import { today } from '../time'
+import {
+  endAlert,
+  editAlert,
+  raiseAlert,
+  standingAlertsByHorse,
+  type Alert,
+} from '../horses/alerts'
 import { horseById, horseList, spaceList } from '../horses/list'
 import {
   assignHorseSpace,
@@ -247,6 +254,7 @@ export function buildApi(
   function horseRefusal(because: HorseRefusal) {
     const missing =
       because === 'horse_not_found' ||
+      because === 'alert_not_found' ||
       because === 'space_not_found' ||
       because === 'product_not_found' ||
       because === 'supplier_not_found'
@@ -624,6 +632,8 @@ export function buildApi(
     if (found === null) return json({ error: 'horse_not_found' }, 404)
     return json({
       ...found,
+      alerts: found.alerts.map((entry) => ({ ...entry })),
+      endedAlerts: found.endedAlerts.map((entry) => ({ ...entry })),
       feedSchedules: found.feedSchedules.map((schedule) => ({
         ...schedule,
         lines: [...schedule.lines],
@@ -748,6 +758,7 @@ export function buildApi(
                     ...feeding,
                     lines: [...feeding.lines],
                   })),
+                  alerts: row.horse.alerts.map((entry) => ({ ...entry })),
                 },
         })),
       })),
@@ -815,6 +826,13 @@ export function buildApi(
       readonly openAttendanceCount: number
       readonly undispositionedObservationCount: number
       readonly shiftNotes: Awaited<ReturnType<typeof shiftNotesFor>>
+      /**
+       * Standing Alerts on the horses this Shift has a card for (ADR 0024,
+       * #60). On this read rather than a second one: a card that renders
+       * before its warnings arrive is a volunteer who has already walked into
+       * the stall.
+       */
+      readonly alerts: readonly Alert[]
     }
 
     const found: Found | null = await forOrg(context.orgId).run(
@@ -823,11 +841,19 @@ export function buildApi(
         const shift = await shiftById(db, params.shiftId ?? '')
         if (shift === null || shift.shiftType === 'pop_up') return null
         const shiftType = shift.shiftType
-        const [checklist, counts, notes] = await Promise.all([
+        const [checklist, counts, notes, alertsBy] = await Promise.all([
           checklistForShift(db, { id: shift.id, day: shift.day, shiftType }, clock.timeZone),
           closeCountsFor(db, shift.id),
           shiftNotesFor(db, shift.day, clock.timeZone),
+          standingAlertsByHorse(db),
         ])
+        // `items` alone, because `arrangePrepQueue` builds the cards from
+        // `items` alone: Prep owed renders as a flat list with no horse card
+        // under it, so an Alert sent for a prep-only horse would render
+        // nowhere. A card is what carries a warning.
+        const onThisShift = new Set(
+          checklist.items.map((item) => item.horseId).filter((id) => id !== null),
+        )
         return {
           id: shift.id,
           day: shift.day,
@@ -837,6 +863,7 @@ export function buildApi(
           openAttendanceCount: counts.openAttendanceCount,
           undispositionedObservationCount: counts.undispositionedObservationCount,
           shiftNotes: notes,
+          alerts: [...onThisShift].flatMap((horseId) => alertsBy.get(horseId) ?? []),
         }
       },
     )
@@ -853,6 +880,7 @@ export function buildApi(
       openAttendanceCount: found.openAttendanceCount,
       undispositionedObservationCount: found.undispositionedObservationCount,
       shiftNotes: found.shiftNotes.map((note) => ({ ...note })),
+      alerts: found.alerts.map((entry) => ({ ...entry })),
     })
   })
 
@@ -1065,6 +1093,38 @@ export function buildApi(
   api.mutation('/horses/departure', domainScope('horse_care'), async (input, { context, db }) => {
     const actor = actorOf(context)
     const outcome = await recordHorseDeparture(db, context.orgId, actor.volunteerId, input)
+    return outcome.ok ? noContent() : horseRefusal(outcome.because)
+  })
+
+  /**
+   * Raises a standing Alert on a horse — `horse_care` and nobody else, which
+   * is ADR 0024's deliberate narrowing of ADR 0014. The floor's own door is
+   * the Observation, which escalates and already mails this Scope's holders:
+   * an Alert anybody may post is a wall nobody reads, and it is permanent
+   * where a Saturday's delay is not.
+   */
+  api.mutation('/alerts', domainScope('horse_care'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await raiseAlert(db, context.orgId, actor.volunteerId, input)
+    if (!outcome.ok) return horseRefusal(outcome.because)
+    return json({ alertId: outcome.value.id }, 201)
+  })
+
+  /** Edits an Alert's text and kind in place — current state with an audit entry (ADR 0003, 0024). */
+  api.mutation('/alerts/edit', domainScope('horse_care'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await editAlert(db, context.orgId, actor.volunteerId, input)
+    return outcome.ok ? noContent() : horseRefusal(outcome.because)
+  })
+
+  /**
+   * Ends an Alert: never a delete, and the reason is required by the contract
+   * rather than optional the way every other `reason` on this desk is (ADR
+   * 0024). The row stays readable in the profile's ended section.
+   */
+  api.mutation('/alerts/end', domainScope('horse_care'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await endAlert(db, context.orgId, actor.volunteerId, input)
     return outcome.ok ? noContent() : horseRefusal(outcome.because)
   })
 

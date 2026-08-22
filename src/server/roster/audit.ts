@@ -47,6 +47,7 @@ export const AUDIT_ENTITIES = [
   'task',
   'contact',
   'standing_rule',
+  'alert',
 ] as const
 
 export type AuditEntity = (typeof AUDIT_ENTITIES)[number]

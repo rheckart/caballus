@@ -16,6 +16,8 @@ export type Refusal =
   | 'space_occupied'
   | 'product_not_found'
   | 'supplier_not_found'
+  | 'alert_not_found'
+  | 'alert_already_ended'
 
 export type Recorded<T = null> =
   { readonly ok: true; readonly value: T } | { readonly ok: false; readonly because: Refusal }

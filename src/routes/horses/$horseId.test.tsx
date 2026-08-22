@@ -28,17 +28,76 @@ const PROFILE = {
   photoUrl: null,
   departedOn: null,
   spaces: { stall: { id: 'stall-4', name: 'Stall 4' }, pasture: null, paddock: null, barn: null },
+  alerts: [],
   feedSchedules: [],
   measurements: { weights: [], bodyConditions: [] },
+  endedAlerts: [],
 }
 
 describe('the horse profile', () => {
-  it('shows Alerts first, with nothing under it yet', async () => {
+  it('says so plainly when a horse carries no Alert', async () => {
     stubApi({ '/horses/apollo-1': PROFILE })
     renderProfileAt('apollo-1')
 
     const alerts = await screen.findByRole('heading', { name: 'Alerts' })
     expect(alerts).toBeTruthy()
+    expect(screen.getByText('No alerts recorded.')).toBeTruthy()
+  })
+
+  it('shows a standing Alert in full words, never a count (ADR 0024)', async () => {
+    stubApi({
+      '/horses/apollo-1': {
+        ...PROFILE,
+        alerts: [
+          {
+            id: 'alert-1',
+            horseId: 'apollo-1',
+            kind: 'prohibition',
+            text: 'No treats by hand — she bites.',
+            raisedBy: 'priya-1',
+            raisedByName: 'Priya Chandra',
+            raisedAt: 1_755_000_000_000,
+            endedAt: null,
+            endedBy: null,
+            endedByName: null,
+            endingReason: null,
+          },
+        ],
+      },
+    })
+    renderProfileAt('apollo-1')
+
+    expect(await screen.findByText('No treats by hand — she bites.')).toBeTruthy()
+    expect(screen.queryByText('No alerts recorded.')).toBeNull()
+  })
+
+  it('keeps an ended Alert as history, with the reason it ended', async () => {
+    stubApi({
+      '/horses/apollo-1': {
+        ...PROFILE,
+        endedAlerts: [
+          {
+            id: 'alert-2',
+            horseId: 'apollo-1',
+            kind: 'prohibition',
+            text: 'No treats by hand — she bites.',
+            raisedBy: 'priya-1',
+            raisedByName: 'Priya Chandra',
+            raisedAt: 1_700_000_000_000,
+            endedAt: 1_755_000_000_000,
+            endedBy: 'priya-1',
+            endedByName: 'Priya Chandra',
+            endingReason: 'Six months without an incident; the vet agrees.',
+          },
+        ],
+      },
+    })
+    renderProfileAt('apollo-1')
+
+    expect(await screen.findByRole('heading', { name: 'Alerts that have ended' })).toBeTruthy()
+    // The reason is the only place the answer to *why is it gone* lives.
+    expect(screen.getByText(/Six months without an incident/)).toBeTruthy()
+    // And it is not standing: the section above still reads as empty.
     expect(screen.getByText('No alerts recorded.')).toBeTruthy()
   })
 

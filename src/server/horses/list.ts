@@ -13,8 +13,10 @@ import { eq } from 'drizzle-orm'
 
 import type { OrgScopedDatabase } from '../../db/for-org'
 import { horseSpaceAssignments, horses, spaces } from '../../db/schema'
+import { groupBy } from '../../shared/group-by'
 import { isSpaceKind, type SpaceKind } from '../../shared/spaces'
 import { dayString, type DayString } from '../../shared/time'
+import { alertsForHorse, type Alert } from './alerts'
 import { currentFeedSchedulesFor, type CurrentFeedSchedule } from './feed-schedules'
 import { measurementsFor, type HorseMeasurements } from './measurements'
 
@@ -109,8 +111,16 @@ export async function horseList(db: OrgScopedDatabase): Promise<readonly Horse[]
 }
 
 export interface HorseProfile extends Horse {
+  /** Standing only. An ended one is history, in `endedAlerts` below (ADR 0024). */
+  readonly alerts: readonly Alert[]
   readonly feedSchedules: readonly CurrentFeedSchedule[]
   readonly measurements: HorseMeasurements
+  /**
+   * Alerts that have been ended — the one surface that shows them, on the
+   * read-everything floor rather than behind `roster`, because the history
+   * must not leave with the record (ADR 0002, 0024).
+   */
+  readonly endedAlerts: readonly Alert[]
 }
 
 /**
@@ -139,10 +149,11 @@ export async function horseById(
     .limit(1)
   if (row === undefined) return null
 
-  const [assignmentRows, feedSchedules, measurements] = await Promise.all([
+  const [assignmentRows, feedSchedules, measurements, horseAlerts] = await Promise.all([
     assignmentsFor(db).then((rows) => rows.filter((entry) => entry.horseId === horseId)),
     currentFeedSchedulesFor(db, horseId, today),
     measurementsFor(db, horseId),
+    alertsForHorse(db, horseId),
   ])
 
   return {
@@ -154,8 +165,13 @@ export async function horseById(
     photoUrl: row.photoUrl,
     departedOn: row.departedOn === null ? null : dayString(row.departedOn),
     spaces: spacesOf(assignmentRows),
+    // A Departed horse keeps her standing Alerts: she is gone rather than
+    // cured, and the app auto-ending one would be an ending with no reason
+    // (ADR 0024). The Board and the Work Surface drop her anyway.
+    alerts: horseAlerts.standing,
     feedSchedules,
     measurements,
+    endedAlerts: horseAlerts.ended,
   }
 }
 
@@ -204,15 +220,4 @@ export async function spaceList(db: OrgScopedDatabase): Promise<readonly Space[]
       })),
       retiredOn: row.retiredOn === null ? null : dayString(row.retiredOn),
     }))
-}
-
-function groupBy<T, K>(rows: readonly T[], key: (row: T) => K): Map<K, T[]> {
-  const grouped = new Map<K, T[]>()
-  for (const row of rows) {
-    const at = key(row)
-    const held = grouped.get(at)
-    if (held === undefined) grouped.set(at, [row])
-    else held.push(row)
-  }
-  return grouped
 }
