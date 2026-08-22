@@ -60,6 +60,18 @@ describe('the Whiteboard Read screen', () => {
     }
   })
 
+  it('takes a photograph already on the phone, not only a fresh one', async () => {
+    // `capture` would force the camera and hide the gallery. The panels are
+    // shot on a walk round the barn and read at the desk afterwards, so that
+    // is the ordinary case rather than the exception.
+    stubApi({})
+    renderScreen()
+
+    const input = await photographInput()
+    expect(input.hasAttribute('capture')).toBe(false)
+    expect(input.getAttribute('accept')).toContain('image/jpeg')
+  })
+
   it('refuses an oversized photograph in words, without sending it', async () => {
     stubApi({ '/whiteboard-read': REPORT })
     renderScreen()

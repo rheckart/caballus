@@ -8,6 +8,10 @@
  * structure their boards differently and a misclassified panel writes to the
  * wrong tables; it is one tap by somebody already holding the phone.
  *
+ * The file input takes a fresh photograph **or one already in the gallery**:
+ * the panels are usually shot on a walk round the barn and read at the desk
+ * afterwards, so forcing the camera would refuse the ordinary case.
+ *
  * The image is read to base64 here and sent inside the payload (ADR 0021).
  * Nothing stores it: not this screen, not the server, not IndexedDB — the
  * write declares `neverQueued`, so a failed send is retried by pressing the
@@ -151,13 +155,23 @@ function WhiteboardRead() {
           </div>
 
           <div className="field-wide">
-            <Field label="The photograph" htmlFor="whiteboard-photo">
+            <Field
+              label="The photograph"
+              htmlFor="whiteboard-photo"
+              hint="Take one now, or pick one already on the phone."
+            >
+              {/*
+               * `accept` and **no `capture`**. `capture` forces the camera and
+               * hides the gallery, which is wrong for the ordinary case: the
+               * panels were photographed on a walk round the barn and the
+               * reading happens at the desk afterwards, off a phone that
+               * already has them.
+               */}
               <input
                 id="whiteboard-photo"
                 name="photo"
                 type="file"
                 accept={WHITEBOARD_IMAGE_TYPES.join(',')}
-                capture="environment"
                 onChange={choose}
               />
             </Field>
