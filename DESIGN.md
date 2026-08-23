@@ -443,11 +443,15 @@ components:
     padding: '{spacing.xxs} 0'
 ---
 
-> **Going stale, on purpose.** `src/styles/app.css` was transcribed from this file, and both are being
-> replaced by Tailwind v4 and shadcn — see [ADR 0025](./docs/adr/0025-the-styling-system-is-tailwind-and-shadcn.md).
-> The 72 custom properties become Tailwind's `@theme`, so the palette and the type scale below survive;
-> everything describing hand-written CSS does not. This file is revised screen by screen as each one
-> migrates, rather than rewritten up front to describe a system that does not exist yet.
+> **The migration is done.** `src/styles/app.css` was transcribed from this file, and both were
+> replaced by Tailwind v4 and shadcn — see [ADR 0025](./docs/adr/0025-the-styling-system-is-tailwind-and-shadcn.md);
+> `app.css` was deleted when the last screen migrated (#63). The tokens live on: the palette, the
+> radii, the spacing grid and the type scale below are Tailwind's `@theme` in `src/styles/tailwind.css`,
+> with a dozen shadcn semantic tokens (background, foreground, muted, border, ring, …) mapped from
+> them **by role** and given dark twins; the brand colours and the nine card tints stay single-valued,
+> spent as accents in dark. Where this file describes hand-written CSS selectors, it describes the
+> system this one replaced; the values still hold, the mechanism does not. Components live in
+> `src/components/ui/` (shadcn source this repo owns) and `src/components/forms.tsx`.
 
 ## Overview
 

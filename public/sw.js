@@ -46,7 +46,8 @@
  * being stuck on an old version, decided and recorded here rather than left
  * for whoever notices the cache growing.
  */
-const CACHE_VERSION = 'v1'
+// v2: the Tailwind migration (#63) — a rebuilt bundle under new content hashes.
+const CACHE_VERSION = 'v2'
 const CACHE_NAME = `caballus-shell-${CACHE_VERSION}`
 
 self.addEventListener('install', () => {

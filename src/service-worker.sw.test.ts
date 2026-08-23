@@ -2,6 +2,11 @@ import { expect, it, vi } from 'vitest'
 
 import swSource from '../public/sw.js?raw'
 
+// Read out of the source rather than pinned here, because bumping the
+// hand-bumped version (#48, #63) must retire the old cache — not this test.
+const CACHE_VERSION = /const CACHE_VERSION = '([^']+)'/.exec(swSource)?.[1] ?? 'unset'
+const SHELL_CACHE = `caballus-shell-${CACHE_VERSION}`
+
 /**
  * `public/sw.js` is a static asset, served to the browser exactly as
  * written rather than bundled — so this reads it as text (Vite's `?raw`) and
@@ -126,13 +131,13 @@ it('answers a navigation from the network, and caches it under its own URL for o
 
   const answer = await responded
   expect(answer).toBe(online)
-  expect(await fakeCaches.storeFor('caballus-shell-v1').get(request.url)).toBe(online)
+  expect(await fakeCaches.storeFor(SHELL_CACHE).get(request.url)).toBe(online)
 })
 
 it('falls back to the cached shell for a navigation when the network fails offline', async () => {
   const { fakeSelf, fakeCaches, fetchMock } = load()
   const request = makeRequest('https://caballus.example/shifts/sh_1', 'navigate')
-  fakeCaches.storeFor('caballus-shell-v1').set(request.url, new FakeResponse('<html>cached</html>'))
+  fakeCaches.storeFor(SHELL_CACHE).set(request.url, new FakeResponse('<html>cached</html>'))
   fetchMock.mockRejectedValueOnce(new Error('offline'))
 
   const fetchListener = fakeSelf.listeners.get('fetch')
@@ -152,7 +157,7 @@ it('answers a hashed asset from cache without touching the network on a hit', as
   const { fakeSelf, fakeCaches, fetchMock } = load()
   const request = makeRequest('https://caballus.example/assets/index-abc123.js')
   const cached = new FakeResponse('console.log(1)')
-  fakeCaches.storeFor('caballus-shell-v1').set(request.url, cached)
+  fakeCaches.storeFor(SHELL_CACHE).set(request.url, cached)
 
   const fetchListener = fakeSelf.listeners.get('fetch')
   let responded: Promise<unknown> = Promise.resolve()
@@ -201,6 +206,6 @@ it('takes over immediately on install and activate, and purges a previous deploy
   await activated
 
   expect(fakeCaches.delete).toHaveBeenCalledWith('caballus-shell-v0')
-  expect(fakeCaches.delete).not.toHaveBeenCalledWith('caballus-shell-v1')
+  expect(fakeCaches.delete).not.toHaveBeenCalledWith(SHELL_CACHE)
   expect(fakeSelf.clients.claim).toHaveBeenCalledTimes(1)
 })

@@ -1,19 +1,13 @@
 /*
- * The styling system (ADR 0025, #61): Tailwind v4 plus shadcn, and this file
- * is where `src/styles/app.css`'s 72 custom properties became the `@theme`.
- *
- * The layer order is the whole coexistence story. `legacy` — the old
- * `app.css`, whole — sits *above* Tailwind's preflight (so the unmigrated
- * screens keep their look; preflight's resets do not strip them) and *below*
- * `components` and `utilities` (so a Tailwind class always beats an `app.css`
- * element rule on a migrated screen). When the last screen migrates, the
- * legacy import and `app.css` are deleted together (#63).
+ * The styling system (ADR 0025, #61–#63): Tailwind v4 plus shadcn, and this
+ * file is where `app.css`'s 72 custom properties became the `@theme`.
+ * `app.css` itself rode along in a `legacy` cascade layer while the screens
+ * migrated, and was deleted with the last of them (#63) — full migration
+ * over coexistence, because the half state is not allowed to become
+ * permanent.
  */
-@layer theme, base, legacy, components, utilities;
-
 @import 'tailwindcss';
 @import 'tw-animate-css';
-@import './app.css' layer(legacy);
 
 /* shadcn's dark mode: a `dark` class on <html>, set before first paint by the
    inline script in `src/routes/__root.tsx`, never by a media query alone —

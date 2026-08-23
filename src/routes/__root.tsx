@@ -14,12 +14,12 @@
  * and with no `Actor` to navigate as (ADR 0022) — chrome on it is chrome
  * somebody has to walk over and look past.
  *
- * `src/styles/tailwind.css` is the styling system (ADR 0025, #61): Tailwind's
- * theme carrying DESIGN.md's tokens, with `app.css` riding along in a legacy
- * layer until the last screen migrates (#63). The inline script in `head` is
- * dark mode's before-first-paint half — the app is server-rendered and the
- * server does not know the choice, so without it every load flashes the wrong
- * theme.
+ * `src/styles/tailwind.css` is the whole styling system (ADR 0025, #61–#63):
+ * Tailwind's theme carrying DESIGN.md's tokens, the shadcn semantic tokens
+ * with their dark twins, and the base element typography. The inline script
+ * in `head` is dark mode's before-first-paint half — the app is
+ * server-rendered and the server does not know the choice, so without it
+ * every load flashes the wrong theme.
  */
 import {
   HeadContent,
