@@ -137,6 +137,22 @@ This is the one message, and it stays inside ADR 0014's stated budget of four em
 
 **A floor-writable Reorder thread**, symmetrical with the Escalation's. Refused for want of a reporter with standing; the linked Escalation's thread already serves that purpose and outlives its close.
 
+## Amendment: a Product is Retired with a date, and never deleted
+
+A Product goes off the shelf: the rescue stops buying Senior, the vet changes a medication, a fly spray is replaced by another. Nothing above said what happens to the row, and the only thing anybody actually asked for — _delete it_ — is the one answer the rest of this ADR forbids: three tables reference `products`, and two of them (`feed_schedule_lines`, `days_of_supply_readings`) exist precisely so that _what was she eating_ and _how fast did we go through it_ stay answerable years later.
+
+So a Product carries **`retired_on`**, a nullable date, set and cleared through `/products/retirement` by the same two Scopes that edit one — splitting the door would mean whoever may rename Bute may not stop it. It is current state with an audit entry, ADR 0003's first tier, exactly as the rest of the Product record is. It is the third instance of an act this application already had two of: a Space retires (ADR 0002), a horse Departs, and neither is a delete either.
+
+**The rule that is not obvious is the block.** Retirement is refused — `product_in_use` — while any **non-Departed** horse's **current** Feed Schedule version names it. Two alternatives were live. Retiring anyway and letting the schedules stand is the cheapest, and it is wrong: the checklist materializes a Feed Item off those lines every morning, so the app would go on asking a volunteer to feed a thing the barn has stopped buying, which is the class of quiet wrongness ADR 0001 wrote its own prompt against. Retiring anyway and _flagging_ the horses still naming it is defensible, and it wants a screen nobody has asked for; it stays available if the block turns out to be the annoying half. The Departed exclusion is the other half of the same judgement: Storm's last schedule still names Senior, and holding a Product open on the paperwork of a horse who is no longer here is the check being pedantic rather than useful.
+
+**The block is two-sided**, because a one-sided one leaks the following morning: a Retired Product may be named on no new Feed Schedule version, no new Days of Supply reading and no new Reorder (`product_retired`). An **already-open Reorder is untouched** and closes normally — the sack is still on its way, and refusing to log its arrival would be the app losing a fact it was built to keep.
+
+`horsesByProductOnCurrentSchedules` is the one place _in use_ is decided. `retireProduct` refuses against it and the catalogue read counts against it, so the sentence the desk reads before it clicks — _on 9 horses' Feed Schedules_ — and the refusal it would otherwise hit cannot disagree. That is the reason the count rides on `/products` at all: the refusal nobody hits beats the refusal that explains itself, and `Refusal` is a bare string union that carries no names.
+
+**Retired is a state the reads disagree about, deliberately.** `/products` carries it, marked, because the catalogue is where the history stays. `/supplies` drops it, because with no reading and no Reorder possible there is nothing that screen can offer about it. Every picker hides it. A Whiteboard Read still skips it as already-held — additive-only never means duplicate — and says so in the report, because a Product that silently never appeared reads as a failed read.
+
+**Materialization is not changed.** A Retired Product sitting on a current schedule can only be data written before this, and it still generates its Feed Item: a horse not fed is worse than a stale catalogue row. That is not the unknown-`kind` case in `ITEM_FOR_PRODUCT_KIND`, which generates nothing because the app genuinely does not know what the work _is_.
+
 ## What this changes elsewhere
 
 **ADR 0010 gains a Role.** `Barn Manager | supplies` is one row in the role→scope constant. President and Board Member are unchanged. The `supplies` scope now has a non-officer holder, and the admin screen's standing prompt retires.

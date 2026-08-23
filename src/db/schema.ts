@@ -818,6 +818,17 @@ export const products = pgTable(
     /** Optional, in days — the same unit a days-of-supply reading will use (ADR 0019). */
     reorderPointDays: integer('reorder_point_days'),
     orderingNote: text('ordering_note'),
+    /**
+     * Retired: the day the rescue stopped using this Product, or null. A date
+     * and never a delete, for the reason a Space retires and a horse Departs —
+     * feed schedule lines, days-of-supply readings and Reorders all reference
+     * it, and the history they carry is the point.
+     *
+     * Refused while a non-Departed horse's *current* Feed Schedule names it
+     * (`product_in_use`), and once set it shuts the other three doors:
+     * no new schedule line, no new reading, no new Reorder (`product_retired`).
+     */
+    retiredOn: date('retired_on'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [

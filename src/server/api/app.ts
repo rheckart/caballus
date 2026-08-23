@@ -84,7 +84,7 @@ import { publishFeedSchedule } from '../horses/feed-schedules'
 import { recordMeasurement } from '../horses/measurements'
 import { productList, supplierList } from '../products/list'
 import { boardGrid } from '../board/grid'
-import { createProduct, createSupplier, editProduct } from '../products/records'
+import { createProduct, createSupplier, editProduct, retireProduct } from '../products/records'
 import { patternList, shiftList } from '../shifts/list'
 import {
   assignToStandingRoster,
@@ -1168,6 +1168,21 @@ export function buildApi(
     async (input, { context, db }) => {
       const actor = actorOf(context)
       const outcome = await editProduct(db, context.orgId, actor.volunteerId, input)
+      return outcome.ok ? noContent() : horseRefusal(outcome.because)
+    },
+  )
+
+  /**
+   * Retires a Product, or corrects a mistaken Retirement — the same two Scopes
+   * that edit one, because splitting the door would mean whoever may rename
+   * Bute may not stop it (#64, ADR 0019).
+   */
+  api.mutation(
+    '/products/retirement',
+    anyDomainScope(['horse_care', 'supplies']),
+    async (input, { context, db }) => {
+      const actor = actorOf(context)
+      const outcome = await retireProduct(db, context.orgId, actor.volunteerId, input)
       return outcome.ok ? noContent() : horseRefusal(outcome.because)
     },
   )

@@ -409,6 +409,19 @@ export const product = z.object({
   prescription: z.boolean(),
   reorderPointDays: z.number().nullable(),
   orderingNote: z.string().nullable(),
+  /**
+   * The day the rescue stopped using it, or null — Retired, and a date rather
+   * than a delete (#64). A Retired Product is carried here and hidden by each
+   * surface that offers one, the same division `horseList` keeps for Departed.
+   */
+  retiredOn: dayOfTheOrganisation.nullable(),
+  /**
+   * How many non-Departed horses' current Feed Schedules name it. On the read
+   * so the catalogue can say *on 9 Feed Schedules* and disable the button
+   * before anybody clicks it — a refusal nobody hits beats one that explains
+   * itself.
+   */
+  onFeedSchedules: z.number(),
 })
 
 export const productList = z.object({ products: z.array(product) })
@@ -1537,6 +1550,19 @@ export const contract = {
         orderingNote: z.string().max(2000).nullish(),
       }),
       answers: z.object({ productId: z.string() }),
+    },
+    /**
+     * Retiring a Product, or correcting a mistaken Retirement with
+     * `retiredOn: null` — a date and never a delete, the same act
+     * `/spaces/retirement` and `/horses/departure` already are (#64).
+     *
+     * Refused `product_in_use` while a non-Departed horse's current Feed
+     * Schedule still names it; once Retired it can be named on no new
+     * schedule, no new reading and no new Reorder (`product_retired`).
+     */
+    '/products/retirement': {
+      accepts: z.object({ productId, retiredOn: dayOfTheOrganisation.nullable(), reason }),
+      answers: z.void(),
     },
     /** A partial edit, the same discipline `/horses/attributes` follows (ADR 0003, ADR 0019). */
     '/products/edit': {

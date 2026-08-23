@@ -413,12 +413,26 @@ async function writeProducts(
 
   // Every Product, not just the names asked for: the match is case-insensitive
   // and a `where name in (…)` could only ever find the exact spellings.
-  const existing = await db.select({ id: products.id, name: products.name }).from(products)
+  const existing = await db
+    .select({ id: products.id, name: products.name, retiredOn: products.retiredOn })
+    .from(products)
   const ids = new Map(existing.map((row) => [sameName(row.name), row.id]))
+  const retired = new Set(
+    existing.filter((row) => row.retiredOn !== null).map((row) => sameName(row.name)),
+  )
 
   for (const [name, about] of wanted) {
     if (ids.has(sameName(name))) {
       sheet.skipped.push({ record: 'product', name })
+      // A Retired Product is still already-held, so it is skipped rather than
+      // created a second time — additive-only never means duplicate (#64). But
+      // the report says so, because a board still listing it otherwise reads
+      // as a Product that silently never appeared.
+      if (retired.has(sameName(name))) {
+        sheet.check.push(
+          `${name} is on the board and is Retired. Nothing was written for it, and no feed schedule naming it can be published.`,
+        )
+      }
       continue
     }
     // A Topical is never a prescription, whatever the model proposed (#58).
@@ -579,8 +593,13 @@ async function writeFeedSchedules(
       lines,
     })
     if (!published.ok) {
+      // The whole (horse, Shift Type) schedule is left standing rather than
+      // republished without the offending line: a schedule quietly missing a
+      // Product is a worse record than the one already there (#64).
       sheet.couldNotPlace.push(
-        `${horseName}'s ${SHIFT_TYPE_LABEL[shiftType]} feed schedule could not be published.`,
+        published.because === 'product_retired'
+          ? `${horseName}'s ${SHIFT_TYPE_LABEL[shiftType]} feed schedule names a Retired Product and was not published.`
+          : `${horseName}'s ${SHIFT_TYPE_LABEL[shiftType]} feed schedule could not be published.`,
       )
       continue
     }

@@ -548,11 +548,16 @@ function PublishFeedSchedule({
               }}
             >
               <option value="">None</option>
-              {products.map((product) => (
-                <option key={product.id} value={product.id}>
-                  {product.name}
-                </option>
-              ))}
+              {/* A Retired Product is offered nowhere a new line is written — the
+                  same filter the Space picker above keeps, and the server
+                  refuses it besides (#64). */}
+              {products
+                .filter((product) => product.retiredOn === null)
+                .map((product) => (
+                  <option key={product.id} value={product.id}>
+                    {product.name}
+                  </option>
+                ))}
             </select>
           </Field>
           <Field label="Amount" htmlFor={`feed-line-amount-${horse.id}-${String(index)}`}>

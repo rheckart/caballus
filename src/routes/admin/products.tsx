@@ -33,6 +33,7 @@ import {
 import { client } from '../../shared/api-client'
 import { PRODUCT_KINDS, type ProductKind } from '../../shared/products'
 import { refusalText } from '../../shared/refusals'
+import { dayString } from '../../shared/time'
 import type { Answers, contract } from '../../shared/api-contract'
 
 export const Route = createFileRoute('/admin/products')({
@@ -54,7 +55,14 @@ const KIND_OPTIONS = PRODUCT_KINDS.map((kind) => ({ value: kind, label: KIND_LAB
 
 type Open =
   | { readonly kind: 'supplier' }
-  | { readonly kind: 'product'; readonly product: Product | null }
+  /**
+   * The **id** rather than the row, because the sheet stays open across its own
+   * write: `Retirement` records and reloads without closing, and a captured row
+   * would go on saying *Retire the Product* against a Product the catalogue
+   * behind it has already marked Retired (#64). The same reason
+   * `/admin/horses` holds `openFor` as an id and finds the horse at render.
+   */
+  | { readonly kind: 'product'; readonly productId: string | null }
   | null
 
 function Products() {
@@ -99,6 +107,19 @@ function Products() {
         matches(filter, product.name, KIND_LABEL[product.kind], product.supplierName),
       ),
     [products, filter],
+  )
+
+  /**
+   * The Product the sheet is open on, resolved from the list on every render
+   * rather than captured when the button was pressed — which is what makes the
+   * Retirement panel flip the moment its own write lands (#64).
+   */
+  const editing = useMemo(
+    () =>
+      open?.kind === 'product' && open.productId !== null
+        ? ((products?.products ?? []).find((product) => product.id === open.productId) ?? null)
+        : null,
+    [open, products],
   )
 
   return (
@@ -151,7 +172,7 @@ function Products() {
         <h2>The catalogue</h2>
         <AddButton
           onClick={() => {
-            setOpen({ kind: 'product', product: null })
+            setOpen({ kind: 'product', productId: null })
           }}
         >
           Add a Product
@@ -192,7 +213,18 @@ function Products() {
               <tbody>
                 {shown.map((product) => (
                   <tr key={product.id}>
-                    <td>{product.name}</td>
+                    <td>
+                      {product.name}
+                      {/* A Retired Product stays on this list, marked — the
+                          same call `/admin/horses` makes for a Departed horse,
+                          because admin is where the history stays (#64). */}
+                      {product.retiredOn !== null && (
+                        <>
+                          {' '}
+                          <span className="badge">Retired {product.retiredOn}</span>
+                        </>
+                      )}
+                    </td>
                     <td>
                       <span className={`badge badge-${BADGE[product.kind]}`}>
                         {KIND_LABEL[product.kind]}
@@ -209,7 +241,7 @@ function Products() {
                       <button
                         type="button"
                         onClick={() => {
-                          setOpen({ kind: 'product', product })
+                          setOpen({ kind: 'product', productId: product.id })
                         }}
                       >
                         Edit
@@ -242,20 +274,21 @@ function Products() {
 
       {open?.kind === 'product' && (
         <Sheet
-          title={open.product === null ? 'Add a Product' : `Edit ${open.product.name}`}
+          title={editing === null ? 'Add a Product' : `Edit ${editing.name}`}
           description="Medication is the kind that needs Medication Authority to give. A Topical goes on a horse rather than in it, and is never fed."
           onClose={() => {
             setOpen(null)
           }}
         >
           <ProductForm
-            product={open.product}
+            product={editing}
             suppliers={suppliers?.suppliers ?? []}
             act={act}
             onSaved={() => {
               setOpen(null)
             }}
           />
+          {editing !== null && <Retirement product={editing} act={act} />}
         </Sheet>
       )}
     </main>
@@ -312,6 +345,113 @@ function SupplierForm({
       </Fields>
       <Actions>
         <SaveButton pending={pending}>Add the Supplier</SaveButton>
+        <Saved saved={saved} />
+      </Actions>
+    </form>
+  )
+}
+
+/**
+ * Retiring a Product, and correcting a mistaken Retirement — the same shape
+ * `/admin/horses`'s Departure has, and for the same reason: a date, never a
+ * delete (#64).
+ *
+ * `onFeedSchedules` comes down on the read, so the button is disabled with
+ * the count against it **before** anybody clicks. The server refuses the same
+ * case with `product_in_use` from the same derivation, so the two cannot
+ * disagree — this is the friendlier half of one rule, not a second one.
+ */
+function Retirement({
+  product,
+  act,
+}: {
+  product: Product
+  act: (work: () => Promise<unknown>) => Promise<void>
+}) {
+  const { pending, saved, save } = useSaving()
+
+  if (product.retiredOn !== null) {
+    return (
+      <form
+        className="danger"
+        onSubmit={(event: FormEvent<HTMLFormElement>) => {
+          event.preventDefault()
+          void save(() =>
+            act(() =>
+              client.post('/products/retirement', {
+                productId: product.id,
+                retiredOn: null,
+                reason: null,
+              }),
+            ),
+          ).catch(() => {
+            // Already on the screen behind the sheet, put there by `act`.
+          })
+        }}
+      >
+        <h3>Retired {product.retiredOn}</h3>
+        <p>
+          The record stays either way, and so do its readings and its Reorders. This only corrects
+          the date.
+        </p>
+        <Actions>
+          <SaveButton pending={pending}>Correct: not Retired</SaveButton>
+          <Saved saved={saved} />
+        </Actions>
+      </form>
+    )
+  }
+
+  if (product.onFeedSchedules > 0) {
+    return (
+      <div className="danger">
+        <h3>Retirement</h3>
+        <p>
+          {product.name} is on {product.onFeedSchedules}{' '}
+          {product.onFeedSchedules === 1 ? "horse's" : "horses'"} current Feed{' '}
+          {product.onFeedSchedules === 1 ? 'Schedule' : 'Schedules'}. Take it off{' '}
+          {product.onFeedSchedules === 1 ? 'that one' : 'those'} first — otherwise the phone would
+          still ask for it every morning.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <form
+      className="danger"
+      onSubmit={(event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
+        const data = new FormData(event.currentTarget)
+        void save(() =>
+          act(() =>
+            client.post('/products/retirement', {
+              productId: product.id,
+              retiredOn: dayString(String(data.get('retiredOn') ?? '')),
+              reason: String(data.get('reason') ?? '') || null,
+            }),
+          ),
+        ).catch(() => {
+          // Already on the screen behind the sheet, put there by `act`.
+        })
+      }}
+    >
+      <h3>Retirement</h3>
+      <p>
+        A date, never a delete. It stays on this list, marked, and the readings and Reorders it
+        already carries stay with it. It stops being offered on a new Feed Schedule line, a new
+        reading and a new Reorder.
+      </p>
+      <Fields>
+        <Field label="Date" htmlFor="retired-on">
+          <input id="retired-on" name="retiredOn" type="date" required />
+        </Field>
+        <Field label="Reason" htmlFor="retirement-reason" optional>
+          <input id="retirement-reason" name="reason" maxLength={500} />
+        </Field>
+      </Fields>
+      <Actions>
+        <SaveButton pending={pending}>Retire the Product</SaveButton>
         <Saved saved={saved} />
       </Actions>
     </form>
