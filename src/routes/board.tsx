@@ -29,11 +29,18 @@
  * **It polls, and it says how old it is.** A fetch that fails leaves the last
  * grid on the wall with its age against it, rather than blanking a screen
  * people across a barn are reading.
+ *
+ * **It is pinned light, in every combination** (#61, #63, ADR 0022). The app's
+ * own theme never applies here — the inline head script and `resolveDark` both
+ * skip `/board` — and the `prefers-color-scheme` reading this screen once
+ * carried left with the migration, for the same reason: a wall display must
+ * not change at dusk because a tablet's OS decided. One look, always.
  */
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useState } from 'react'
 
 import { ALERT_KIND_LABEL } from '../shared/alerts'
+import type { ProductKind } from '../shared/products'
 import { client } from '../shared/api-client'
 import { BOARD_TOKEN_HEADER } from '../shared/board'
 import { refusalText } from '../shared/refusals'
@@ -104,6 +111,24 @@ const ROUTE_LABEL: Record<Feeding['lines'][number]['route'], string> = {
   topical: 'topical',
   other: 'other',
 }
+
+/**
+ * Colour is the Product's kind, never a pen somebody picked up (ADR 0022).
+ * A **total** Record, so a fifth kind does not compile until somebody decides
+ * its colour — the same fence `ITEM_FOR_PRODUCT_KIND` holds (#58) — where the
+ * old stylesheet would have let it ship colourless, reading as "we forgot".
+ */
+export const KIND_TEXT_CLASS: Record<ProductKind, string> = {
+  feed: 'text-brand-teal',
+  supplement: 'text-link-blue',
+  medication: 'font-semibold text-error',
+  topical: 'text-brand-purple',
+}
+
+/** Every cell of the grid: ruled on two sides, the last column unruled. */
+const CELL = 'border-b border-r border-border px-4 py-3 text-left align-top last:border-r-0'
+const HEAD_CELL =
+  'whitespace-nowrap bg-secondary text-[11px] font-semibold uppercase tracking-widest text-muted-foreground'
 
 /**
  * The token this tablet holds: the one it was just handed in the URL, or the
@@ -220,22 +245,28 @@ function Board() {
 
   if (grid === null) {
     return (
-      <main className="board">
-        <style>{STYLE}</style>
-        <h1>Feed board</h1>
-        {problem === null ? <p>One moment…</p> : <p role="alert">{problem}</p>}
+      <main className="max-w-none p-4 text-foreground">
+        <h1 className="text-[32px]">Feed board</h1>
+        {problem === null ? (
+          <p>One moment…</p>
+        ) : (
+          <p role="alert" className="font-medium text-destructive">
+            {problem}
+          </p>
+        )}
       </main>
     )
   }
 
   return (
-    <main className="board">
-      <style>{STYLE}</style>
-      <header className="board-head">
-        <h1>Feed board</h1>
-        <p className="board-day">{grid.today}</p>
+    <main className="max-w-none p-4 pb-5 text-foreground">
+      <header className="mb-4 flex flex-wrap items-baseline gap-4">
+        <h1 className="m-0 text-[32px] tracking-tight">Feed board</h1>
+        <p className="m-0 text-lg text-secondary-foreground">{grid.today}</p>
         <p
-          className={stale ? 'board-age board-stale' : 'board-age'}
+          className={
+            stale ? 'm-0 text-sm font-semibold text-warning' : 'm-0 text-sm text-muted-foreground'
+          }
           role={stale ? 'alert' : 'status'}
         >
           {freshness(age, problem)}
@@ -248,31 +279,41 @@ function Board() {
 
       {grid.sections.map((section) => (
         <section key={section.heading}>
-          <table className="board-grid">
-            <caption>{section.heading}</caption>
+          <table className="mb-6 w-full border-separate border-spacing-0 overflow-hidden rounded-lg border border-border bg-background text-base">
+            <caption className="py-3 text-left text-[22px] font-semibold text-foreground">
+              {section.heading}
+            </caption>
             <thead>
               <tr>
-                <th scope="col">Stall</th>
-                <th scope="col">Horse</th>
-                <th scope="col">Pasture</th>
-                {COLUMNS.map((shiftType) => (
-                  <th key={shiftType} scope="col">
-                    {SHIFT_TYPE_LABEL[shiftType]}
+                {[
+                  'Stall',
+                  'Horse',
+                  'Pasture',
+                  ...COLUMNS.map((c) => SHIFT_TYPE_LABEL[c]),
+                  'Alerts',
+                ].map((heading) => (
+                  <th key={heading} scope="col" className={`${CELL} ${HEAD_CELL}`}>
+                    {heading}
                   </th>
                 ))}
-                <th scope="col">Alerts</th>
               </tr>
             </thead>
             <tbody>
               {section.rows.map((row) => (
-                <tr key={row.stall?.id ?? row.horse?.id ?? section.heading}>
-                  <th scope="row">
+                <tr
+                  key={row.stall?.id ?? row.horse?.id ?? section.heading}
+                  className="[&:last-child>*]:border-b-0"
+                >
+                  <th scope="row" className={`${CELL} font-semibold`}>
                     {row.stall === null ? <Blank>no stall</Blank> : row.stall.name}
                   </th>
                   {row.horse === null ? (
                     // The stall that stands OPEN keeps its row, because an
                     // empty stall is information (ADR 0002).
-                    <td className="board-open" colSpan={COLUMNS.length + 3}>
+                    <td
+                      className={`${CELL} bg-card font-semibold tracking-[2px] text-stone`}
+                      colSpan={COLUMNS.length + 3}
+                    >
                       OPEN
                     </td>
                   ) : (
@@ -309,10 +350,15 @@ function Announcements({ announcements }: { announcements: BoardGrid['announceme
   if (announcements.length === 0) return null
 
   return (
-    <section className="board-announcements" aria-label="Announcements">
-      <ul>
+    <section
+      className="mb-4 rounded-lg bg-card-tint-yellow-bold px-4 py-3 text-secondary-foreground"
+      aria-label="Announcements"
+    >
+      <ul className="m-0 pl-5">
         {announcements.map((announcement) => (
-          <li key={announcement.id}>{announcement.text}</li>
+          <li key={announcement.id} className="m-0 py-0.5">
+            {announcement.text}
+          </li>
         ))}
       </ul>
     </section>
@@ -330,7 +376,7 @@ function Announcements({ announcements }: { announcements: BoardGrid['announceme
 function Weather({ reading, today }: { reading: BoardGrid['weather']; today: BoardGrid['today'] }) {
   if (reading === null) {
     return (
-      <p className="board-weather board-weather-none">
+      <p className="mb-4 rounded-lg bg-card-tint-sky px-4 py-3">
         <Blank>no weather read for today yet</Blank>
       </p>
     )
@@ -352,20 +398,20 @@ function Weather({ reading, today }: { reading: BoardGrid['weather']; today: Boa
   const apparent = hoursToday.map((hour) => hour.apparentTempF).filter((value) => value !== null)
 
   return (
-    <section className="board-weather" aria-label="Today’s weather">
-      <p className="board-weather-holds">
+    <section className="mb-4 rounded-lg bg-card-tint-sky px-4 py-3" aria-label="Today’s weather">
+      <p className="my-0.5 text-2xl font-semibold tracking-tight text-foreground">
         {holding.length === 0 ? (
           <Blank>no weather rule in force today</Blank>
         ) : (
           holding.map((resolution) => (
-            <span key={resolution.condition} className="board-weather-holding">
+            <span key={resolution.condition} className="mr-4 uppercase text-brand-orange-deep">
               {CONDITION_HOLDS[resolution.condition]}
             </span>
           ))
         )}
       </p>
 
-      <p className="board-weather-reading">
+      <p className="my-0.5 text-sm text-muted-foreground">
         {air.length > 0 && (
           <>
             {Math.min(...air)}–{Math.max(...air)} °F
@@ -381,7 +427,7 @@ function Weather({ reading, today }: { reading: BoardGrid['weather']; today: Boa
       </p>
 
       {unresolved.length > 0 && (
-        <p className="board-weather-unresolved" role="alert">
+        <p className="my-0.5 text-sm font-semibold text-brand-orange-deep" role="alert">
           {unresolved.map((each) => (
             <span key={each.condition}>
               {CONDITION_HOLDS[each.condition]} could not be answered
@@ -476,8 +522,8 @@ function HorseRow({
 
   return (
     <>
-      <td>
-        <span className="board-name">
+      <td className={CELL}>
+        <span className="block text-lg font-semibold text-foreground">
           {linked ? (
             // A phone. The tablet gets plain text: its token authorizes the
             // Board and nothing else, so a link there would lead to a refusal
@@ -492,7 +538,9 @@ function HorseRow({
         {horse.halterColour === null ? (
           <Blank>no halter colour</Blank>
         ) : (
-          <span className="board-halter">{horse.halterColour}</span>
+          <span className="inline-block text-[13px] font-semibold uppercase tracking-widest text-muted-foreground">
+            {horse.halterColour}
+          </span>
         )}
         {wearing === null && unknown && (
           // An unanswered question, never a blank row: a horse whose sheet
@@ -503,10 +551,17 @@ function HorseRow({
         {wearing !== null && (
           // The number that decided it rides with it, so the tag explains
           // itself instead of looking arbitrary — *38 °F, sheets under 50°*.
-          <span className="board-garment" data-garment={wearing.condition}>
+          <span
+            className={`ml-1 inline-block rounded-sm px-2 py-0.5 text-[13px] font-semibold uppercase tracking-widest ${
+              wearing.condition === 'blanket_weather'
+                ? 'bg-card-tint-lavender text-brand-purple-800'
+                : 'bg-card-tint-mint text-brand-green'
+            }`}
+            data-garment={wearing.condition}
+          >
             {CONDITION_HOLDS[wearing.condition]}
             {wearing.readingValue !== null && wearing.thresholdValue !== null && (
-              <span className="board-garment-why">
+              <span className="font-normal normal-case tracking-normal text-muted-foreground">
                 {' '}
                 {wearing.readingValue}°, under {wearing.thresholdValue}°
               </span>
@@ -514,28 +569,46 @@ function HorseRow({
           </span>
         )}
       </td>
-      <td>{horse.pasture === null ? <Blank>no pasture</Blank> : horse.pasture.name}</td>
+      <td className={CELL}>
+        {horse.pasture === null ? <Blank>no pasture</Blank> : horse.pasture.name}
+      </td>
       {COLUMNS.map((shiftType) => (
-        <td key={shiftType} className="board-feed">
+        <td key={shiftType} className={CELL}>
           <Feed feeding={feedings.get(shiftType) ?? null} shiftType={shiftType} />
         </td>
       ))}
       {/* The full words, never a count: *2 alerts* on a wall read across a
           barn tells nobody the horse bites, which is the failure ADR 0024
           exists to prevent. The paper board writes the words. */}
-      <td className="board-alerts">
-        {horse.alerts.length === 0 ? (
-          <Blank>no alerts</Blank>
-        ) : (
-          horse.alerts.map((alert) => (
-            <span key={alert.id} className="board-alert" data-kind={alert.kind}>
-              <strong>{ALERT_KIND_LABEL[alert.kind]}</strong> {alert.text}
-            </span>
-          ))
-        )}
+      <td className={CELL}>
+        <span className="flex flex-col gap-1">
+          {horse.alerts.length === 0 ? (
+            <Blank>no alerts</Blank>
+          ) : (
+            horse.alerts.map((alert) => (
+              <span
+                key={alert.id}
+                className={`rounded-sm border-l-4 px-2 py-0.5 ${ALERT_TINT[alert.kind]}`}
+                data-kind={alert.kind}
+              >
+                <strong className="mr-1 text-[13px] uppercase tracking-wide">
+                  {ALERT_KIND_LABEL[alert.kind]}
+                </strong>
+                {alert.text}
+              </span>
+            ))
+          )}
+        </span>
       </td>
     </>
   )
+}
+
+/** The three Alert kinds, apart by colour and by the word in front (ADR 0024). */
+const ALERT_TINT: Record<BoardHorse['alerts'][number]['kind'], string> = {
+  prohibition: 'border-l-error bg-card-tint-rose',
+  care: 'border-l-warning bg-card-tint-peach',
+  allergy: 'border-l-brand-purple bg-card-tint-lavender',
 }
 
 function Feed({
@@ -556,18 +629,23 @@ function Feed({
   }
 
   return (
-    <ul className="board-lines">
+    <ul className="m-0 list-none p-0">
       {feeding.isNew && (
-        <li className="board-new" data-new="">
+        <li
+          className="m-0 py-0.5 text-xs font-semibold uppercase tracking-widest text-primary"
+          data-new=""
+        >
           New
         </li>
       )}
       {feeding.lines.map((line) => (
-        <li key={line.productId} data-kind={line.productKind}>
+        <li
+          key={line.productId}
+          className={`m-0 py-0.5 ${KIND_TEXT_CLASS[line.productKind]}`}
+          data-kind={line.productKind}
+        >
           {line.amount} {line.productName}
-          {line.route !== 'in_feed' && (
-            <span className="board-route"> — {ROUTE_LABEL[line.route]}</span>
-          )}
+          {line.route !== 'in_feed' && <span className="italic"> — {ROUTE_LABEL[line.route]}</span>}
         </li>
       ))}
     </ul>
@@ -576,7 +654,7 @@ function Feed({
 
 /** A blank, rendered visibly as one. */
 function Blank({ children }: { children: string }) {
-  return <span className="board-blank">{children}</span>
+  return <span className="italic text-stone">{children}</span>
 }
 
 /** How old the grid on the wall is, and whether anything is wrong with it. */
@@ -593,86 +671,5 @@ function freshness(age: number | null, problem: string | null): string {
 
   return problem === null ? `${when}.` : `${when}. Not updating: ${problem}`
 }
-
-/**
- * The tablet's own styling, and the only styling in the application so far.
- *
- * It is here rather than in a stylesheet because this is the first screen
- * whose legibility is the feature: it is read across a barn, in daylight, by
- * somebody carrying a hay net. The colours are keyed to `data-kind`, which is
- * the whole of *semantic by construction* — nothing here decides what a colour
- * means, the field does.
- */
-const STYLE = `
-.board { font-family: var(--font); margin: 0; padding: var(--space-md); color: var(--ink); }
-.board-head { display: flex; align-items: baseline; gap: var(--space-md); flex-wrap: wrap; margin-bottom: var(--space-md); }
-.board-head h1 { font-size: 32px; letter-spacing: -0.5px; margin: 0; }
-.board-day { font-size: 18px; margin: 0; color: var(--charcoal); }
-.board-age { font-size: 14px; margin: 0; color: var(--steel); background: none; border: 0; padding: 0; }
-.board-stale { color: var(--warning); font-weight: 600; background: none; border: 0; padding: 0; }
-.board-grid { width: 100%; display: table; border-collapse: separate; border-spacing: 0; margin-bottom: var(--space-xl); font-size: 16px; background: var(--canvas); border: 1px solid var(--hairline); border-radius: var(--rounded-lg); overflow: hidden; }
-.board-grid caption { text-align: left; font-size: 22px; font-weight: 600; padding: var(--space-sm) 0; color: var(--ink); }
-.board-grid th, .board-grid td { border-bottom: 1px solid var(--hairline-soft); border-right: 1px solid var(--hairline-soft); padding: var(--space-sm) var(--space-md); vertical-align: top; text-align: left; }
-.board-grid tbody tr:last-child th, .board-grid tbody tr:last-child td { border-bottom: 0; }
-.board-grid th:last-child, .board-grid td:last-child { border-right: 0; }
-.board-grid thead th { background: var(--surface); color: var(--steel); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; white-space: nowrap; }
-.board-name { font-weight: 600; font-size: 18px; display: block; color: var(--ink); }
-.board-halter { display: inline-block; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--slate); }
-.board-open { font-weight: 600; letter-spacing: 2px; color: var(--stone); background: var(--surface-soft); }
-.board-blank { color: var(--stone); font-style: italic; }
-.board-lines { list-style: none; margin: 0; padding: 0; }
-.board-lines li { padding: 2px 0; margin: 0; border: 0; }
-/* Colour is the Product's kind, never a pen somebody picked up (ADR 0022). */
-.board-lines li[data-kind='feed'] { color: var(--brand-teal); }
-.board-lines li[data-kind='supplement'] { color: var(--link-blue); }
-.board-lines li[data-kind='medication'] { color: var(--error); font-weight: 600; }
-.board-lines li[data-kind='topical'] { color: var(--brand-purple); }
-.board-route { font-style: italic; }
-.board-announcements { margin: 0 0 var(--space-md); padding: var(--space-sm) var(--space-md); background: var(--card-tint-yellow-bold); border: 0; border-radius: var(--rounded-lg); color: var(--charcoal); }
-.board-announcements ul { margin: 0; padding-left: var(--space-lg); }
-.board-announcements li { border: 0; padding: 2px 0; }
-.board-weather { margin: 0 0 var(--space-md); padding: var(--space-sm) var(--space-md); background: var(--card-tint-sky); border: 0; border-radius: var(--rounded-lg); }
-.board-weather p { margin: 2px 0; }
-.board-weather-holds { font-size: 24px; font-weight: 600; letter-spacing: -0.3px; color: var(--ink); }
-.board-weather-holding { margin-right: var(--space-md); text-transform: uppercase; color: var(--brand-orange-deep); }
-.board-weather-reading { font-size: 14px; color: var(--slate); }
-.board-weather-unresolved { font-size: 14px; color: var(--brand-orange-deep); font-weight: 600; background: none; border: 0; padding: 0; margin: 2px 0; }
-.board-garment { display: inline-block; margin-left: var(--space-xxs); font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; border-radius: var(--rounded-sm); padding: 2px 8px; }
-.board-garment[data-garment='blanket_weather'] { background: var(--card-tint-lavender); color: var(--brand-purple-800); }
-.board-garment[data-garment='sheet_weather'] { background: var(--card-tint-mint); color: var(--brand-green); }
-.board-garment-why { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--slate); }
-.board-new { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--primary); }
-/*
- * The barn's tablet is often on a wall in a dim aisle; the dark reading of the
- * same tokens keeps the kind colours apart at the far end of it.
- */
-@media (prefers-color-scheme: dark) {
-  .board { background: var(--brand-navy-deep); color: var(--on-dark); }
-  .board-head h1, .board-name { color: var(--on-dark); }
-  .board-day { color: var(--on-dark-muted); }
-  .board-grid { background: var(--brand-navy); border-color: var(--brand-navy-mid); }
-  .board-grid caption { color: var(--on-dark); }
-  .board-grid th, .board-grid td { border-color: var(--brand-navy-mid); }
-  .board-grid thead th { background: var(--brand-navy-mid); color: var(--on-dark-muted); }
-  .board-halter { color: var(--on-dark-muted); }
-  .board-age, .board-weather-reading { color: var(--on-dark-muted); }
-  .board-stale { color: var(--brand-yellow); }
-  .board-blank { color: var(--stone); }
-  .board-open { background: var(--brand-navy-deep); color: var(--stone); }
-  .board-lines li[data-kind='feed'] { color: #45d6c2; }
-  .board-lines li[data-kind='supplement'] { color: #86adff; }
-  .board-lines li[data-kind='medication'] { color: #ff7385; }
-  .board-lines li[data-kind='topical'] { color: #c7a2ff; }
-  .board-new { color: var(--brand-purple-300); }
-  .board-announcements { background: var(--brand-navy-mid); color: var(--on-dark); }
-  .board-weather { background: var(--brand-navy-mid); }
-  .board-weather-holds { color: var(--on-dark); }
-  .board-weather-holding { color: var(--brand-yellow); }
-  .board-weather-unresolved { color: var(--brand-yellow); }
-  .board-garment[data-garment='blanket_weather'] { background: var(--brand-purple-800); color: var(--brand-purple-300); }
-  .board-garment[data-garment='sheet_weather'] { background: #14432a; color: #7fe3a0; }
-  .board-garment-why { color: var(--on-dark-muted); }
-}
-`
 
 export default Board
