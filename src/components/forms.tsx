@@ -121,6 +121,15 @@ export function WideField(props: Parameters<typeof Field>[0]) {
 }
 
 /**
+ * The face of one option in a `Choice`: the sr-only radio's visible twin.
+ * Exported because the RHF-controlled radio groups (the horse record, the
+ * thresholds desk) render the same pill from their own state — one string, so
+ * the controlled and uncontrolled spellings cannot drift apart.
+ */
+export const CHOICE_OPTION =
+  'inline-flex min-h-11 cursor-pointer items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-medium text-secondary-foreground transition-colors hover:bg-secondary peer-checked:border-primary peer-checked:bg-primary peer-checked:text-primary-foreground peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-background'
+
+/**
  * A short, closed list of options, spent as buttons rather than a picker.
  *
  * Radio inputs underneath, so it is a radio group to everything that reads the
@@ -166,9 +175,7 @@ export function Choice<Value extends string>({
                     }
               }
             />
-            <span className="inline-flex min-h-11 cursor-pointer items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-medium text-secondary-foreground transition-colors hover:bg-secondary peer-checked:border-primary peer-checked:bg-primary peer-checked:text-primary-foreground peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-background">
-              {option.label}
-            </span>
+            <span className={CHOICE_OPTION}>{option.label}</span>
           </label>
         ))}
       </div>

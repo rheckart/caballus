@@ -21,7 +21,16 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 
-import { Actions, Empty, Field, Fields, SaveButton, Saved, useSaving } from '../../components/forms'
+import {
+  Actions,
+  CHOICE_OPTION,
+  Empty,
+  Field,
+  Fields,
+  SaveButton,
+  Saved,
+  useSaving,
+} from '../../components/forms'
 import { Alert, AlertTitle } from '../../components/ui/alert'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
@@ -67,10 +76,6 @@ const METRIC_LABEL: Record<ThresholdRecord['metric'], string> = {
 
 /** A card section, now that a `<section>` is no longer one by element rule. */
 const CARD = 'mb-4 rounded-lg border border-border bg-background p-4 sm:p-6'
-
-/** The Choice idiom for a radio spent as a button (`src/components/forms.tsx`). */
-const CHOICE_BUTTON =
-  'inline-flex min-h-11 cursor-pointer items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-medium text-secondary-foreground transition-colors hover:bg-secondary peer-checked:border-primary peer-checked:bg-primary peer-checked:text-primary-foreground peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-background'
 
 function Thresholds() {
   const [listed, setListed] = useState<ThresholdList | null>(null)
@@ -397,7 +402,7 @@ function Horse({
                   value="overridden"
                   defaultChecked
                 />
-                <span className={CHOICE_BUTTON}>Its own number</span>
+                <span className={CHOICE_OPTION}>Its own number</span>
               </label>
               <label htmlFor={`stance-default-${horse.horseId}`} className="m-0 block">
                 <input
@@ -407,7 +412,7 @@ function Horse({
                   type="radio"
                   value="follows_default"
                 />
-                <span className={CHOICE_BUTTON}>The rescue’s number, deliberately</span>
+                <span className={CHOICE_OPTION}>The rescue’s number, deliberately</span>
               </label>
             </div>
           </fieldset>

@@ -84,8 +84,7 @@ export const THEME_HEAD_SCRIPT = `(function () {
     var choice = localStorage.getItem('${THEME_STORAGE_KEY}')
     var dark =
       choice === 'dark' ||
-      ((choice === null || choice === 'system') &&
-        matchMedia('(prefers-color-scheme: dark)').matches)
+      (choice !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)
     var path = location.pathname
     if (path === '/board' || path.indexOf('/board/') === 0) dark = false
     if (dark) document.documentElement.classList.add('dark')

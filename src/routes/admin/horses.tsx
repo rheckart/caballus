@@ -42,7 +42,9 @@ import {
 } from 'react-hook-form'
 
 import {
+  Actions,
   AddButton,
+  CHOICE_OPTION,
   Empty,
   Field,
   Fields,
@@ -389,9 +391,9 @@ function NewHorse({ reload, onSaved }: { reload: () => Promise<void>; onSaved: (
         </Field>
       </Fields>
       {refusal !== null && <InlineRefusal>{refusal}</InlineRefusal>}
-      <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-border pt-4">
+      <Actions>
         <SaveButton pending={pending}>Add the horse</SaveButton>
-      </div>
+      </Actions>
     </form>
   )
 }
@@ -691,15 +693,6 @@ function StickySaved({ shown, what = 'Saved' }: { shown: boolean; what?: string 
   )
 }
 
-/** The row a tab's form ends with. */
-function TabActions({ children }: { children: ReactNode }) {
-  return (
-    <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-border pt-4">
-      {children}
-    </div>
-  )
-}
-
 /* ------------------------------------------------------------ 1. About her -- */
 
 interface AboutValues extends FieldValues {
@@ -771,10 +764,10 @@ function AboutTab({
         </WideField>
       </Fields>
       {refusal !== null && <InlineRefusal>{refusal}</InlineRefusal>}
-      <TabActions>
+      <Actions>
         <SaveButton pending={pending}>Save</SaveButton>
         <StickySaved shown={saved} />
-      </TabActions>
+      </Actions>
     </form>
   )
 }
@@ -812,7 +805,7 @@ function LocationTab({
   // What the server currently holds, per kind — the thing *dirty* is measured
   // against. A ref rather than RHF's own dirtyFields because the baseline
   // moves kind by kind as the ordered saves land.
-  const saved_ = useRef<LocationValues>({ ...initial.current })
+  const baseline = useRef<LocationValues>({ ...initial.current })
   const [kindProblems, setKindProblems] = useState<Partial<Record<SpaceKind, string>>>({})
 
   const { pending, saved, onSubmit } = useRecordForm({
@@ -822,7 +815,7 @@ function LocationTab({
     write: async (values) => {
       setKindProblems({})
       for (const kind of SPACE_KINDS) {
-        if (values[kind] === saved_.current[kind]) continue
+        if (values[kind] === baseline.current[kind]) continue
         try {
           await client.post('/horses/space', {
             horseId: horse.id,
@@ -831,7 +824,7 @@ function LocationTab({
           })
           // This one saved: lock it by making its value the new baseline, so
           // a later refusal leaves it clean rather than dirty again.
-          saved_.current[kind] = values[kind]
+          baseline.current[kind] = values[kind]
           form.resetField(kind, { defaultValue: values[kind] })
         } catch (error: unknown) {
           setKindProblems({ [kind]: refusalText(error) })
@@ -892,10 +885,10 @@ function LocationTab({
           )
         })}
       </Fields>
-      <TabActions>
+      <Actions>
         <SaveButton pending={pending}>Save</SaveButton>
         <StickySaved shown={saved} />
-      </TabActions>
+      </Actions>
     </form>
   )
 }
@@ -1072,9 +1065,7 @@ function AlertKindChoice({
                     field.onChange(option.value)
                   }}
                 />
-                <span className="inline-flex min-h-11 cursor-pointer items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-medium text-secondary-foreground transition-colors hover:bg-secondary peer-checked:border-primary peer-checked:bg-primary peer-checked:text-primary-foreground peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-background">
-                  {option.label}
-                </span>
+                <span className={CHOICE_OPTION}>{option.label}</span>
               </label>
             ))}
           </div>
@@ -1122,12 +1113,12 @@ function RaiseAlertForm({
         </Field>
       </Fields>
       {refusal !== null && <InlineRefusal>{refusal}</InlineRefusal>}
-      <TabActions>
+      <Actions>
         <SaveButton pending={pending}>Raise the alert</SaveButton>
         <Button type="button" variant="outline" onClick={onDone}>
           Cancel
         </Button>
-      </TabActions>
+      </Actions>
     </form>
   )
 }
@@ -1171,12 +1162,12 @@ function EditAlertForm({
         </Field>
       </Fields>
       {refusal !== null && <InlineRefusal>{refusal}</InlineRefusal>}
-      <TabActions>
+      <Actions>
         <SaveButton pending={pending}>Save</SaveButton>
         <Button type="button" variant="outline" onClick={onDone}>
           Cancel
         </Button>
-      </TabActions>
+      </Actions>
     </form>
   )
 }
@@ -1237,12 +1228,12 @@ function EndAlertForm({
         </WideField>
       </Fields>
       {refusal !== null && <InlineRefusal>{refusal}</InlineRefusal>}
-      <TabActions>
+      <Actions>
         <SaveButton pending={pending}>End it</SaveButton>
         <Button type="button" variant="outline" onClick={onDone}>
           Keep it
         </Button>
-      </TabActions>
+      </Actions>
     </form>
   )
 }
@@ -1428,9 +1419,7 @@ function ChangeFeedForm({
                           field.onChange(option.value)
                         }}
                       />
-                      <span className="inline-flex min-h-11 cursor-pointer items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-medium text-secondary-foreground transition-colors hover:bg-secondary peer-checked:border-primary peer-checked:bg-primary peer-checked:text-primary-foreground peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-background">
-                        {option.label}
-                      </span>
+                      <span className={CHOICE_OPTION}>{option.label}</span>
                     </label>
                   ))}
                 </div>
@@ -1567,14 +1556,14 @@ function ChangeFeedForm({
 
       {lineProblem !== null && <InlineRefusal>{lineProblem}</InlineRefusal>}
       {refusal !== null && <InlineRefusal>{refusal}</InlineRefusal>}
-      <TabActions>
+      <Actions>
         <SaveButton pending={pending} pendingLabel="Publishing…">
           Publish
         </SaveButton>
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
-      </TabActions>
+      </Actions>
     </form>
   )
 }
@@ -1645,7 +1634,7 @@ function DepartedTab({
           The record stays either way. This only corrects the date.
         </p>
         {correction.refusal !== null && <InlineRefusal>{correction.refusal}</InlineRefusal>}
-        <TabActions>
+        <Actions>
           {confirming ? (
             <>
               <span className="mr-1 text-sm font-medium text-foreground">
@@ -1682,7 +1671,7 @@ function DepartedTab({
             </Button>
           )}
           <StickySaved shown={correction.saved} />
-        </TabActions>
+        </Actions>
       </div>
     )
   }
@@ -1702,7 +1691,7 @@ function DepartedTab({
         </Field>
       </Fields>
       {refusal !== null && <InlineRefusal>{refusal}</InlineRefusal>}
-      <TabActions>
+      <Actions>
         {confirming ? (
           <>
             <span className="mr-1 text-sm font-medium text-foreground">
@@ -1737,7 +1726,7 @@ function DepartedTab({
           </Button>
         )}
         <StickySaved shown={saved} />
-      </TabActions>
+      </Actions>
     </form>
   )
 }
