@@ -14,8 +14,12 @@
  * and with no `Actor` to navigate as (ADR 0022) — chrome on it is chrome
  * somebody has to walk over and look past.
  *
- * `src/styles/app.css` is the whole of the visual system, transcribed from
- * `DESIGN.md`; it is linked here because this is the only document.
+ * `src/styles/tailwind.css` is the styling system (ADR 0025, #61): Tailwind's
+ * theme carrying DESIGN.md's tokens, with `app.css` riding along in a legacy
+ * layer until the last screen migrates (#63). The inline script in `head` is
+ * dark mode's before-first-paint half — the app is server-rendered and the
+ * server does not know the choice, so without it every load flashes the wrong
+ * theme.
  */
 import {
   HeadContent,
@@ -25,9 +29,27 @@ import {
   createRootRoute,
   useRouterState,
 } from '@tanstack/react-router'
-import type { ReactNode } from 'react'
+import { Monitor, Moon, Sun, SunMoon } from 'lucide-react'
+import { useEffect, useState, type ReactNode } from 'react'
 
-import appCss from '../styles/app.css?url'
+import { Button } from '../components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '../components/ui/dropdown-menu'
+import {
+  THEME_HEAD_SCRIPT,
+  applyTheme,
+  getThemeChoice,
+  isThemeChoice,
+  setThemeChoice,
+  watchSystemTheme,
+  type ThemeChoice,
+} from '../shared/theme'
+import appCss from '../styles/tailwind.css?url'
 
 /** Where the phone's tab bar goes, in the order a thumb meets them. */
 const tabs = [
@@ -71,6 +93,10 @@ export const Route = createRootRoute({
       { rel: 'icon', href: '/icons/icon-192.png' },
       { rel: 'apple-touch-icon', href: '/icons/apple-touch-icon.png' },
     ],
+    // Dark mode before first paint (#61): the five-line restatement of
+    // `resolveDark`, because the class has to be on <html> before the
+    // stylesheet paints anything.
+    scripts: [{ children: THEME_HEAD_SCRIPT }],
   }),
   component: RootComponent,
 })
@@ -83,12 +109,68 @@ function RootComponent() {
   )
 }
 
+/** The three choices, spelled with an icon beside the word and never alone. */
+const themeOptions = [
+  { value: 'system', label: 'System', Icon: Monitor },
+  { value: 'light', label: 'Light', Icon: Sun },
+  { value: 'dark', label: 'Dark', Icon: Moon },
+] as const
+
+/**
+ * System / Light / Dark, in the app bar beside the wordmark. The state
+ * initialises to System and syncs from storage in an effect, so the server
+ * render and the first client render agree.
+ */
+function ThemeMenu() {
+  const [choice, setChoice] = useState<ThemeChoice>('system')
+
+  useEffect(() => {
+    setChoice(getThemeChoice())
+    return watchSystemTheme()
+  }, [])
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="sm" className="text-muted-foreground">
+          <SunMoon aria-hidden="true" />
+          Theme
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuRadioGroup
+          value={choice}
+          onValueChange={(value) => {
+            if (!isThemeChoice(value)) return
+            setChoice(value)
+            setThemeChoice(value)
+          }}
+        >
+          {themeOptions.map(({ value, label, Icon }) => (
+            <DropdownMenuRadioItem key={value} value={value}>
+              <Icon aria-hidden="true" />
+              {label}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
 /**
  * The shell, or nothing. `useRouterState` rather than a prop, because the
  * decision is about the path and the path is the router's fact.
  */
 function Shell() {
   const path = useRouterState({ select: (state) => state.location.pathname })
+
+  // Client-side navigation onto or off `/board` re-answers the theme, because
+  // the head script only runs on a full load and the Board is pinned light.
+  useEffect(() => {
+    applyTheme()
+  }, [path])
+
   if (bare.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))) {
     return <Outlet />
   }
@@ -103,6 +185,7 @@ function Shell() {
           </span>
           Caballus
         </Link>
+        <ThemeMenu />
         <span className="appbar-spacer" />
         <nav className="appbar-links" aria-label="Sections">
           {barLinks.map((link) => (
@@ -131,7 +214,7 @@ function Shell() {
 
 function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
       </head>

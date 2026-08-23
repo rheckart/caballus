@@ -1,18 +1,15 @@
 /**
  * The data-entry primitives every screen with a form is built from.
  *
- * The screens were written as plain semantic HTML and the redesign kept that,
- * because `src/styles/app.css` can carry an element. What an element cannot
- * carry is *behaviour*, and behaviour is what made the edit screens hard: a
- * form that gave no sign it had saved, an eight-field row edited sideways
- * inside a table on a phone, a select of three options behind a tap-and-scroll
- * native picker, and a hundred-row table with no way to find a row in it.
- *
- * So: one `Sheet` that every add and every edit opens into, one `Field` that
- * puts a label, a hint and an error together in the one order a screen reader
- * reads them, one `Choice` that spends a short list of options as buttons
- * rather than a picker, one `SaveButton` that cannot be pressed twice, and one
- * `Filter` for a table long enough to need one.
+ * Behaviour is bought rather than built now (ADR 0025): `Sheet` wraps
+ * shadcn's Dialog — Radix under `src/components/ui/`, source this repo owns —
+ * and the rest of these primitives are the house rules the component library
+ * does not carry: one `Field` that puts a label, a hint and an error together
+ * in the one order a screen reader reads them, one `SaveButton` that cannot
+ * be pressed twice, one `Filter` for a table long enough to need one, and
+ * `useSaving`, the submit lifecycle shadcn's Form deliberately does not
+ * replace (pending, the sticky *Saved*, the refusal routed to a
+ * `role="alert"`).
  *
  * Two rules the primitives keep that the screens used to keep unevenly, and
  * `www.tasteskill.dev`'s own pre-flight list asks for both: **every state is
@@ -20,27 +17,20 @@
  * only by colour** — the saved flash is `role="status"` and the refusal is
  * `role="alert"`, so both are read aloud as well as seen.
  */
+import { Check, Plus } from 'lucide-react'
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react'
 
-/** Closes a dialog wherever `close` exists, and removes `open` where it does not. */
-function close(element: HTMLDialogElement | null) {
-  if (element === null) return
-  if (typeof element.close === 'function') {
-    element.close()
-    return
-  }
-  // The fallback path has to raise the event `close()` would have raised, or
-  // the caller's `onClose` never runs and the sheet cannot be dismissed.
-  element.removeAttribute('open')
-  element.dispatchEvent(new Event('close'))
-}
+import { Button } from './ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog'
+import { Input } from './ui/input'
 
 /**
- * A modal: a real `<dialog>`, so Escape closes it, focus is trapped and the
- * page behind it is inert without a line of our own code doing any of it.
+ * A modal: shadcn's Dialog (ADR 0025 — the native `<dialog>` was argued for
+ * and consistency won). Escape, the backdrop click and the close button all
+ * land on `onClose`.
  *
- * On a phone it is a sheet the full width of the screen with its actions at
- * the bottom, which is why editing no longer means scrolling a table sideways.
+ * On a phone it is a sheet the full width of the screen risen from the
+ * bottom, which is why editing no longer means scrolling a table sideways.
  */
 export function Sheet({
   title,
@@ -53,53 +43,23 @@ export function Sheet({
   onClose: () => void
   children: ReactNode
 }) {
-  const dialog = useRef<HTMLDialogElement>(null)
-
-  useEffect(() => {
-    const element = dialog.current
-    if (element === null || element.open) return
-    // `showModal` is what makes it modal — the top layer, the backdrop, the
-    // focus trap and Escape all come with it, and `open` alone gets none.
-    //
-    // Guarded, because it is not everywhere: jsdom has `<dialog>` and not this
-    // method, and so did every browser for a while. Falling back to `open`
-    // renders the same markup without the top layer, which is the difference
-    // between a test that reads the form and a test that throws.
-    if (typeof element.showModal === 'function') element.showModal()
-    else element.setAttribute('open', '')
-  }, [])
-
   return (
-    <dialog
-      ref={dialog}
-      className="sheet"
-      onClose={onClose}
-      onClick={(event) => {
-        // A click that lands on the dialog element itself is a click on the
-        // backdrop: the content is a child, so anything inside stops here.
-        if (event.target === dialog.current) close(dialog.current)
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose()
       }}
     >
-      <div className="sheet-body">
-        <header className="sheet-head">
-          <div>
-            <h2>{title}</h2>
-            {description !== undefined && <p className="sheet-what">{description}</p>}
-          </div>
-          <button
-            type="button"
-            className="sheet-close"
-            aria-label="Close"
-            onClick={() => {
-              close(dialog.current)
-            }}
-          >
-            {'×'}
-          </button>
-        </header>
+      {/* Without a description Radix wants the wiring explicitly absent,
+          or it warns; with one it wires the id itself. */}
+      <DialogContent {...(description === undefined ? { 'aria-describedby': undefined } : {})}>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          {description !== undefined && <DialogDescription>{description}</DialogDescription>}
+        </DialogHeader>
         {children}
-      </div>
-    </dialog>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -124,14 +84,21 @@ export function Field({
   children: ReactNode
 }) {
   return (
-    <div className="field">
-      <label htmlFor={htmlFor}>
+    <div className="min-w-0">
+      <label
+        htmlFor={htmlFor}
+        className="mb-1 mt-3 block text-sm font-medium text-foreground first:mt-0"
+      >
         {label}
-        {optional === true && <span className="field-optional">Optional</span>}
+        {optional === true && (
+          <span className="ml-2 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+            Optional
+          </span>
+        )}
       </label>
       {children}
       {hint !== undefined && (
-        <p className="field-hint" id={`${htmlFor}-hint`}>
+        <p className="mt-1 text-[13px] leading-snug text-muted-foreground" id={`${htmlFor}-hint`}>
           {hint}
         </p>
       )}
@@ -141,13 +108,13 @@ export function Field({
 
 /** Lays fields out in two columns once there is room for two. */
 export function Fields({ children }: { children: ReactNode }) {
-  return <div className="fields">{children}</div>
+  return <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">{children}</div>
 }
 
 /** A field that takes the full width of the grid whatever else is beside it. */
 export function WideField(props: Parameters<typeof Field>[0]) {
   return (
-    <div className="field-wide">
+    <div className="sm:col-span-2">
       <Field {...props} />
     </div>
   )
@@ -177,12 +144,13 @@ export function Choice<Value extends string>({
   onChange?: (value: Value) => void
 }) {
   return (
-    <fieldset className="choice">
-      <legend>{legend}</legend>
-      <div className="choice-options">
+    <fieldset className="mt-3 min-w-0 border-0 p-0">
+      <legend className="mb-1 block p-0 text-sm font-medium text-foreground">{legend}</legend>
+      <div className="flex flex-wrap gap-2">
         {options.map((option) => (
-          <label key={option.value}>
+          <label key={option.value} className="m-0 block">
             <input
+              className="peer sr-only"
               type="radio"
               name={name}
               value={option.value}
@@ -198,7 +166,9 @@ export function Choice<Value extends string>({
                     }
               }
             />
-            <span>{option.label}</span>
+            <span className="inline-flex min-h-11 cursor-pointer items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-medium text-secondary-foreground transition-colors hover:bg-secondary peer-checked:border-primary peer-checked:bg-primary peer-checked:text-primary-foreground peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-background">
+              {option.label}
+            </span>
           </label>
         ))}
       </div>
@@ -206,9 +176,13 @@ export function Choice<Value extends string>({
   )
 }
 
-/** The row a form ends with. On a phone it sticks to the bottom of the sheet. */
+/** The row a form ends with, the save first in the source and under the thumb. */
 export function Actions({ children }: { children: ReactNode }) {
-  return <div className="actions">{children}</div>
+  return (
+    <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-border pt-4">
+      {children}
+    </div>
+  )
 }
 
 /**
@@ -228,9 +202,9 @@ export function SaveButton({
   pendingLabel?: string
 }) {
   return (
-    <button type="submit" disabled={pending}>
+    <Button type="submit" disabled={pending}>
       {pending ? (pendingLabel ?? 'Saving…') : children}
-    </button>
+    </Button>
   )
 }
 
@@ -274,8 +248,17 @@ export function useSaving() {
 /** *Saved*, briefly, and read aloud rather than only shown. */
 export function Saved({ saved, what = 'Saved' }: { saved: boolean; what?: string }) {
   return (
-    <span className="saved" role="status" aria-live="polite">
-      {saved ? what : ''}
+    <span
+      className="inline-flex min-h-[1lh] items-center gap-1 text-sm font-medium text-success"
+      role="status"
+      aria-live="polite"
+    >
+      {saved && (
+        <>
+          <Check aria-hidden="true" className="size-4" />
+          {what}
+        </>
+      )}
     </span>
   )
 }
@@ -304,19 +287,26 @@ export function Filter({
 }) {
   const id = useId()
   return (
-    <div className="filter">
-      <label htmlFor={id}>{label}</label>
-      <input
+    <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+      <label htmlFor={id} className="m-0 text-sm font-medium text-foreground">
+        {label}
+      </label>
+      <Input
         id={id}
         type="search"
         value={value}
         placeholder="Type to filter"
         autoComplete="off"
+        className="max-w-80 flex-1 basis-52"
         onChange={(event) => {
           onChange(event.target.value)
         }}
       />
-      <p className="filter-count" role="status" aria-live="polite">
+      <p
+        className="m-0 whitespace-nowrap text-[13px] text-muted-foreground"
+        role="status"
+        aria-live="polite"
+      >
         {showing === of ? `${of} ${noun}` : `${showing} of ${of} ${noun}`}
       </p>
     </div>
@@ -341,7 +331,11 @@ export function matches(needle: string, ...haystack: readonly (string | null)[])
  * failed rather than a rescue that has not added a horse yet.
  */
 export function Empty({ children }: { children: ReactNode }) {
-  return <p className="empty">{children}</p>
+  return (
+    <p className="mb-4 rounded-lg border border-dashed border-input bg-secondary px-4 py-5 text-center text-sm text-muted-foreground">
+      {children}
+    </p>
+  )
 }
 
 /**
@@ -354,7 +348,7 @@ export function Empty({ children }: { children: ReactNode }) {
  */
 export function Loading({ what }: { what: string }) {
   return (
-    <p className="loading" aria-live="polite">
+    <p className="mb-4 text-sm text-muted-foreground" aria-live="polite">
       Loading {what}
       {'…'}
     </p>
@@ -364,8 +358,9 @@ export function Loading({ what }: { what: string }) {
 /** The button that opens a `Sheet`. Primary where it is the screen's one act. */
 export function AddButton({ onClick, children }: { onClick: () => void; children: string }) {
   return (
-    <button type="button" className="add" onClick={onClick}>
-      <span aria-hidden="true">+</span> {children}
-    </button>
+    <Button type="button" onClick={onClick}>
+      <Plus aria-hidden="true" />
+      {children}
+    </Button>
   )
 }

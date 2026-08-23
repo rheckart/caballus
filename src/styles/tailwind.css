@@ -1,0 +1,200 @@
+/*
+ * The styling system (ADR 0025, #61): Tailwind v4 plus shadcn, and this file
+ * is where `src/styles/app.css`'s 72 custom properties became the `@theme`.
+ *
+ * The layer order is the whole coexistence story. `legacy` — the old
+ * `app.css`, whole — sits *above* Tailwind's preflight (so the unmigrated
+ * screens keep their look; preflight's resets do not strip them) and *below*
+ * `components` and `utilities` (so a Tailwind class always beats an `app.css`
+ * element rule on a migrated screen). When the last screen migrates, the
+ * legacy import and `app.css` are deleted together (#63).
+ */
+@layer theme, base, legacy, components, utilities;
+
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import './app.css' layer(legacy);
+
+/* shadcn's dark mode: a `dark` class on <html>, set before first paint by the
+   inline script in `src/routes/__root.tsx`, never by a media query alone —
+   the choice is System / Light / Dark and `/board` is pinned light. */
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * The dozen semantic tokens shadcn's components read, mapped from `app.css`'s
+ * palette **by role and never by name** (#61): `--muted` here is a background
+ * (ours was a text colour, renamed `--muted-ink`), `--border` is the hairline,
+ * `--ring` is the brand purple.
+ *
+ * Only these get a dark twin. The brand colours and the nine pastel card
+ * tints keep one value in both themes — a tint on a dark background is spent
+ * as an accent (a border, an icon, a badge), never as a panel fill.
+ */
+:root {
+  --background: #ffffff; /* --canvas */
+  --foreground: #1a1a1a; /* --ink */
+  --card: #fafaf9; /* --surface-soft */
+  --card-foreground: #1a1a1a;
+  --popover: #fafaf9; /* --surface-soft */
+  --popover-foreground: #1a1a1a;
+  --primary: #5645d4;
+  --primary-foreground: #ffffff; /* --on-primary */
+  --secondary: #f6f5f4; /* --surface */
+  --secondary-foreground: #37352f; /* --charcoal */
+  --muted: #f6f5f4; /* --surface: a background, never the old text colour */
+  --muted-foreground: #787671; /* --steel */
+  --accent: #f6f5f4; /* --surface */
+  --accent-foreground: #1a1a1a;
+  --destructive: #e03131; /* --error */
+  --destructive-foreground: #ffffff;
+  --border: #e5e3df; /* --hairline */
+  --input: #e5e3df; /* --hairline */
+  --ring: #5645d4; /* --primary */
+}
+
+/* The dark twin: shadcn's own dark defaults, warmed to sit in the same
+   grey family as the light palette. The brand purple stays itself; the
+   destructive red and the ring lighten because they are read against dark. */
+.dark {
+  --background: #1a1a19;
+  --foreground: #f2f1ef;
+  --card: #232322;
+  --card-foreground: #f2f1ef;
+  --popover: #232322;
+  --popover-foreground: #f2f1ef;
+  --primary: #5645d4;
+  --primary-foreground: #ffffff;
+  --secondary: #2c2c2a;
+  --secondary-foreground: #f2f1ef;
+  --muted: #2c2c2a;
+  --muted-foreground: #a5a29b;
+  --accent: #2c2c2a;
+  --accent-foreground: #f2f1ef;
+  --destructive: #ef5f5f;
+  --destructive-foreground: #ffffff;
+  --border: #34342f;
+  --input: #3d3d38;
+  --ring: #8577e0;
+}
+
+@theme inline {
+  /* The semantic tokens, exposed as utilities (bg-background, text-foreground,
+     border-border, …). `inline` so the utilities read the `:root`/`.dark`
+     custom properties above and flip with the class. */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+}
+
+@theme {
+  /* The brand palette, transcribed whole from DESIGN.md via app.css. These
+     are single-valued in both themes, deliberately (#61). */
+  --color-primary-pressed: #4534b3;
+  --color-primary-deep: #3a2a99;
+  --color-brand-navy: #0a1530;
+  --color-brand-navy-deep: #070f24;
+  --color-brand-navy-mid: #1a2a52;
+  --color-link-blue: #0075de;
+  --color-link-blue-pressed: #005bab;
+  --color-brand-orange: #dd5b00;
+  --color-brand-orange-deep: #793400;
+  --color-brand-pink: #ff64c8;
+  --color-brand-pink-deep: #a02e6d;
+  --color-brand-purple: #7b3ff2;
+  --color-brand-purple-300: #d6b6f6;
+  --color-brand-purple-800: #391c57;
+  --color-brand-teal: #2a9d99;
+  --color-brand-green: #1aae39;
+  --color-brand-yellow: #f5d75e;
+  --color-brand-brown: #523410;
+  --color-card-tint-peach: #ffe8d4;
+  --color-card-tint-rose: #fde0ec;
+  --color-card-tint-mint: #d9f3e1;
+  --color-card-tint-lavender: #e6e0f5;
+  --color-card-tint-sky: #dcecfa;
+  --color-card-tint-yellow: #fef7d6;
+  --color-card-tint-yellow-bold: #f9e79f;
+  --color-card-tint-cream: #f8f5e8;
+  --color-card-tint-gray: #f0eeec;
+  --color-success: #1aae39;
+  --color-warning: #dd5b00;
+  --color-error: #e03131;
+
+  /* The surfaces and the grey ramp, single-valued: a migrated screen prefers
+     the semantic tokens above (which flip in dark); these carry the places
+     the exact light value is the point — the navy wordmark's face, a tint's
+     ink — and the transcription's completeness. */
+  --color-canvas: #ffffff;
+  --color-surface: #f6f5f4;
+  --color-surface-soft: #fafaf9;
+  --color-hairline: #e5e3df;
+  --color-hairline-soft: #ede9e4;
+  --color-hairline-strong: #c8c4be;
+  --color-ink-deep: #000000;
+  --color-ink: #1a1a1a;
+  --color-charcoal: #37352f;
+  --color-slate: #5d5b54;
+  --color-steel: #787671;
+  --color-stone: #a4a097;
+  --color-muted-ink: #bbb8b1;
+  --color-on-primary: #ffffff;
+  --color-on-dark: #ffffff;
+  --color-on-dark-muted: #a4a097;
+
+  /* app.css's rounded scale, transcribed: xs 4, sm 6, md 8, lg 12, xl 16,
+     xxl 20 (2xl), xxxl 24 (3xl). */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+  --radius-3xl: 24px;
+
+  /* app.css's spacing scale is a straight 4px grid (xxs 4 … hero 120), which
+     is Tailwind's own default scale — p-1 is 4px, p-30 is 120px — so it needs
+     no custom tokens: the transcription is the numbers. */
+
+  /* Notion Sans is licensed and not ours to ship; DESIGN.md's own fallback
+     list, headed by Inter where the platform has it. */
+  --font-sans: Inter, -apple-system, system-ui, 'Segoe UI', Helvetica, sans-serif;
+}
+
+/* The shell's measurements: plain custom properties, read with var() — they
+   are geometry, not a scale. */
+:root {
+  --shell-top: 56px;
+  --shell-bottom: calc(60px + env(safe-area-inset-bottom, 0px));
+  --measure: 1100px;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background: var(--color-card);
+    color: var(--color-foreground);
+    /* 16px, or iOS zooms the page on focus; DESIGN.md's body-md. */
+    font-size: 16px;
+    line-height: 1.55;
+  }
+}

@@ -10,8 +10,13 @@
  * same discipline every other current-state record in this application
  * follows. Adding and editing are the same sheet and the same form, for both
  * records.
+ *
+ * This is the screen ADR 0025's install was proved on (#61): the first one
+ * rendered through shadcn's components and Tailwind's tokens, correct in
+ * Light and in Dark.
  */
 import { createFileRoute } from '@tanstack/react-router'
+import { Pencil } from 'lucide-react'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 
 import {
@@ -24,8 +29,20 @@ import {
   SaveButton,
   Saved,
   Sheet,
+  WideField,
   useSaving,
 } from '../../components/forms'
+import { Alert, AlertTitle } from '../../components/ui/alert'
+import { Button } from '../../components/ui/button'
+import { Input } from '../../components/ui/input'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../../components/ui/table'
 import { client } from '../../shared/api-client'
 import { refusalText } from '../../shared/refusals'
 import type { Answers, contract } from '../../shared/api-contract'
@@ -78,17 +95,21 @@ function ContactsAdmin() {
 
   return (
     <main>
-      <h1>Contacts</h1>
+      <h1 className="text-foreground">Contacts</h1>
 
-      <p className="lede">
+      <p className="mb-5 max-w-[68ch] text-base leading-relaxed text-muted-foreground">
         A posted number, its hours and what it is for. Nothing here ever resolves an Escalation:
         that is the point of the Contacts screen (ADR 0010, ADR 0014).
       </p>
 
-      {problem !== null && <p role="alert">{problem}</p>}
+      {problem !== null && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertTitle>{problem}</AlertTitle>
+        </Alert>
+      )}
 
-      <div className="list-head">
-        <h2>Posted numbers</h2>
+      <div className="mb-3 mt-6 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="m-0 text-foreground">Posted numbers</h2>
         <AddButton
           onClick={() => {
             setOpen({ kind: 'contact', contact: null })
@@ -103,41 +124,44 @@ function ContactsAdmin() {
       ) : page.contacts.length === 0 ? (
         <Empty>No numbers posted yet. The vet is usually the first one.</Empty>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th scope="col">Name</th>
-              <th scope="col">Number</th>
-              <th scope="col">Hours</th>
-              <th scope="col">Purpose</th>
-              <th scope="col" />
-            </tr>
-          </thead>
-          <tbody>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead scope="col">Name</TableHead>
+              <TableHead scope="col">Number</TableHead>
+              <TableHead scope="col">Hours</TableHead>
+              <TableHead scope="col">Purpose</TableHead>
+              <TableHead scope="col" />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {page.contacts.map((contact) => (
-              <tr key={contact.id}>
-                <td>{contact.name}</td>
-                <td>{contact.number}</td>
-                <td>{contact.hours ?? 'Any time'}</td>
-                <td>{contact.purpose}</td>
-                <td>
-                  <button
+              <TableRow key={contact.id}>
+                <TableCell>{contact.name}</TableCell>
+                <TableCell>{contact.number}</TableCell>
+                <TableCell>{contact.hours ?? 'Any time'}</TableCell>
+                <TableCell>{contact.purpose}</TableCell>
+                <TableCell>
+                  <Button
                     type="button"
+                    variant="outline"
+                    size="sm"
                     onClick={() => {
                       setOpen({ kind: 'contact', contact })
                     }}
                   >
+                    <Pencil aria-hidden="true" />
                     Edit
-                  </button>
-                </td>
-              </tr>
+                  </Button>
+                </TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       )}
 
-      <div className="list-head">
-        <h2>Standing rules</h2>
+      <div className="mb-3 mt-6 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="m-0 text-foreground">Standing rules</h2>
         <AddButton
           onClick={() => {
             setOpen({ kind: 'rule', rule: null })
@@ -152,19 +176,26 @@ function ContactsAdmin() {
       ) : page.standingRules.length === 0 ? (
         <Empty>No standing rules yet. These are the things that are always true in the barn.</Empty>
       ) : (
-        <section>
-          <ul>
+        <section className="rounded-lg border border-border bg-background p-4 sm:p-6">
+          <ul className="m-0 list-none p-0">
             {page.standingRules.map((rule) => (
-              <li key={rule.id} className="row">
+              <li
+                key={rule.id}
+                className="flex items-center justify-between gap-4 border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0"
+              >
                 <span>{rule.text}</span>
-                <button
+                <Button
                   type="button"
+                  variant="outline"
+                  size="sm"
+                  className="flex-none"
                   onClick={() => {
                     setOpen({ kind: 'rule', rule })
                   }}
                 >
+                  <Pencil aria-hidden="true" />
                   Edit
-                </button>
+                </Button>
               </li>
             ))}
           </ul>
@@ -233,7 +264,7 @@ function ContactForm({
     >
       <Fields>
         <Field label="Name" htmlFor="contact-name">
-          <input
+          <Input
             id="contact-name"
             name="name"
             defaultValue={contact?.name}
@@ -243,7 +274,7 @@ function ContactForm({
           />
         </Field>
         <Field label="Number" htmlFor="contact-number">
-          <input
+          <Input
             id="contact-number"
             name="number"
             type="tel"
@@ -255,7 +286,7 @@ function ContactForm({
           />
         </Field>
         <Field label="Hours" htmlFor="contact-hours" optional hint="Blank means any time.">
-          <input
+          <Input
             id="contact-hours"
             name="hours"
             defaultValue={contact?.hours ?? ''}
@@ -265,7 +296,7 @@ function ContactForm({
           />
         </Field>
         <Field label="What it is for" htmlFor="contact-purpose">
-          <input
+          <Input
             id="contact-purpose"
             name="purpose"
             defaultValue={contact?.purpose}
@@ -274,11 +305,9 @@ function ContactForm({
           />
         </Field>
         {contact !== null && (
-          <div className="field-wide">
-            <Field label="Reason" htmlFor="contact-reason" optional>
-              <input id="contact-reason" name="reason" maxLength={500} />
-            </Field>
-          </div>
+          <WideField label="Reason" htmlFor="contact-reason" optional>
+            <Input id="contact-reason" name="reason" maxLength={500} />
+          </WideField>
         )}
       </Fields>
       <Actions>
@@ -321,25 +350,21 @@ function RuleForm({
       }}
     >
       <Fields>
-        <div className="field-wide">
-          <Field label="Text" htmlFor="rule-text">
-            <input
-              id="rule-text"
-              name="text"
-              defaultValue={rule?.text}
-              required
-              maxLength={500}
-              placeholder="No scissors in fields"
-              autoFocus
-            />
-          </Field>
-        </div>
+        <WideField label="Text" htmlFor="rule-text">
+          <Input
+            id="rule-text"
+            name="text"
+            defaultValue={rule?.text}
+            required
+            maxLength={500}
+            placeholder="No scissors in fields"
+            autoFocus
+          />
+        </WideField>
         {rule !== null && (
-          <div className="field-wide">
-            <Field label="Reason" htmlFor="rule-reason" optional>
-              <input id="rule-reason" name="reason" maxLength={500} />
-            </Field>
-          </div>
+          <WideField label="Reason" htmlFor="rule-reason" optional>
+            <Input id="rule-reason" name="reason" maxLength={500} />
+          </WideField>
         )}
       </Fields>
       <Actions>
