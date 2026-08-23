@@ -16,6 +16,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 
+import { Loading } from '../../components/forms'
 import { client } from '../../shared/api-client'
 import { refusalText } from '../../shared/refusals'
 import type { Answers, contract } from '../../shared/api-contract'
@@ -52,7 +53,7 @@ function Audit() {
     <main>
       <h1>Audit log</h1>
       {problem !== null && <p role="alert">{problem}</p>}
-      {log === null && problem === null && <p>One moment…</p>}
+      {log === null && problem === null && <Loading what="the log" />}
       {log !== null && (
         <table>
           <caption>Newest first</caption>

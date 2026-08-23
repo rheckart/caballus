@@ -9,6 +9,8 @@
 
 export type Refusal =
   | 'product_not_found'
+  /** The Product is Retired: no new reading, and no new Reorder (#64). */
+  | 'product_retired'
   /** Neither a `supplies` holder nor Shift Authority over the Shift named. */
   | 'not_authorized_to_record_reading'
   | 'reorder_not_found'

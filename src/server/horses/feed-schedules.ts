@@ -12,7 +12,7 @@
  * **No audit entry.** A versioned-tier change *is* a version (ADR 0003),
  * exactly as `publishReleaseVersion` documents for its own table.
  */
-import { eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 
 import type { OrgId, OrgScopedDatabase } from '../../db/for-org'
@@ -64,10 +64,14 @@ export async function publishFeedSchedule(
   if (about.lines.length > 0) {
     const productIds = [...new Set(about.lines.map((line) => line.productId))]
     const found = await db
-      .select({ id: products.id })
+      .select({ id: products.id, retiredOn: products.retiredOn })
       .from(products)
       .where(inArray(products.id, productIds))
     if (found.length !== productIds.length) return refused('product_not_found')
+    // The second door (#64). Refusing the retirement while a horse still eats
+    // the Product is only half of it: a one-sided block is an invariant that
+    // leaks the following morning.
+    if (found.some((product) => product.retiredOn !== null)) return refused('product_retired')
   }
 
   const id = uuidv7()
@@ -126,20 +130,33 @@ export async function currentFeedSchedulesFor(
   return byHorse.get(horseId) ?? []
 }
 
+interface VersionRow {
+  readonly id: string
+  readonly horseId: string
+  readonly shiftType: ShiftType
+  readonly validFrom: string
+  readonly createdAt: Date
+}
+
 /**
- * The same, for every horse at once — what the Board reads, because a grid of
- * eleven horses asking one query each is eleven round trips for a screen that
- * repaints every minute (#37).
+ * The current version per horse per Shift Type — the latest by valid-from and
+ * then by when it was recorded, resolved in application code rather than a
+ * window function, the same call `horseList` makes for grouping Space
+ * assignments.
  *
- * `onlyHorseId` narrows it to one horse, which is what the profile wants; the
- * resolution of *which version is current* is the same either way, and having
- * it twice is having it drift.
+ * A future-dated version is already current by this rule, which is deliberate:
+ * *what is she on now* and *what has been decided for her* are the same
+ * question to everything that reads a schedule.
+ *
+ * Its own function because two callers need it and having it twice is having
+ * it drift — the profile and the Board read it through
+ * `currentFeedSchedulesByHorse`, and `horsesByProductOnCurrentSchedules`
+ * reads it to answer whether a Product may retire (#64).
  */
-export async function currentFeedSchedulesByHorse(
+async function currentVersions(
   db: OrgScopedDatabase,
-  today: DayString,
   onlyHorseId?: string,
-): Promise<ReadonlyMap<string, readonly CurrentFeedSchedule[]>> {
+): Promise<ReadonlyMap<string, VersionRow>> {
   const versionRows = await db
     .select({
       id: feedScheduleVersions.id,
@@ -151,17 +168,6 @@ export async function currentFeedSchedulesByHorse(
     .from(feedScheduleVersions)
     .where(onlyHorseId === undefined ? undefined : eq(feedScheduleVersions.horseId, onlyHorseId))
 
-  interface VersionRow {
-    readonly id: string
-    readonly horseId: string
-    readonly shiftType: ShiftType
-    readonly validFrom: string
-    readonly createdAt: Date
-  }
-
-  // The latest version per horse per Shift Type, by valid-from and then by
-  // when it was recorded — resolved in application code rather than a window
-  // function, the same call `horseList` makes for grouping Space assignments.
   const latest = new Map<string, VersionRow>()
   for (const row of versionRows) {
     if (!isShiftType(row.shiftType)) continue
@@ -182,7 +188,67 @@ export async function currentFeedSchedulesByHorse(
       })
     }
   }
+  return latest
+}
 
+/**
+ * Which horses a Product is presently fed to: one entry per Product named by
+ * a *current* Feed Schedule version, against the set of horses whose version
+ * it is (#64).
+ *
+ * **A Departed horse is left out.** Storm's last schedule still names Senior,
+ * and blocking a Product's retirement on the paperwork of a horse who is no
+ * longer here is the check being pedantic rather than useful — the same
+ * instinct the Board follows when it leaves her off the grid.
+ *
+ * The one place the *in use* rule is decided: `retireProduct` refuses against
+ * it and `productList` counts against it, so the refusal and the number the
+ * catalogue shows can never disagree.
+ */
+export async function horsesByProductOnCurrentSchedules(
+  db: OrgScopedDatabase,
+): Promise<ReadonlyMap<string, ReadonlySet<string>>> {
+  const latest = await currentVersions(db)
+  if (latest.size === 0) return new Map()
+
+  const rows = await db
+    .select({ productId: feedScheduleLines.productId, horseId: horses.id })
+    .from(feedScheduleLines)
+    .innerJoin(feedScheduleVersions, eq(feedScheduleVersions.id, feedScheduleLines.versionId))
+    .innerJoin(horses, eq(horses.id, feedScheduleVersions.horseId))
+    .where(
+      and(
+        inArray(
+          feedScheduleLines.versionId,
+          [...latest.values()].map((version) => version.id),
+        ),
+        isNull(horses.departedOn),
+      ),
+    )
+
+  const byProduct = new Map<string, Set<string>>()
+  for (const row of rows) {
+    const held = byProduct.get(row.productId) ?? new Set<string>()
+    held.add(row.horseId)
+    byProduct.set(row.productId, held)
+  }
+  return byProduct
+}
+
+/**
+ * Every current schedule, for every horse at once — what the Board reads,
+ * because a grid of eleven horses asking one query each is eleven round trips
+ * for a screen that repaints every minute (#37).
+ *
+ * `onlyHorseId` narrows it to one horse, which is what the profile wants; the
+ * resolution of *which version is current* is `currentVersions` either way.
+ */
+export async function currentFeedSchedulesByHorse(
+  db: OrgScopedDatabase,
+  today: DayString,
+  onlyHorseId?: string,
+): Promise<ReadonlyMap<string, readonly CurrentFeedSchedule[]>> {
+  const latest = await currentVersions(db, onlyHorseId)
   if (latest.size === 0) return new Map()
 
   const versionIds = [...latest.values()].map((version) => version.id)

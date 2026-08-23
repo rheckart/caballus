@@ -13,6 +13,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { stubApi } from '../test/api-stub'
 import { renderRoutes } from '../test/route-harness'
 import { BOARD_TOKEN_HEADER } from '../shared/board'
+import { PRODUCT_KINDS } from '../shared/products'
 import Board from './board'
 import HorseProfile from './horses/$horseId'
 
@@ -30,16 +31,18 @@ function horse(
   name: string,
   extra: Partial<{
     halterColour: string | null
-    field: { id: string; name: string } | null
+    pasture: { id: string; name: string } | null
     feedings: unknown[]
+    alerts: unknown[]
   }> = {},
 ) {
   return {
     id: `${name.toLowerCase()}-1`,
     name,
     halterColour: 'halterColour' in extra ? extra.halterColour : 'green',
-    field: extra.field ?? null,
+    pasture: extra.pasture ?? null,
     feedings: extra.feedings ?? [],
+    alerts: extra.alerts ?? [],
   }
 }
 
@@ -173,9 +176,51 @@ describe('the Board', () => {
     expect(await screen.findByText('no lunch feeding')).toBeTruthy()
     expect(screen.getByText('no feed am feeding')).toBeTruthy()
     expect(screen.getByText('no halter colour')).toBeTruthy()
-    expect(screen.getByText('no field')).toBeTruthy()
-    // Alerts is a column with nothing under it yet (#35).
+    expect(screen.getByText('no pasture')).toBeTruthy()
+    // A horse carrying no Alert says so, the same as every other blank.
     expect(screen.getByText('no alerts')).toBeTruthy()
+  })
+
+  it('writes an Alert on the wall in full words, never as a count (ADR 0024)', async () => {
+    stubApi({
+      '/board': {
+        today: '2026-08-18',
+        weather: null,
+        announcements: [],
+        sections: [
+          {
+            heading: 'Main barn',
+            rows: [
+              {
+                stall: { id: 's1', name: '1' },
+                horse: horse('Biter', {
+                  alerts: [
+                    {
+                      id: 'alert-1',
+                      horseId: 'biter-1',
+                      kind: 'prohibition',
+                      text: 'No treats by hand — she bites.',
+                      raisedBy: 'priya-1',
+                      raisedByName: 'Priya Chandra',
+                      raisedAt: 1_755_000_000_000,
+                      endedAt: null,
+                      endedBy: null,
+                      endedByName: null,
+                      endingReason: null,
+                    },
+                  ],
+                }),
+              },
+            ],
+          },
+        ],
+      },
+    })
+    renderBoard()
+
+    // *2 alerts* on a wall read across a barn tells nobody the horse bites.
+    expect(await screen.findByText('No treats by hand — she bites.')).toBeTruthy()
+    expect(screen.queryByText('no alerts')).toBeNull()
   })
 
   it('paints a line from its Product kind and says when it is not in feed', async () => {
@@ -233,6 +278,23 @@ describe('the Board', () => {
     expect(screen.getByText('New')).toBeTruthy()
   })
 
+  it('paints every Product kind on purpose, in both schemes', async () => {
+    // A kind with no rule inherits body text, which reads as "we forgot"
+    // because the others are coloured deliberately (ADR 0022). Asserted
+    // against `PRODUCT_KINDS` rather than a list here, so a fifth kind fails
+    // this test rather than shipping colourless (#58).
+    stubApi({ '/board': GRID })
+    const { container } = renderBoard()
+    await screen.findByText('Main barn')
+
+    const stylesheet = container.ownerDocument.querySelector('style')?.textContent ?? ''
+    const [light = '', dark = ''] = stylesheet.split('@media (prefers-color-scheme: dark)')
+    for (const kind of PRODUCT_KINDS) {
+      expect(light).toContain(`.board-lines li[data-kind='${kind}']`)
+      expect(dark).toContain(`.board-lines li[data-kind='${kind}']`)
+    }
+  })
+
   it('has no action anywhere on it', async () => {
     stubApi({ '/board': GRID })
     renderBoard()
@@ -287,9 +349,11 @@ describe('the Board', () => {
         height: null,
         photoUrl: null,
         departedOn: null,
-        spaces: { stall: null, field: null, barn: null },
+        spaces: { stall: null, pasture: null, paddock: null, barn: null },
+        alerts: [],
         feedSchedules: [],
         measurements: { weights: [], bodyConditions: [] },
+        endedAlerts: [],
       },
     })
     renderRoutes(

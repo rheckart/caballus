@@ -29,6 +29,7 @@ import { horseSpaceAssignments, horses, spaces } from '../../db/schema'
 import { currentAnnouncements, type Announcement } from '../announcements/list'
 import { arrangeBoard, type BoardSection, type BoardSpaceRef } from '../../shared/board'
 import type { DayString } from '../../shared/time'
+import { standingAlertsByHorse, type Alert } from '../horses/alerts'
 import { currentFeedSchedulesByHorse, type CurrentFeedSchedule } from '../horses/feed-schedules'
 import { readingFor, type Reading } from '../weather/readings'
 
@@ -39,9 +40,17 @@ export interface BoardHorse {
   readonly halterColour: string | null
   readonly stall: BoardSpaceRef | null
   readonly barn: BoardSpaceRef | null
-  readonly field: BoardSpaceRef | null
+  readonly pasture: BoardSpaceRef | null
   /** The current feeding per Shift Type, only for the ones this horse has (#36). */
   readonly feedings: readonly CurrentFeedSchedule[]
+  /**
+   * Standing Alerts, in full — the Board's own column writes the words the way
+   * the paper board does, because *2 alerts* read across a barn tells nobody
+   * the horse bites (ADR 0024). They ride on this read rather than a second
+   * one the tablet polls alongside it: a horse looking alert-free whenever the
+   * other call is slow is the wrong direction to fail (#36).
+   */
+  readonly alerts: readonly Alert[]
 }
 
 export interface BoardGrid {
@@ -62,7 +71,7 @@ interface AssignmentRow {
 
 /** The grid, in stall order, sections and all. */
 export async function boardGrid(db: OrgScopedDatabase, today: DayString): Promise<BoardGrid> {
-  const [horseRows, assignmentRows, stallRows, feedings, weather, announcements] =
+  const [horseRows, assignmentRows, stallRows, feedings, weather, announcements, alertsBy] =
     await Promise.all([
       db
         .select({
@@ -92,6 +101,7 @@ export async function boardGrid(db: OrgScopedDatabase, today: DayString): Promis
       currentFeedSchedulesByHorse(db, today),
       readingFor(db, today),
       currentAnnouncements(db, today),
+      standingAlertsByHorse(db),
     ])
 
   const assignmentsBy = new Map<string, AssignmentRow[]>()
@@ -116,8 +126,9 @@ export async function boardGrid(db: OrgScopedDatabase, today: DayString): Promis
         halterColour: row.halterColour,
         stall: placed(assignments, 'stall'),
         barn: placed(assignments, 'barn'),
-        field: placed(assignments, 'field'),
+        pasture: placed(assignments, 'pasture'),
         feedings: feedings.get(row.id) ?? [],
+        alerts: alertsBy.get(row.id) ?? [],
       }
     })
 

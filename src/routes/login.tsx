@@ -106,7 +106,7 @@ function Login() {
   }
 
   return (
-    <main>
+    <main className="centred-page">
       <h1>Caballus</h1>
 
       {step.name === 'address' ? (

@@ -32,9 +32,14 @@ const REFUSALS: Record<string, string> = {
   release_version_not_found: 'That release version is gone.',
   signature_not_found: 'That signature is gone.',
   horse_not_found: 'That horse is not here any more.',
+  alert_not_found: 'That alert is gone.',
+  alert_already_ended: 'That alert has already been ended. Raise a new one if it is true again.',
   space_not_found: 'That Space is gone.',
   space_kind_mismatch: "That Space isn't the right kind for this assignment.",
   space_occupied: 'A horse still holds that Space. Clear it first.',
+  product_not_found: 'That Product is gone.',
+  product_in_use: "A horse's current Feed Schedule still names that Product. Take it off first.",
+  product_retired: 'That Product is Retired. Bring it back first if the rescue buys it again.',
   threshold_value_required: 'Give the number, or put the horse on the rescue’s number instead.',
   threshold_not_per_horse: 'That number is one answer for the whole barn, not a per-horse one.',
   coordinates_not_set:
@@ -78,6 +83,12 @@ const REFUSALS: Record<string, string> = {
   not_authorized_to_escalate:
     'You need Shift Authority here, or to hold the Scope you are escalating to.',
   escalation_not_found: 'That escalation is gone.',
+  whiteboard_reader_not_set:
+    'Nobody has told this deployment how to read a whiteboard. Set OPENROUTER_API_KEY.',
+  whiteboard_unreadable:
+    'The photograph could not be read. Nothing was created. Try a straighter, brighter shot of the panel.',
+  not_authorized_for_panel:
+    'You do not hold every scope that panel writes into. The horse grid needs horse care; the phone numbers need roster.',
   already_closed: 'That escalation is already closed.',
   not_the_addressed_scope: 'Only a holder of the Scope this was sent to may close it.',
   observations_undispositioned:

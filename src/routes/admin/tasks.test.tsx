@@ -126,6 +126,9 @@ describe('the Tasks screen', () => {
     renderTasks()
 
     await screen.findAllByText('Muck the stalls.')
+    // The catalogue is what this screen is for, so the form that adds to it
+    // opens in a sheet rather than sitting under the list pushing it down.
+    fireEvent.click(screen.getByRole('button', { name: 'Add a Task' }))
     fireEvent.change(screen.getByLabelText('Instruction'), {
       target: { value: 'Sweep the barn.' },
     })

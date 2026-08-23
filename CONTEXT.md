@@ -4,6 +4,8 @@ Operations for a horse rescue: the daily care of horses and the coordination of 
 
 Terms are added only once settled with the rescue. The barn's own words win over ours.
 
+A term here is what the **model** calls a thing, not what a **screen** calls it. A screen may say _About her_ where the model says Attributes, or _Change her feed_ where the model says publish a Feed Schedule version, because the reader is a volunteer and not a reader of this file. The glossary does not follow the label; the label may not contradict the glossary.
+
 ## Language
 
 ### People
@@ -157,7 +159,7 @@ _Avoid_: handover, comments, log, remarks
 ### Checklists
 
 **Task**:
-A kind of work the rescue does — feeding, watering, mucking, grooming, checking the salt blocks. Catalogue data the rescue edits rather than a list in the app, because the whiteboard's list was already longer than the brief's. A Task fixes what the app acts on: what kind of thing it applies to, whether it is Essential or Discretionary, whether it is wanted once a Shift or once a day, whether it needs Medication Authority, what Condition it waits for, its tolerance, and what it says to do. The rescue chooses among those; it does not add to them.
+A kind of work the rescue does — feeding, watering, mucking, grooming, checking the salt blocks. Catalogue data the rescue edits rather than a list in the app, because the whiteboard's list was already longer than the brief's. A Task fixes what the app acts on: what kind of thing it applies to, whether it is Essential or Discretionary, whether it is wanted once a Shift or once a day, whether it needs Medication Authority, what Condition it waits for, its tolerance, and what it says to do. The rescue chooses among those; it does not add to them. A standing fact about a horse that generates no work is not a Task; it is an Alert.
 _Avoid_: chore, job, activity, checklist type
 
 **Item**:
@@ -215,12 +217,16 @@ _Avoid_: sign-off, verification, approval, endorsement
 ### Places
 
 **Space**:
-A physical area a horse occupies or uses, of one kind — stall, field or barn — composed of one or more named units that may be physically joined. Stalls 2 and 3 are one Space because the partition between them was removed; "all of C and D" is one Space because the gate between those fields is open. A horse is assigned exactly one Space of each kind.
+A physical area a horse occupies or uses, of one kind — stall, pasture, paddock or barn — composed of one or more named units that may be physically joined. Stalls 2 and 3 are one Space because the partition between them was removed; "all of C and D" is one Space because the gate between those fields is open. A horse is assigned exactly one Space of each kind, so a horse turned out holds a Pasture and the Paddock attached to it at the same time.
 _Avoid_: location, area, pen, enclosure
 
-**Field**:
-A Space of kind _field_ — a turnout area named by letter. Paddock and pasture mean the same thing in the barn; use Field.
-_Avoid_: paddock, pasture, turnout group
+**Pasture**:
+A Space of kind _pasture_ — a turnout area named by letter, where a horse grazes. Larger than the Paddock it connects to, and a different place: a horse may hold one of each at once.
+_Avoid_: field, turnout group, grazing
+
+**Paddock**:
+A Space of kind _paddock_ — a smaller enclosure attached to a Pasture, and the unit the board's hay amounts are counted against. The two are often connected, and a horse assigned one is frequently assigned the other.
+_Avoid_: field, pen, corral, dry lot
 
 **Stall**:
 A Space of kind _stall_ — an indoor space a horse is housed in. A Stall may stand empty and still exist; the feed board keeps a row for stall 7, which is OPEN.
@@ -237,18 +243,22 @@ The status of a horse no longer at the rescue, carrying a departure date. The re
 _Avoid_: inactive, archived, removed, deleted
 
 **Alert**:
-A standing warning on a horse that a volunteer must read before working with it — a care alert, a prohibition ("no treats"), or an allergy. Not a medical condition; those are out of scope.
+A standing warning on a horse that a volunteer must read before working with it, and one of exactly three kinds: a prohibition ("no treats"), a care alert, or an allergy. Not a medical condition; those are out of scope. It stands until a person ends it and never expires on its own, because an Alert that quietly lapsed is a horse that bites and nobody was told. It is its own record rather than an Observation grown up — an Observation is frozen the moment it lands and says what somebody saw once, where an Alert says what is always true and has to be endable. Read wherever a volunteer meets the horse, not only where somebody goes looking for it. The line against a Task is whether it generates work: an Alert has nothing to tick, where "fly spray daily" is a Task carrying an instruction. Raised and ended by holders of `horse_care` alone — the floor's door for a horse that has started biting is the Observation it already has, because an Alert anybody may post is a wall nobody reads. Ending one carries a reason and never deletes it, and a horse leaving the rescue ends nothing: she is gone, not cured.
 _Avoid_: flag, note, warning, caution
 
 ### Feed and medication
 
 **Product**:
-Something the rescue buys and gives to a horse — a feed, a supplement or a medication. Its kind is a property of the Product, not of where it was written down: whether Bute is a medication is a fact about Bute. It is also the catalogue: a Supplier, whether it needs a prescription, an optional reorder point in days and a free-text ordering note hang off the same record, which is what makes _we're low on Senior_ connectable to _these nine horses eat Senior_ with no second list to maintain. Edited by holders of `horse_care` or `supplies`, and current state with an audit entry rather than versioned — what a Product used to cost or come from answers no question here. Deliberately does not stretch to what the rescue buys and does not feed a horse: shavings and light bulbs are an Observation, not a catalogue row.
-_Avoid_: item, feed type, med, supply
+Something the rescue buys and gives to a horse — a feed, a supplement, a medication or a Topical. Its kind is a property of the Product, not of where it was written down: whether Bute is a medication is a fact about Bute. It is also the catalogue: a Supplier, whether it needs a prescription, an optional reorder point in days and a free-text ordering note hang off the same record, which is what makes _we're low on Senior_ connectable to _these nine horses eat Senior_ with no second list to maintain. Edited by holders of `horse_care` or `supplies`, and current state with an audit entry rather than versioned — what a Product used to cost or come from answers no question here. Deliberately does not stretch to what the rescue buys and never puts in or on a horse: shavings and light bulbs are an Observation, not a catalogue row. A Product the rescue has stopped using is **Retired** — a date and never a delete, the same act a Space retires by and a horse Departs by, because feed history, days-of-supply readings and Reorders all reference it. Retirement is refused while a horse still here has it on a current Feed Schedule, since a Product retired out from under nine horses is the app asking for a thing the barn cannot do; a Departed horse's schedule holds nothing back, because she is gone. Once Retired it is named on no new schedule line, no new reading and no new Reorder, and it stays on the catalogue marked, where the history is.
+_Avoid_: item, feed type, med, supply, deleted, discontinued
 
 **Feed Schedule**:
 The versioned set of lines describing what a horse is given at one Shift Type. Each line names a Product, an amount and a Route.
 _Avoid_: diet, ration, feed plan, meal plan
+
+**Topical**:
+A Product of kind _topical_ — something put on a horse's body rather than fed to it: fly spray, sunblock, zinc oxide. It is a Product so that Days of Supply can count it, and it is deliberately not a medication, because making it one would mean only a holder of Medication Authority could fly-spray a horse. A topical line on a Feed Schedule generates no Item; the work is a Task carrying an instruction, which is where fly spray and sunscreen already live.
+_Avoid_: ointment, cream, spray, horse care product
 
 **Route**:
 How a Product reaches the horse — in feed, orally by syringe or paste, topically, or otherwise. Medication is not always given in feed.
@@ -283,3 +293,9 @@ _Avoid_: the app, mobile view, shift screen
 **Unsent**:
 Work a volunteer has recorded on their phone that has not yet reached the server. Visible on the item it belongs to, never silently dropped, and blocks a Shift from closing — because a record that looks complete and isn't is the lie the paper system already tells.
 _Avoid_: pending, queued, unsynced, offline
+
+### Setting up
+
+**Whiteboard Read**:
+One photograph of one panel of a rescue's whiteboard, turned into records when a barn is first set up. The person holding the phone says which panel it is; the app writes what it can read clearly, leaves what it cannot read blank, and answers with what it created, what it skipped as already held, and what it could not place. Additive only — it never edits a record that already exists, so running it twice is safe and a correction somebody made by hand is never overwritten. Distinct from the Board, which is the tablet in the barn and reads nothing.
+_Avoid_: Board Read, import, migration, scan, OCR, ingest

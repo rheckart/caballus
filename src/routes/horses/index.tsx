@@ -7,6 +7,7 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 
+import { Loading } from '../../components/forms'
 import { client } from '../../shared/api-client'
 import { refusalText } from '../../shared/refusals'
 import type { Answers, contract } from '../../shared/api-contract'
@@ -49,7 +50,7 @@ function HorseList() {
     return (
       <main>
         <h1>Horses</h1>
-        <p>One moment…</p>
+        <Loading what="horses" />
       </main>
     )
   }
@@ -68,7 +69,8 @@ function HorseList() {
               )}
               {horse.name}
               {horse.spaces.stall !== null && ` — ${horse.spaces.stall.name}`}
-              {horse.spaces.field !== null && ` — ${horse.spaces.field.name}`}
+              {horse.spaces.pasture !== null && ` — ${horse.spaces.pasture.name}`}
+              {horse.spaces.paddock !== null && ` — ${horse.spaces.paddock.name}`}
               {horse.spaces.barn !== null && ` — ${horse.spaces.barn.name}`}
             </Link>
           </li>

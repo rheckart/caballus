@@ -64,11 +64,14 @@ export async function recordSuppliesReading(
   if (!holdsScope && !overTheShift) return refused('not_authorized_to_record_reading')
 
   const [product] = await db
-    .select({ id: products.id })
+    .select({ id: products.id, retiredOn: products.retiredOn })
     .from(products)
     .where(eq(products.id, about.productId))
     .limit(1)
   if (product === undefined) return refused('product_not_found')
+  // Nobody counts sacks of a thing the rescue has stopped buying (#64). The
+  // series already written stays whole and readable — only the next one stops.
+  if (product.retiredOn !== null) return refused('product_retired')
 
   const id = uuidv7()
   await db.insert(daysOfSupplyReadings).values({
@@ -103,11 +106,14 @@ export async function openReorder(
   about: NewReorder,
 ): Promise<Recorded<{ id: string }>> {
   const [product] = await db
-    .select({ id: products.id })
+    .select({ id: products.id, retiredOn: products.retiredOn })
     .from(products)
     .where(eq(products.id, about.productId))
     .limit(1)
   if (product === undefined) return refused('product_not_found')
+  // No new cycle of getting more of a Retired Product (#64) — though one
+  // already Open finishes normally, because the sack is still on its way.
+  if (product.retiredOn !== null) return refused('product_retired')
 
   if (about.escalationId != null) {
     const [escalation] = await db

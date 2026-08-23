@@ -19,6 +19,7 @@
  */
 import { z } from 'zod'
 
+import { ALERT_KINDS } from './alerts'
 import { ATTENDANCE_CATEGORIES, ATTESTATION_RELATIONSHIPS } from './attendance'
 import { DOMAIN_SCOPES } from './domain-scopes'
 import { ROUTES, SHIFT_TYPES } from './feed-schedule'
@@ -35,7 +36,13 @@ import { OBSERVATION_DISPOSITIONS, OBSERVATION_SUBJECT_KINDS } from './observati
 import { PRODUCT_KINDS } from './products'
 import { ROLES } from './roles'
 import { ROSTER_GAPS } from './rostering'
-import { SPACE_KINDS } from './spaces'
+import { MOST_SPACES_AT_ONCE, SPACE_KINDS } from './spaces'
+import {
+  MOST_IMAGE_BASE64_CHARS,
+  WHITEBOARD_IMAGE_TYPES,
+  WHITEBOARD_PANELS,
+  WHITEBOARD_RECORDS,
+} from './whiteboard'
 import { STAFFING_GAPS } from './staffing'
 import {
   ASSIGNABLE_POSITIONS,
@@ -313,6 +320,40 @@ export const space = z.object({
 
 export const spaceList = z.object({ spaces: z.array(space) })
 
+/** Which panel of the paper board was photographed, said by a person (ADR 0023). */
+const whiteboardPanel = z.enum(WHITEBOARD_PANELS)
+
+/** What a Whiteboard Read created, by kind (ADR 0023). */
+const whiteboardRecord = z.enum(WHITEBOARD_RECORDS)
+
+/**
+ * What a Whiteboard Read answers with: **the report is the answer, not a
+ * table** (ADR 0023).
+ *
+ * Four sections and a fifth for checking, because the durable trail is one
+ * audit entry per created record — a fifth log to remember an import that
+ * already left one is what ADR 0019 warned about. `blank` is the rule that
+ * stands in for a human confirming each record: a cell that is not clearly
+ * legible is left blank and named here, the same rule a blank Item follows,
+ * because a model's own confidence is not calibrated and would be trusted
+ * anyway.
+ */
+export const whiteboardReport = z.object({
+  created: z.array(z.object({ record: whiteboardRecord, name: z.string(), id: z.string() })),
+  /** Already held under that kind, and named back the way `/spaces/batch` names its own. */
+  skipped: z.array(z.object({ record: whiteboardRecord, name: z.string() })),
+  /** A cell that was not clearly legible, in the words somebody could go and check. */
+  blank: z.array(z.string()),
+  /** Read, but not something this panel writes, or not something that parsed. */
+  couldNotPlace: z.array(z.string()),
+  /**
+   * Every created `medication`: `prescription` is required on `/products` and
+   * no board says it, so the model proposes it from the drug name and a
+   * `horse_care` holder checks it here.
+   */
+  check: z.array(z.string()),
+})
+
 /** What a Product is, a fact about the Product and not about where it was written down (ADR 0019). */
 const productKind = z.enum(PRODUCT_KINDS)
 
@@ -368,6 +409,19 @@ export const product = z.object({
   prescription: z.boolean(),
   reorderPointDays: z.number().nullable(),
   orderingNote: z.string().nullable(),
+  /**
+   * The day the rescue stopped using it, or null — Retired, and a date rather
+   * than a delete (#64). A Retired Product is carried here and hidden by each
+   * surface that offers one, the same division `horseList` keeps for Departed.
+   */
+  retiredOn: dayOfTheOrganisation.nullable(),
+  /**
+   * How many non-Departed horses' current Feed Schedules name it. On the read
+   * so the catalogue can say *on 9 Feed Schedules* and disable the button
+   * before anybody clicks it — a refusal nobody hits beats one that explains
+   * itself.
+   */
+  onFeedSchedules: z.number(),
 })
 
 export const productList = z.object({ products: z.array(product) })
@@ -455,13 +509,47 @@ const horseMeasurements = z.object({
   bodyConditions: z.array(bodyConditionEntry),
 })
 
+/** One of the three kinds an Alert may be — a closed fence (ADR 0024). */
+const alertKind = z.enum(ALERT_KINDS)
+
+/**
+ * A standing warning on a horse, in **full text** wherever it is shown (ADR
+ * 0024, #60). One shape for all three surfaces: a count on a wall read across
+ * a barn tells nobody the horse bites, and two shapes would be two chances to
+ * disagree about what a Prohibition is.
+ *
+ * `endedAt` null is standing. An ended Alert always carries all three of
+ * `endedAt`, `endedBy` and `endingReason` — the audit entry answers who and
+ * when, and only the reason answers *why the biting Alert is gone*.
+ */
+export const alert = z.object({
+  id: z.string(),
+  horseId: z.string(),
+  kind: alertKind,
+  text: z.string(),
+  raisedBy: z.string(),
+  raisedByName: z.string(),
+  /** Epoch milliseconds. A day belongs to the organisation, and this is not one. */
+  raisedAt: z.number(),
+  /** Epoch milliseconds, or null while standing. */
+  endedAt: z.number().nullable(),
+  endedBy: z.string().nullable(),
+  endedByName: z.string().nullable(),
+  endingReason: z.string().nullable(),
+})
+
 /**
  * A horse, as ADR 0003's current-state tier and #32's stories carry it for
  * this ticket. `photoUrl` is where the photo is hosted, not the photo itself —
  * this application has no object storage yet (the same gap #34 left the
- * release template pointing at). Alerts is deliberately absent: nothing writes
- * one yet, and the profile screen holds a place for it rather than this
- * schema inventing a field nobody populates.
+ * release template pointing at).
+ *
+ * **No Alerts field**, and this is the one shape that deliberately has none:
+ * the directory screen does not show them, and a promise nothing reads is a
+ * promise that goes stale unwitnessed — the same call this file already makes
+ * about the Board and a horse's blanket size. They are on `horseProfile`
+ * below, on `boardHorse`, and on the Shift's own checklist: the three surfaces
+ * #60 names.
  */
 export const horse = z.object({
   id: z.string(),
@@ -474,7 +562,8 @@ export const horse = z.object({
   departedOn: dayOfTheOrganisation.nullable(),
   spaces: z.object({
     stall: spaceRef.nullable(),
-    field: spaceRef.nullable(),
+    pasture: spaceRef.nullable(),
+    paddock: spaceRef.nullable(),
     barn: spaceRef.nullable(),
   }),
 })
@@ -489,9 +578,24 @@ export const horseList = z.object({ horses: z.array(horse) })
  * feed lines, and the phone's list screen never asked for them.
  */
 export const horseProfile = horse.extend({
+  /**
+   * Standing Alerts, in the order `compareAlerts` fixes — never a count, and
+   * riding here rather than on a read of its own: a second call would leave a
+   * horse looking alert-free whenever it is slow, which is the wrong direction
+   * to fail (#36, ADR 0024).
+   */
+  alerts: z.array(alert),
   /** Only the Shift Types this horse currently has a schedule for (#36). */
   feedSchedules: z.array(feedSchedule),
   measurements: horseMeasurements,
+  /**
+   * Ended Alerts, newest ending first — the profile alone, and on the
+   * read-everything floor (ADR 0024). The history must not leave with the
+   * record, which is ADR 0002's own argument for a departure date, and *she
+   * used to bite and we stopped saying so* is care history the floor already
+   * reads everything of.
+   */
+  endedAlerts: z.array(alert),
 })
 
 /**
@@ -502,9 +606,10 @@ export const horseProfile = horse.extend({
  * distances, and two schemas for it would be two chances to disagree about
  * what a Route is.
  *
- * **No Alerts field**, for the reason `horse` above has none: nothing writes an
- * Alert yet, and the Board holds the column rather than this schema inventing a
- * field nobody populates (#35).
+ * `alerts` is the standing ones in full text, because the Board's own column
+ * writes the words rather than a count: *2 alerts* on a wall read across a barn
+ * tells nobody the horse bites, which is the failure ADR 0024 exists to
+ * prevent, and the paper board writes the words.
  *
  * No blanket size and no height either, though the whiteboard's rows carry
  * both: #37 names what this surface shows, the grid does not show them, and a
@@ -516,8 +621,10 @@ const boardHorse = z.object({
   id: z.string(),
   name: z.string(),
   halterColour: z.string().nullable(),
-  field: spaceRef.nullable(),
+  pasture: spaceRef.nullable(),
   feedings: z.array(feedSchedule),
+  /** Standing only — an ended Alert leaves the wall (ADR 0024). */
+  alerts: z.array(alert),
 })
 
 /**
@@ -995,6 +1102,14 @@ export const shiftChecklist = z.object({
   undispositionedObservationCount: z.number(),
   /** Recent Shift Notes, newest first — this Shift's own day and the day before (ADR 0013, #45). */
   shiftNotes: z.array(shiftNote),
+  /**
+   * Standing Alerts on every horse this Shift has a card for, flat — the card
+   * groups them by `horseId` (ADR 0024, #60). They ride on this read rather
+   * than a second one, for the reason the Board's do: a card that renders
+   * before its warnings arrive is a volunteer who has already walked into the
+   * stall.
+   */
+  alerts: z.array(alert),
 })
 
 /** An optional note on a grant, a revocation or a correction (ADR 0010). */
@@ -1169,6 +1284,7 @@ export const reorderList = z.object({ reorders: z.array(reorder) })
 const announcementId = z.uuid()
 const contactId = z.uuid()
 const standingRuleId = z.uuid()
+const alertId = z.uuid()
 const observationId = z.uuid()
 const escalationId = z.uuid()
 const reorderId = z.uuid()
@@ -1307,6 +1423,32 @@ export const contract = {
       answers: z.object({ spaceId: z.string() }),
     },
     /**
+     * Several Spaces in one act: *ten stalls in the Big Barn*, which was ten
+     * trips through the form above.
+     *
+     * **The names are sent rather than a rule for making them**, which is what
+     * keeps the list the desk previewed and the list that lands identical.
+     * `src/shared/spaces.ts`'s `seriesNames` is where the numbering lives, and
+     * it runs on the screen; the server takes what it produced.
+     *
+     * One key and one transaction for the whole run (ADR 0020), so a repeat
+     * from a pocket cannot half-create a barn, and a name the rescue already
+     * has under that kind is **skipped rather than refused** — a Coordinator
+     * who already added Stall 1 and then asks for ten stalls means the nine
+     * that are missing.
+     */
+    '/spaces/batch': {
+      accepts: z.object({
+        kind: spaceKind,
+        names: z.array(z.string().min(1).max(200)).min(1).max(MOST_SPACES_AT_ONCE),
+      }),
+      answers: z.object({
+        spaceIds: z.array(z.string()),
+        /** The names that already existed under this kind, in the order sent. */
+        skipped: z.array(z.string()),
+      }),
+    },
+    /**
      * A rename, a change of kind, or both — the whole of how splitting or
      * merging a joined Space happens: an edit by someone with the authority
      * to make it, never a gate sensor (ADR 0002).
@@ -1353,6 +1495,43 @@ export const contract = {
       accepts: z.object({ horseId, departedOn: dayOfTheOrganisation.nullable(), reason }),
       answers: z.void(),
     },
+    /**
+     * Raises an Alert on a horse: a standing warning a volunteer reads before
+     * working with it (ADR 0024). `horse_care` and nobody else — a deliberate
+     * narrowing of ADR 0014, because an Alert anybody may post is a wall
+     * nobody reads, and it is permanent where a Saturday's delay is not. The
+     * floor's own door is the Observation, which escalates and already mails
+     * this Scope's holders.
+     */
+    '/alerts': {
+      accepts: z.object({
+        horseId,
+        kind: alertKind,
+        // Trimmed before it is measured: a warning of three spaces is a blank
+        // line at the top of a profile, and `min(1)` alone lets one through.
+        text: z.string().trim().min(1).max(2000),
+      }),
+      answers: z.object({ alertId: z.string() }),
+    },
+    /** Edits an Alert's text and kind in place — current state with an audit entry (ADR 0003, 0024). */
+    '/alerts/edit': {
+      accepts: z.object({
+        alertId,
+        kind: alertKind,
+        text: z.string().trim().min(1).max(2000),
+      }),
+      answers: z.void(),
+    },
+    /**
+     * Ends an Alert: never a delete, and the reason is **required** rather
+     * than the optional `reason` every other edit here carries (ADR 0024). The
+     * audit entry answers who and when; only this answers *why the biting
+     * Alert is gone*, which is the question asked six months later.
+     */
+    '/alerts/end': {
+      accepts: z.object({ alertId, reason: z.string().trim().min(1).max(500) }),
+      answers: z.void(),
+    },
     '/suppliers': {
       accepts: z.object({
         name: z.string().min(1).max(200),
@@ -1371,6 +1550,19 @@ export const contract = {
         orderingNote: z.string().max(2000).nullish(),
       }),
       answers: z.object({ productId: z.string() }),
+    },
+    /**
+     * Retiring a Product, or correcting a mistaken Retirement with
+     * `retiredOn: null` — a date and never a delete, the same act
+     * `/spaces/retirement` and `/horses/departure` already are (#64).
+     *
+     * Refused `product_in_use` while a non-Departed horse's current Feed
+     * Schedule still names it; once Retired it can be named on no new
+     * schedule, no new reading and no new Reorder (`product_retired`).
+     */
+    '/products/retirement': {
+      accepts: z.object({ productId, retiredOn: dayOfTheOrganisation.nullable(), reason }),
+      answers: z.void(),
     },
     /** A partial edit, the same discipline `/horses/attributes` follows (ADR 0003, ADR 0019). */
     '/products/edit': {
@@ -1998,6 +2190,36 @@ export const contract = {
     '/reorders/close': {
       accepts: z.object({ reorderId, note: z.string().min(1).max(2000) }),
       answers: z.void(),
+    },
+    /**
+     * One photograph of one panel of a rescue's paper board, turned into
+     * records (ADR 0023, #59). Spec #32 said *migration is manual entry
+     * starting with the first horse; no importer*; this overturns it
+     * deliberately, and ADR 0023 is where the reasoning lives.
+     *
+     * **One endpoint, taking a declared panel.** A new panel kind later is a
+     * value, not a new path — and one call per panel, so a botched grain read
+     * cannot roll back the phone numbers and each payload stays small.
+     *
+     * **The image is base64 inside the payload**, not multipart: `ApiResponse`
+     * carries no headers (ADR 0020) and a second door outside `route.ts` would
+     * be the first hole in ADR 0016's fence. It is capped, refused over the cap
+     * in words, and **never stored** — there is no object storage, and adding
+     * it to serve a one-time act is the tail wagging the dog.
+     *
+     * **`neverQueued`**, keeping its idempotency key, under ADR 0018's rule as
+     * ADR 0005 leaves it: this is a desk act done once on wifi, and holding
+     * five megabytes in IndexedDB to retry would buy nothing and cost a second
+     * paid call.
+     */
+    '/whiteboard-read': {
+      accepts: z.object({
+        panel: whiteboardPanel,
+        mediaType: z.enum(WHITEBOARD_IMAGE_TYPES),
+        image: z.string().min(1).max(MOST_IMAGE_BASE64_CHARS),
+      }),
+      answers: whiteboardReport,
+      neverQueued: true,
     },
   },
 } as const satisfies Contract

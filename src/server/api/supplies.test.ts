@@ -283,6 +283,82 @@ describe.skipIf(!reachable)('Days-of-Supply and Reorders, through the API', () =
     })
   })
 
+  describe('a Retired Product', () => {
+    async function retired(name: string): Promise<{ productId: string; holder: string }> {
+      const productId = await seedProduct(name)
+      const holder = await suppliesHolder()
+      const gone = await post(holder.api, '/products/retirement', {
+        productId,
+        retiredOn: day(),
+      })
+      expect(gone.status).toBe(204)
+      return { productId, holder: holder.volunteerId }
+    }
+
+    it('takes no new reading', async () => {
+      const { productId } = await retired('Retired Senior')
+      const holder = await suppliesHolder()
+
+      const refused = await post(holder.api, '/supplies/readings', {
+        productId,
+        daysRemaining: 10,
+        countedOn: day(),
+      })
+      expect(refused.status).toBe(409)
+      expect(refused.body.error).toBe('product_retired')
+    })
+
+    it('opens no new Reorder', async () => {
+      const { productId } = await retired('Retired Rice Bran')
+      const holder = await suppliesHolder()
+
+      const refused = await post(holder.api, '/reorders', { productId })
+      expect(refused.status).toBe(409)
+      expect(refused.body.error).toBe('product_retired')
+    })
+
+    it('lets a Reorder opened before the Retirement be threaded and closed', async () => {
+      const productId = await seedProduct('Ordered Senior')
+      const holder = await suppliesHolder()
+      const opened = await post(holder.api, '/reorders', { productId })
+      expect(opened.status).toBe(201)
+      const reorderId = opened.body.reorderId as string
+
+      await post(holder.api, '/products/retirement', { productId, retiredOn: day() })
+
+      const threaded = await post(holder.api, '/reorders/comments', {
+        reorderId,
+        text: 'Chased. Arrives Friday.',
+      })
+      expect(threaded.status).toBe(201)
+
+      const closed = await post(holder.api, '/reorders/close', {
+        reorderId,
+        note: 'Arrived. Last sack we will buy.',
+      })
+      expect(closed.status).toBe(204)
+    })
+
+    it('leaves the forecast, keeping the readings it already carries', async () => {
+      const productId = await seedProduct('Counted Senior')
+      const holder = await suppliesHolder()
+      await post(holder.api, '/supplies/readings', {
+        productId,
+        daysRemaining: 4,
+        countedOn: day(),
+      })
+      await post(holder.api, '/products/retirement', { productId, retiredOn: day() })
+
+      const listed = suppliesForecast.parse((await get(await reader(), '/supplies')).body)
+      expect(listed.products.find((product) => product.productId === productId)).toBeUndefined()
+
+      const kept = await owner`
+        select days_remaining from days_of_supply_readings where product_id = ${productId}
+      `
+      expect(kept).toHaveLength(1)
+    })
+  })
+
   describe("today's derived figure", () => {
     it('decrements the last reading by the days elapsed, floored at zero', async () => {
       const productId = await seedProduct('Senior')

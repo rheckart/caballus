@@ -670,6 +670,58 @@ export const horseSpaceAssignments = pgTable(
   ],
 ).enableRLS()
 
+/**
+ * A standing warning on a horse — a prohibition, a care alert, an allergy
+ * (`CONTEXT.md`'s Alert; ADR 0024, #60). ADR 0003's current-state tier with an
+ * audit entry, a fourth member beside name, halter colour and Space
+ * assignments: not versioned, because versioning is for care instructions a
+ * volunteer executes and an Alert is a thing to know rather than a thing to
+ * do, and not a measurement series either.
+ *
+ * **The subject is a horse and nothing else.** A standing warning about a
+ * Space — a broken gate latch — is a maintenance Escalation, which already
+ * routes to a Scope and already closes. Widening here is a nullable column;
+ * narrowing is a migration.
+ *
+ * **Ending is a marker and never a delete**, the same shape as a horse's
+ * departure (ADR 0002), and it carries a **required** reason: the audit entry
+ * answers who and when, and only `endingReason` answers *why the biting Alert
+ * is gone*, which is the question actually asked six months later. An instant
+ * rather than a caller-supplied date, because unlike a departure nobody
+ * reports an ending late — it is `closedAt` on an Escalation, in shape and in
+ * meaning. Nothing here ever ends on its own: no review date, no scheduled
+ * job, and a horse departing ends nothing, because she is gone rather than
+ * cured.
+ */
+export const alerts = pgTable(
+  'alerts',
+  {
+    id: uuid('id').primaryKey(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id),
+    horseId: uuid('horse_id')
+      .notNull()
+      .references(() => horses.id),
+    /** One of `ALERT_KINDS` in `src/shared/alerts.ts` — a closed fence, never free text. */
+    kind: text('kind').notNull(),
+    text: text('text').notNull(),
+    raisedBy: uuid('raised_by')
+      .notNull()
+      .references(() => volunteers.id),
+    raisedAt: timestamp('raised_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Null while standing. The three are set together, and there is no un-ending. */
+    endedAt: timestamp('ended_at', { withTimezone: true }),
+    endedBy: uuid('ended_by').references(() => volunteers.id),
+    endingReason: text('ending_reason'),
+  },
+  (table) => [
+    // Every surface reads this way: one horse's Alerts, standing and ended.
+    index('alerts_horse').on(table.orgId, table.horseId),
+    inScope('alerts_in_scope'),
+  ],
+).enableRLS()
+
 export const auditEntries = pgTable(
   'audit_entries',
   {
@@ -766,6 +818,17 @@ export const products = pgTable(
     /** Optional, in days — the same unit a days-of-supply reading will use (ADR 0019). */
     reorderPointDays: integer('reorder_point_days'),
     orderingNote: text('ordering_note'),
+    /**
+     * Retired: the day the rescue stopped using this Product, or null. A date
+     * and never a delete, for the reason a Space retires and a horse Departs —
+     * feed schedule lines, days-of-supply readings and Reorders all reference
+     * it, and the history they carry is the point.
+     *
+     * Refused while a non-Departed horse's *current* Feed Schedule names it
+     * (`product_in_use`), and once set it shuts the other three doors:
+     * no new schedule line, no new reading, no new Reorder (`product_retired`).
+     */
+    retiredOn: date('retired_on'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [

@@ -4,16 +4,21 @@
  * assignments, the current feeding per Shift Type, and the weight and
  * body-condition series (#36).
  *
- * Alerts is a heading with nothing under it yet. Nothing in this ticket
- * writes one — no medical or feed domain exists to source it from — and the
- * section is here so the place is held rather than invented as a field on the
- * horse this ticket has no way to populate.
+ * Alerts come first and in full text (ADR 0024, #60) — standing ones above
+ * everything, and the ended ones at the foot as history, because the record
+ * must not lose *she used to bite and we stopped saying so*. A Departed horse
+ * keeps hers standing: she is gone rather than cured.
+ *
+ * This screen reads them and never writes one. Raising, editing and ending are
+ * `horse_care`'s own acts, at the desk (`src/routes/admin/horses.tsx`).
  *
  * The first parameterised endpoint the typed client calls (ADR 0021).
  */
 import { Link, createFileRoute, useParams } from '@tanstack/react-router'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 
+import { Loading } from '../../components/forms'
+import { ALERT_KIND_LABEL } from '../../shared/alerts'
 import { client } from '../../shared/api-client'
 import { MEASUREMENT_METHODS, type MeasurementKind } from '../../shared/measurements'
 import { refusalText } from '../../shared/refusals'
@@ -100,7 +105,7 @@ function HorseProfile() {
   if (horse === null) {
     return (
       <main>
-        <p>One moment…</p>
+        <Loading what="the horse" />
       </main>
     )
   }
@@ -109,12 +114,22 @@ function HorseProfile() {
     <main>
       <Link to="/horses">Back to horses</Link>
       <h1>{horse.name}</h1>
+      <h2>Alerts</h2>
+      {horse.alerts.length === 0 ? (
+        <p>No alerts recorded.</p>
+      ) : (
+        <ul className="alerts">
+          {horse.alerts.map((alert) => (
+            <li key={alert.id} className="alert" data-kind={alert.kind}>
+              <strong>{ALERT_KIND_LABEL[alert.kind]}</strong> {alert.text}
+            </li>
+          ))}
+        </ul>
+      )}
+
       {horse.departedOn !== null && <p role="status">Departed {horse.departedOn}</p>}
 
       {horse.photoUrl !== null && <img src={horse.photoUrl} alt={horse.name} width={320} />}
-
-      <h2>Alerts</h2>
-      <p>No alerts recorded.</p>
 
       <h2>Attributes</h2>
       <ul>
@@ -126,7 +141,8 @@ function HorseProfile() {
       <h2>Space assignments</h2>
       <ul>
         <li>Stall: {horse.spaces.stall?.name ?? 'not assigned'}</li>
-        <li>Field: {horse.spaces.field?.name ?? 'not assigned'}</li>
+        <li>Pasture: {horse.spaces.pasture?.name ?? 'not assigned'}</li>
+        <li>Paddock: {horse.spaces.paddock?.name ?? 'not assigned'}</li>
         <li>Barn: {horse.spaces.barn?.name ?? 'not assigned'}</li>
       </ul>
 
@@ -179,6 +195,23 @@ function HorseProfile() {
             </li>
           ))}
         </ul>
+      )}
+
+      {horse.endedAlerts.length > 0 && (
+        <>
+          <h2>Alerts that have ended</h2>
+          <ul className="alerts-ended">
+            {horse.endedAlerts.map((alert) => (
+              <li key={alert.id}>
+                <strong>{ALERT_KIND_LABEL[alert.kind]}</strong> {alert.text}
+                {/* The reason, always — the audit entry answers who and when,
+                    and only this answers why it is gone (ADR 0024). */}
+                <span className="alert-ending"> Ended: {alert.endingReason}</span>
+                {alert.endedByName !== null && <span> — {alert.endedByName}</span>}
+              </li>
+            ))}
+          </ul>
+        </>
       )}
 
       <RecordMeasurement onRecord={recordMeasurement} />

@@ -8,7 +8,7 @@
  * join against `volunteers`, the same convention `observationsFor` and
  * `escalationList` follow.
  */
-import { desc, eq, inArray } from 'drizzle-orm'
+import { desc, eq, inArray, isNull } from 'drizzle-orm'
 
 import type { OrgScopedDatabase } from '../../db/for-org'
 import {
@@ -62,6 +62,11 @@ export async function suppliesList(
   db: OrgScopedDatabase,
   today: DayString,
 ): Promise<readonly ProductSupply[]> {
+  // A Retired Product is left off the forecast (#64): with no new reading and
+  // no new Reorder possible, there is nothing for this screen to offer about
+  // it. The readings it already carries stay in the table, whole — this is a
+  // read hiding a row, the way the Board hides a Departed horse, and the
+  // catalogue at `/products` is still where it is readable.
   const productRows = await db
     .select({
       id: products.id,
@@ -70,6 +75,7 @@ export async function suppliesList(
       reorderPointDays: products.reorderPointDays,
     })
     .from(products)
+    .where(isNull(products.retiredOn))
     .orderBy(products.name)
 
   const readingRows = await db

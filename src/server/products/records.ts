@@ -16,7 +16,9 @@ import { v7 as uuidv7 } from 'uuid'
 import type { OrgId, OrgScopedDatabase } from '../../db/for-org'
 import { products, suppliers } from '../../db/schema'
 import type { ProductKind } from '../../shared/products'
+import type { DayString } from '../../shared/time'
 import { audit, type AuditEntry } from '../roster/audit'
+import { horsesByProductOnCurrentSchedules } from '../horses/feed-schedules'
 import { recorded, refused, type Recorded } from '../horses/outcome'
 
 export { type Recorded, type Refusal } from '../horses/outcome'
@@ -62,6 +64,8 @@ export interface NewProduct {
   readonly prescription: boolean
   readonly reorderPointDays?: number | null
   readonly orderingNote?: string | null
+  /** Why, on the audit entry — a Whiteboard Read's *read from the whiteboard photograph* (ADR 0023). */
+  readonly reason?: string | null
 }
 
 /**
@@ -94,9 +98,67 @@ export async function createProduct(
     orderingNote: normalised(details.orderingNote),
   })
 
-  await audit(db, orgId, actorVolunteerId, [{ entity: 'product', entityId: id, after: name }])
+  await audit(db, orgId, actorVolunteerId, [
+    { entity: 'product', entityId: id, after: name, reason: details.reason ?? null },
+  ])
 
   return recorded({ id, name })
+}
+
+/**
+ * Retires a Product, or corrects a mistaken Retirement — a date, never a
+ * delete, the same act `recordSpaceRetirement` and `recordHorseDeparture`
+ * already are (#64, ADR 0019). Feed schedule lines, days-of-supply readings
+ * and Reorders all reference a Product, and the history they carry is why
+ * the row stays.
+ *
+ * **Refused while a non-Departed horse's current Feed Schedule names it.**
+ * The Space's own `space_occupied` refusal, for the same reason: a Product
+ * retired out from under nine horses is the app telling a volunteer to do a
+ * thing the barn cannot do. `horsesByProductOnCurrentSchedules` is the one
+ * place that rule lives, and `productList` counts against the same function
+ * so the catalogue's *on 9 Feed Schedules* and this refusal cannot disagree.
+ */
+export async function retireProduct(
+  db: OrgScopedDatabase,
+  orgId: OrgId,
+  actorVolunteerId: string,
+  about: {
+    readonly productId: string
+    readonly retiredOn: DayString | null
+    readonly reason?: string | null
+  },
+): Promise<Recorded> {
+  const [existing] = await db
+    .select({ retiredOn: products.retiredOn })
+    .from(products)
+    .where(eq(products.id, about.productId))
+    .limit(1)
+  if (existing === undefined) return refused('product_not_found')
+
+  if (about.retiredOn !== null) {
+    const byProduct = await horsesByProductOnCurrentSchedules(db)
+    const fed = byProduct.get(about.productId)
+    if (fed !== undefined && fed.size > 0) return refused('product_in_use')
+  }
+
+  await db
+    .update(products)
+    .set({ retiredOn: about.retiredOn })
+    .where(eq(products.id, about.productId))
+
+  await audit(db, orgId, actorVolunteerId, [
+    {
+      entity: 'product',
+      entityId: about.productId,
+      field: 'retired_on',
+      before: existing.retiredOn,
+      after: about.retiredOn,
+      reason: about.reason ?? null,
+    },
+  ])
+
+  return recorded(null)
 }
 
 async function supplierExists(db: OrgScopedDatabase, supplierId: string): Promise<boolean> {

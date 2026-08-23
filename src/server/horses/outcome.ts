@@ -15,7 +15,13 @@ export type Refusal =
   | 'space_kind_mismatch'
   | 'space_occupied'
   | 'product_not_found'
+  /** Retiring a Product a non-Departed horse's current Feed Schedule still names. */
+  | 'product_in_use'
+  /** Naming a retired Product on a new Feed Schedule, a reading, or a Reorder. */
+  | 'product_retired'
   | 'supplier_not_found'
+  | 'alert_not_found'
+  | 'alert_already_ended'
 
 export type Recorded<T = null> =
   { readonly ok: true; readonly value: T } | { readonly ok: false; readonly because: Refusal }

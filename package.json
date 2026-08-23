@@ -32,6 +32,7 @@
     "url": "https://git.heckart.me/rob/caballus.git"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "0.120.0",
     "@hono/node-server": "2.1.1",
     "@sentry/browser": "10.70.0",
     "@sentry/node": "10.70.0",

@@ -168,7 +168,7 @@ describe.skipIf(!reachable)('the Board, through the API', () => {
   async function seedHorse(
     api: ReturnType<typeof apiAs>,
     name: string,
-    at: { stall?: string; field?: string; barn?: string } = {},
+    at: { stall?: string; pasture?: string; paddock?: string; barn?: string } = {},
   ): Promise<string> {
     const created = await post(api, '/horses', { name })
     const horseId = created.body.horseId as string
@@ -279,11 +279,11 @@ describe.skipIf(!reachable)('the Board, through the API', () => {
       expect(stallNames).not.toContain('6')
     })
 
-    it('carries the halter colour, the field and the current feeding per Shift Type', async () => {
+    it('carries the halter colour, the pasture and the current feeding per Shift Type', async () => {
       const api = await holder()
       const stall = await seedSpace(api, 'stall', '1')
-      const fieldA = await seedSpace(api, 'field', 'A')
-      const horseId = await seedHorse(api, 'Dawson', { stall, field: fieldA })
+      const pastureA = await seedSpace(api, 'pasture', 'A')
+      const horseId = await seedHorse(api, 'Dawson', { stall, pasture: pastureA })
       await post(api, '/horses/attributes', { horseId, halterColour: 'green' })
 
       const senior = await post(api, '/products', {
@@ -311,7 +311,7 @@ describe.skipIf(!reachable)('the Board, through the API', () => {
       const horse = grid.sections[0]?.rows[0]?.horse
 
       expect(horse?.halterColour).toBe('green')
-      expect(horse?.field?.name).toBe('A')
+      expect(horse?.pasture?.name).toBe('A')
       expect(horse?.feedings).toHaveLength(1)
       expect(horse?.feedings[0]?.shiftType).toBe('feed_am')
       // A syringe medication is visibly not in-feed, on the wall as on the

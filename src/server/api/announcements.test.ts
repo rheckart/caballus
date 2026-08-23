@@ -14,7 +14,9 @@ import { postgresIdempotency } from '../../db/idempotency'
 import { API_BASE, newIdempotencyKey } from '../../shared/api-client'
 import { contract } from '../../shared/api-contract'
 import type { DomainScope } from '../../shared/domain-scopes'
+import { dayString } from '../../shared/time'
 import { anonymousContext } from '../request-context'
+import { addDays } from '../time'
 import { buildApi } from './app'
 
 const applicationUrl = process.env.DATABASE_URL ?? ''
@@ -125,6 +127,19 @@ describe.skipIf(!reachable)('Announcements and Contacts, through the API', () =>
     return ((await get(api, '/day')).body as { day: string }).day
   }
 
+  /**
+   * An expiry comfortably ahead of the organisation's own today, for the tests
+   * that are about something other than expiry.
+   *
+   * Derived rather than written down: a hardcoded date is a test that passes
+   * until the day it silently becomes a test of the expiry rule instead, which
+   * is exactly what `2026-08-20` did here on the 22nd.
+   */
+  async function stillPosted(api: ReturnType<typeof apiAs>): Promise<string> {
+    const { day, timeZone } = (await get(api, '/day')).body as { day: string; timeZone: string }
+    return addDays(dayString(day), 30, timeZone)
+  }
+
   describe('Announcements', () => {
     it('is posted by any single Domain Scope, and carries text, author and expiry', async () => {
       // The Treasurer's scope guards nothing else in v1 (ADR 0018) — the
@@ -150,9 +165,10 @@ describe.skipIf(!reachable)('Announcements and Contacts, through the API', () =>
     })
 
     it('refuses a signed-in Volunteer holding no Domain Scope', async () => {
-      const posted = await post(await reader(), '/announcements', {
+      const asking = await reader()
+      const posted = await post(asking, '/announcements', {
         text: 'The hay comes Thursday.',
-        expiresOn: '2026-08-25',
+        expiresOn: await stillPosted(asking),
       })
       expect(posted.status).toBe(403)
     })
@@ -161,7 +177,7 @@ describe.skipIf(!reachable)('Announcements and Contacts, through the API', () =>
       const holder = await scopeHolder('roster')
       const posted = await post(holder, '/announcements', {
         text: 'The vet is here Tuesday.',
-        expiresOn: '2026-08-25',
+        expiresOn: await stillPosted(holder),
       })
       const announcementId = posted.body.announcementId as string
 
@@ -175,7 +191,7 @@ describe.skipIf(!reachable)('Announcements and Contacts, through the API', () =>
       const author = await scopeHolder('horse_care')
       const posted = await post(author, '/announcements', {
         text: 'The water in the tack room is off until Saturday.',
-        expiresOn: '2026-08-20',
+        expiresOn: await stillPosted(author),
       })
       const announcementId = posted.body.announcementId as string
 
@@ -214,7 +230,7 @@ describe.skipIf(!reachable)('Announcements and Contacts, through the API', () =>
       const holder = await scopeHolder('roster')
       const posted = await post(holder, '/announcements', {
         text: 'Storm goes to the clinic on Tuesday.',
-        expiresOn: '2026-08-25',
+        expiresOn: await stillPosted(holder),
         // A caller trying to smuggle a subject through finds no such field —
         // the extra key is simply not part of what the contract accepts, and
         // the write still succeeds without it landing anywhere.

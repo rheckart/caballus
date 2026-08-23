@@ -61,11 +61,19 @@ import {
 } from '../roster/releases'
 import { startObservability } from '../observability'
 import { today } from '../time'
+import {
+  endAlert,
+  editAlert,
+  raiseAlert,
+  standingAlertsByHorse,
+  type Alert,
+} from '../horses/alerts'
 import { horseById, horseList, spaceList } from '../horses/list'
 import {
   assignHorseSpace,
   createHorse,
   createSpace,
+  createSpaces,
   editHorseAttributes,
   editSpace,
   recordHorseDeparture,
@@ -76,7 +84,7 @@ import { publishFeedSchedule } from '../horses/feed-schedules'
 import { recordMeasurement } from '../horses/measurements'
 import { productList, supplierList } from '../products/list'
 import { boardGrid } from '../board/grid'
-import { createProduct, createSupplier, editProduct } from '../products/records'
+import { createProduct, createSupplier, editProduct, retireProduct } from '../products/records'
 import { patternList, shiftList } from '../shifts/list'
 import {
   assignToStandingRoster,
@@ -156,6 +164,7 @@ import {
   recordSuppliesReading,
   type Refusal as SuppliesRefusal,
 } from '../supplies/records'
+import { recordWhiteboardRead, type Refusal as WhiteboardRefusal } from '../whiteboard-read/records'
 
 // The server's one entry point, so this is where reporting starts. It is a
 // no-op without a DSN, which is the state of every machine until one is set.
@@ -245,6 +254,7 @@ export function buildApi(
   function horseRefusal(because: HorseRefusal) {
     const missing =
       because === 'horse_not_found' ||
+      because === 'alert_not_found' ||
       because === 'space_not_found' ||
       because === 'product_not_found' ||
       because === 'supplier_not_found'
@@ -338,6 +348,16 @@ export function buildApi(
       because === 'reorder_not_found' ||
       because === 'escalation_not_found'
     return json({ error: because }, missing ? 404 : 409)
+  }
+
+  /**
+   * A Whiteboard Read refuses on one of three, and none of them is a missing
+   * record: an unset key, a model that would not answer, and a caller who does
+   * not hold every Scope the panel writes into. 409 for all three — none
+   * becomes true by retrying under the same key (ADR 0020).
+   */
+  function whiteboardRefusal(because: WhiteboardRefusal) {
+    return json({ error: because }, 409)
   }
 
   api.route('GET', '/day', readEverything(), async ({ context }) => {
@@ -612,6 +632,8 @@ export function buildApi(
     if (found === null) return json({ error: 'horse_not_found' }, 404)
     return json({
       ...found,
+      alerts: found.alerts.map((entry) => ({ ...entry })),
+      endedAlerts: found.endedAlerts.map((entry) => ({ ...entry })),
       feedSchedules: found.feedSchedules.map((schedule) => ({
         ...schedule,
         lines: [...schedule.lines],
@@ -731,11 +753,12 @@ export function buildApi(
                   id: row.horse.id,
                   name: row.horse.name,
                   halterColour: row.horse.halterColour,
-                  field: row.horse.field === null ? null : { ...row.horse.field },
+                  pasture: row.horse.pasture === null ? null : { ...row.horse.pasture },
                   feedings: row.horse.feedings.map((feeding) => ({
                     ...feeding,
                     lines: [...feeding.lines],
                   })),
+                  alerts: row.horse.alerts.map((entry) => ({ ...entry })),
                 },
         })),
       })),
@@ -803,6 +826,13 @@ export function buildApi(
       readonly openAttendanceCount: number
       readonly undispositionedObservationCount: number
       readonly shiftNotes: Awaited<ReturnType<typeof shiftNotesFor>>
+      /**
+       * Standing Alerts on the horses this Shift has a card for (ADR 0024,
+       * #60). On this read rather than a second one: a card that renders
+       * before its warnings arrive is a volunteer who has already walked into
+       * the stall.
+       */
+      readonly alerts: readonly Alert[]
     }
 
     const found: Found | null = await forOrg(context.orgId).run(
@@ -811,11 +841,19 @@ export function buildApi(
         const shift = await shiftById(db, params.shiftId ?? '')
         if (shift === null || shift.shiftType === 'pop_up') return null
         const shiftType = shift.shiftType
-        const [checklist, counts, notes] = await Promise.all([
+        const [checklist, counts, notes, alertsBy] = await Promise.all([
           checklistForShift(db, { id: shift.id, day: shift.day, shiftType }, clock.timeZone),
           closeCountsFor(db, shift.id),
           shiftNotesFor(db, shift.day, clock.timeZone),
+          standingAlertsByHorse(db),
         ])
+        // `items` alone, because `arrangePrepQueue` builds the cards from
+        // `items` alone: Prep owed renders as a flat list with no horse card
+        // under it, so an Alert sent for a prep-only horse would render
+        // nowhere. A card is what carries a warning.
+        const onThisShift = new Set(
+          checklist.items.map((item) => item.horseId).filter((id) => id !== null),
+        )
         return {
           id: shift.id,
           day: shift.day,
@@ -825,6 +863,7 @@ export function buildApi(
           openAttendanceCount: counts.openAttendanceCount,
           undispositionedObservationCount: counts.undispositionedObservationCount,
           shiftNotes: notes,
+          alerts: [...onThisShift].flatMap((horseId) => alertsBy.get(horseId) ?? []),
         }
       },
     )
@@ -841,6 +880,7 @@ export function buildApi(
       openAttendanceCount: found.openAttendanceCount,
       undispositionedObservationCount: found.undispositionedObservationCount,
       shiftNotes: found.shiftNotes.map((note) => ({ ...note })),
+      alerts: found.alerts.map((entry) => ({ ...entry })),
     })
   })
 
@@ -995,6 +1035,24 @@ export function buildApi(
     return json({ spaceId: outcome.value.id }, 201)
   })
 
+  /**
+   * Several Spaces in one act — the ten-stalls-in-the-Big-Barn write. The
+   * names arrive already made (`seriesNames` on the screen), and what already
+   * existed comes back named rather than silently dropped.
+   */
+  api.mutation('/spaces/batch', domainScope('horse_care'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await createSpaces(db, context.orgId, actor.volunteerId, input)
+    if (!outcome.ok) return horseRefusal(outcome.because)
+    return json(
+      {
+        spaceIds: outcome.value.created.map((space) => space.id),
+        skipped: outcome.value.skipped,
+      },
+      201,
+    )
+  })
+
   api.mutation('/spaces/edit', domainScope('horse_care'), async (input, { context, db }) => {
     const actor = actorOf(context)
     const outcome = await editSpace(db, context.orgId, actor.volunteerId, input)
@@ -1038,6 +1096,38 @@ export function buildApi(
     return outcome.ok ? noContent() : horseRefusal(outcome.because)
   })
 
+  /**
+   * Raises a standing Alert on a horse — `horse_care` and nobody else, which
+   * is ADR 0024's deliberate narrowing of ADR 0014. The floor's own door is
+   * the Observation, which escalates and already mails this Scope's holders:
+   * an Alert anybody may post is a wall nobody reads, and it is permanent
+   * where a Saturday's delay is not.
+   */
+  api.mutation('/alerts', domainScope('horse_care'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await raiseAlert(db, context.orgId, actor.volunteerId, input)
+    if (!outcome.ok) return horseRefusal(outcome.because)
+    return json({ alertId: outcome.value.id }, 201)
+  })
+
+  /** Edits an Alert's text and kind in place — current state with an audit entry (ADR 0003, 0024). */
+  api.mutation('/alerts/edit', domainScope('horse_care'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await editAlert(db, context.orgId, actor.volunteerId, input)
+    return outcome.ok ? noContent() : horseRefusal(outcome.because)
+  })
+
+  /**
+   * Ends an Alert: never a delete, and the reason is required by the contract
+   * rather than optional the way every other `reason` on this desk is (ADR
+   * 0024). The row stays readable in the profile's ended section.
+   */
+  api.mutation('/alerts/end', domainScope('horse_care'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await endAlert(db, context.orgId, actor.volunteerId, input)
+    return outcome.ok ? noContent() : horseRefusal(outcome.because)
+  })
+
   api.mutation(
     '/suppliers',
     anyDomainScope(['horse_care', 'supplies']),
@@ -1078,6 +1168,21 @@ export function buildApi(
     async (input, { context, db }) => {
       const actor = actorOf(context)
       const outcome = await editProduct(db, context.orgId, actor.volunteerId, input)
+      return outcome.ok ? noContent() : horseRefusal(outcome.because)
+    },
+  )
+
+  /**
+   * Retires a Product, or corrects a mistaken Retirement — the same two Scopes
+   * that edit one, because splitting the door would mean whoever may rename
+   * Bute may not stop it (#64, ADR 0019).
+   */
+  api.mutation(
+    '/products/retirement',
+    anyDomainScope(['horse_care', 'supplies']),
+    async (input, { context, db }) => {
+      const actor = actorOf(context)
+      const outcome = await retireProduct(db, context.orgId, actor.volunteerId, input)
       return outcome.ok ? noContent() : horseRefusal(outcome.because)
     },
   )
@@ -1857,6 +1962,48 @@ export function buildApi(
     })
     return outcome.ok ? noContent() : suppliesRefusal(outcome.because)
   })
+
+  /**
+   * One photograph of one panel of the paper board, turned into records
+   * (ADR 0023, #59).
+   *
+   * `anyDomainScope(['horse_care', 'roster'])` is the door, and it is
+   * deliberately the looser of the two checks: **which** Scopes are actually
+   * needed depends on the payload's own `panel`, so the real check runs inside
+   * `recordWhiteboardRead` — the same data-dependent shape `escalateObservation`
+   * and `recordSuppliesReading` already resolve inside themselves, for the same
+   * reason (ADR 0010: no new Scope and no new axis).
+   *
+   * `PersonAuthorization`, like every write, which is what makes the caller the
+   * author of every record it creates (ADR 0022). The image is passed straight
+   * through and **never stored**.
+   */
+  api.mutation(
+    '/whiteboard-read',
+    anyDomainScope(['horse_care', 'roster']),
+    async (input, { context, db }) => {
+      const actor = actorOf(context)
+      const today = await dayHere(db)
+      const outcome = await recordWhiteboardRead(
+        db,
+        context.orgId,
+        actor,
+        { panel: input.panel, mediaType: input.mediaType, base64: input.image },
+        today,
+      )
+      if (!outcome.ok) return whiteboardRefusal(outcome.because)
+      return json(
+        {
+          created: outcome.value.created.map((entry) => ({ ...entry })),
+          skipped: outcome.value.skipped.map((entry) => ({ ...entry })),
+          blank: [...outcome.value.blank],
+          couldNotPlace: [...outcome.value.couldNotPlace],
+          check: [...outcome.value.check],
+        },
+        201,
+      )
+    },
+  )
 
   // Every path the contract declares now has a handler, or this throws and the
   // container does not start. Registering a path nothing declares is a type

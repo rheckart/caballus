@@ -16,6 +16,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
 
+import { Loading } from '../../components/forms'
 import { client } from '../../shared/api-client'
 import {
   anneArundelReport,
@@ -44,7 +45,11 @@ function rowsOf(ledger: Ledger): readonly LedgerRow[] {
     id: entry.id,
     volunteerName: entry.volunteerName,
     day: entry.day,
-    hours: hoursOf({ volunteerId: entry.volunteerId, arrivedAt: entry.arrivedAt, departedAt: entry.departedAt }),
+    hours: hoursOf({
+      volunteerId: entry.volunteerId,
+      arrivedAt: entry.arrivedAt,
+      departedAt: entry.departedAt,
+    }),
     description: entry.description ?? '(shift)',
     supervisorName: entry.supervisingAdultName,
   }))
@@ -85,7 +90,7 @@ function AttendanceReport() {
     return (
       <main>
         <h1>Volunteer hours</h1>
-        <p>One moment…</p>
+        <Loading what="the ledger" />
       </main>
     )
   }

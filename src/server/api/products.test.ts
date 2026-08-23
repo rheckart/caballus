@@ -218,6 +218,171 @@ describe.skipIf(!reachable)('Products, Suppliers and Feed Schedules, through the
     })
   })
 
+  describe('Retiring a Product', () => {
+    it('retires with a date and an audit entry, never deleting the row', async () => {
+      const holder = await suppliesHolder()
+      const productId = await seedProduct(holder, 'Old Senior')
+
+      const retired = await post(holder, '/products/retirement', {
+        productId,
+        retiredOn: '2026-03-01',
+        reason: 'The mill stopped making it',
+      })
+      expect(retired.status).toBe(204)
+
+      const [row] = await owner`select retired_on::text from products where id = ${productId}`
+      expect(row?.retired_on).toBe('2026-03-01')
+
+      const audited = await owner`
+        select field, before, after, reason from audit_entries
+        where entity = 'product' and entity_id = ${productId} and field = 'retired_on'
+      `
+      expect(audited).toHaveLength(1)
+      expect(audited[0]?.after).toBe('2026-03-01')
+      expect(audited[0]?.reason).toBe('The mill stopped making it')
+    })
+
+    it('corrects a mistaken Retirement with a null date', async () => {
+      const holder = await horseCareHolder()
+      const productId = await seedProduct(holder, 'Rice Bran')
+      await post(holder, '/products/retirement', { productId, retiredOn: '2026-03-01' })
+
+      const corrected = await post(holder, '/products/retirement', { productId, retiredOn: null })
+      expect(corrected.status).toBe(204)
+
+      const [row] = await owner`select retired_on from products where id = ${productId}`
+      expect(row?.retired_on).toBeNull()
+    })
+
+    it('refuses while a horse still here has it on a current Feed Schedule, and says how many', async () => {
+      const holder = await horseCareHolder()
+      const productId = await seedProduct(holder, 'Senior Sweet')
+      const horseId = await seedHorse(holder, 'Dawson')
+      await post(holder, '/feed-schedules', {
+        horseId,
+        shiftType: 'feed_am',
+        validFrom: '2026-01-01',
+        lines: [{ productId, amount: '2 scoops', route: 'in_feed' }],
+      })
+
+      const refused = await post(holder, '/products/retirement', {
+        productId,
+        retiredOn: '2026-03-01',
+      })
+      expect(refused.status).toBe(409)
+      expect(refused.body.error).toBe('product_in_use')
+
+      // The same derivation the refusal used, so the desk can say so first.
+      const listed = await get(await reader(), '/products')
+      expect(listed.body.products).toContainEqual(
+        expect.objectContaining({ id: productId, onFeedSchedules: 1, retiredOn: null }),
+      )
+    })
+
+    it('counts a horse once, however many Shift Types name the Product', async () => {
+      const holder = await horseCareHolder()
+      const productId = await seedProduct(holder, 'Twice Senior')
+      const horseId = await seedHorse(holder, 'Apollo Twice')
+      for (const shiftType of ['feed_am', 'feed_pm']) {
+        await post(holder, '/feed-schedules', {
+          horseId,
+          shiftType,
+          validFrom: '2026-01-01',
+          lines: [{ productId, amount: '2 scoops', route: 'in_feed' }],
+        })
+      }
+
+      const listed = await get(await reader(), '/products')
+      expect(listed.body.products).toContainEqual(
+        expect.objectContaining({ id: productId, onFeedSchedules: 1 }),
+      )
+    })
+
+    it('retires once the only horse naming it has Departed', async () => {
+      const holder = await horseCareHolder()
+      const productId = await seedProduct(holder, 'Storm Senior')
+      const horseId = await seedHorse(holder, 'Storm')
+      await post(holder, '/feed-schedules', {
+        horseId,
+        shiftType: 'feed_am',
+        validFrom: '2026-01-01',
+        lines: [{ productId, amount: '2 scoops', route: 'in_feed' }],
+      })
+      await post(holder, '/horses/departure', { horseId, departedOn: '2026-02-01' })
+
+      const retired = await post(holder, '/products/retirement', {
+        productId,
+        retiredOn: '2026-03-01',
+      })
+      expect(retired.status).toBe(204)
+    })
+
+    it('retires once a later version has taken the Product off the schedule', async () => {
+      const holder = await horseCareHolder()
+      const productId = await seedProduct(holder, 'Superseded Senior')
+      const horseId = await seedHorse(holder, 'Grady Superseded')
+      await post(holder, '/feed-schedules', {
+        horseId,
+        shiftType: 'feed_am',
+        validFrom: '2026-01-01',
+        lines: [{ productId, amount: '2 scoops', route: 'in_feed' }],
+      })
+      await post(holder, '/feed-schedules', {
+        horseId,
+        shiftType: 'feed_am',
+        validFrom: '2026-02-01',
+        lines: [],
+      })
+
+      const retired = await post(holder, '/products/retirement', {
+        productId,
+        retiredOn: '2026-03-01',
+      })
+      expect(retired.status).toBe(204)
+    })
+
+    it('refuses a new Feed Schedule naming a Retired Product', async () => {
+      const holder = await horseCareHolder()
+      const productId = await seedProduct(holder, 'Gone Senior')
+      const horseId = await seedHorse(holder, 'Harriet Gone')
+      await post(holder, '/products/retirement', { productId, retiredOn: '2026-03-01' })
+
+      const published = await post(holder, '/feed-schedules', {
+        horseId,
+        shiftType: 'feed_am',
+        validFrom: '2026-04-01',
+        lines: [{ productId, amount: '2 scoops', route: 'in_feed' }],
+      })
+      expect(published.status).toBe(409)
+      expect(published.body.error).toBe('product_retired')
+    })
+
+    it('stays on the catalogue carrying its date, and drops off the supplies forecast', async () => {
+      const holder = await suppliesHolder()
+      const productId = await seedProduct(holder, 'Forecast Senior')
+      await post(holder, '/products/retirement', { productId, retiredOn: '2026-03-01' })
+
+      const everyone = await reader()
+      const listed = await get(everyone, '/products')
+      expect(listed.body.products).toContainEqual(
+        expect.objectContaining({ id: productId, retiredOn: '2026-03-01' }),
+      )
+
+      const forecast = await get(everyone, '/supplies')
+      expect(forecast.body.products).not.toContainEqual(expect.objectContaining({ productId }))
+    })
+
+    it('refuses a Retirement for a Product that does not exist', async () => {
+      const holder = await suppliesHolder()
+      const refused = await post(holder, '/products/retirement', {
+        productId: crypto.randomUUID(),
+        retiredOn: '2026-03-01',
+      })
+      expect(refused.status).toBe(404)
+      expect(refused.body.error).toBe('product_not_found')
+    })
+  })
+
   describe('Feed Schedules', () => {
     it('publishes a version with lines, and it becomes the current schedule on the horse profile', async () => {
       const holder = await horseCareHolder()

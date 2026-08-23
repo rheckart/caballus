@@ -26,6 +26,8 @@ export interface NewContact {
   readonly number: string
   readonly hours?: string | null
   readonly purpose: string
+  /** Why, on the audit entry — a Whiteboard Read's *read from the whiteboard photograph* (ADR 0023). */
+  readonly reason?: string | null
 }
 
 /** Posts a Contact — a name, a number, what it is for, and optional hours. */
@@ -46,7 +48,9 @@ export async function createContact(
     purpose: details.purpose.trim(),
   })
 
-  await audit(db, orgId, actorVolunteerId, [{ entity: 'contact', entityId: id, after: name }])
+  await audit(db, orgId, actorVolunteerId, [
+    { entity: 'contact', entityId: id, after: name, reason: details.reason ?? null },
+  ])
 
   return recorded({ id })
 }
@@ -121,13 +125,15 @@ export async function createStandingRule(
   db: OrgScopedDatabase,
   orgId: OrgId,
   actorVolunteerId: string,
-  details: { readonly text: string },
+  details: { readonly text: string; readonly reason?: string | null },
 ): Promise<Recorded<{ id: string }>> {
   const id = uuidv7()
   const text = details.text.trim()
   await db.insert(standingRules).values({ id, orgId, text })
 
-  await audit(db, orgId, actorVolunteerId, [{ entity: 'standing_rule', entityId: id, after: text }])
+  await audit(db, orgId, actorVolunteerId, [
+    { entity: 'standing_rule', entityId: id, after: text, reason: details.reason ?? null },
+  ])
 
   return recorded({ id })
 }

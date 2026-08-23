@@ -73,6 +73,31 @@ describe('feeding Items', () => {
     expect(medicate?.requiresMedicationAuthority).toBe(true)
   })
 
+  it('leaves a topical out of the Feed Item, since a horse does not eat fly spray', () => {
+    // The split used to be `!== 'medication'`, so a fourth kind joined the
+    // feeding silently. One Feed Item, and the fly spray is not in it (#58).
+    const items = materializeDay(
+      of({
+        feedLines: [
+          APOLLO_GRAIN,
+          { horseId: 'apollo', shiftType: 'feed_am', productKind: 'topical' },
+        ],
+      }),
+    )
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({ kind: 'feed', requiresMedicationAuthority: false })
+  })
+
+  it('gives a horse whose only line is a topical no feeding Item at all', () => {
+    // What goes *on* a horse is a Task carrying an instruction, which is where
+    // fly spray and sunscreen already live (ADR 0013). Not a Medicate Item
+    // either: a topical must never need Medication Authority.
+    const items = materializeDay(
+      of({ feedLines: [{ horseId: 'apollo', shiftType: 'feed_am', productKind: 'topical' }] }),
+    )
+    expect(items).toEqual([])
+  })
+
   it('gives no Feed Item to a horse with no line for that Shift', () => {
     const items = materializeDay(of({ feedLines: [APOLLO_GRAIN] }))
     expect(items.some((item) => item.horseId === 'dawson')).toBe(false)

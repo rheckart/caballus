@@ -16,6 +16,19 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 
+import {
+  Actions,
+  AddButton,
+  Choice,
+  Empty,
+  Field,
+  Fields,
+  Loading,
+  SaveButton,
+  Saved,
+  Sheet,
+  useSaving,
+} from '../../components/forms'
 import { client } from '../../shared/api-client'
 import type { ShiftType } from '../../shared/feed-schedule'
 import { SHIFT_TYPES } from '../../shared/feed-schedule'
@@ -62,13 +75,17 @@ function subjectKey(subject: { horseId: string | null; spaceId: string | null })
 
 function subjectOf(key: string): { horseId: string | null; spaceId: string | null } {
   const [horseId, spaceId] = key.split(':')
-  return { horseId: horseId === '' ? null : (horseId ?? null), spaceId: spaceId === '' ? null : (spaceId ?? null) }
+  return {
+    horseId: horseId === '' ? null : (horseId ?? null),
+    spaceId: spaceId === '' ? null : (spaceId ?? null),
+  }
 }
 
 function Tasks() {
   const [tasks, setTasks] = useState<TaskList | null>(null)
   const [assignments, setAssignments] = useState<AssignmentList | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
+  const [adding, setAdding] = useState(false)
 
   const load = useCallback(async () => {
     const [listedTasks, listedAssignments] = await Promise.all([
@@ -103,23 +120,32 @@ function Tasks() {
   return (
     <main>
       <h1>Tasks and Task Assignments</h1>
-      <p>
-        A Task is one line of the checklist — what it is, who it is about, and whether it is
-        Essential. A Task Assignment says which Shift Type normally does it for a horse or a
-        Space, the same way the whiteboard's <em>GROOM</em> column did.
+      <p className="lede">
+        A Task is one line of the checklist: what it is, who it is about, and whether it is
+        Essential. A Task Assignment says which Shift Type normally does it for a horse or a Space,
+        the same way the whiteboard&rsquo;s <em>GROOM</em> column did.
       </p>
 
       {problem !== null && <p role="alert">{problem}</p>}
 
-      <section>
+      <div className="list-head">
         <h2>The catalogue</h2>
+        <AddButton
+          onClick={() => {
+            setAdding(true)
+          }}
+        >
+          Add a Task
+        </AddButton>
+      </div>
+
+      <section>
         {tasks === null ? (
-          <p>One moment…</p>
+          <Loading what="the catalogue" />
         ) : tasks.tasks.length === 0 ? (
-          <p>No Tasks yet.</p>
+          <Empty>No Tasks yet. A Task is one line of the checklist.</Empty>
         ) : (
           <table>
-            <caption>Every Task</caption>
             <thead>
               <tr>
                 <th scope="col">Instruction</th>
@@ -134,73 +160,22 @@ function Tasks() {
                 <tr key={task.id}>
                   <td>{task.instructionText}</td>
                   <td>{SUBJECT_KIND_LABEL[task.subjectKind]}</td>
-                  <td>{PRIORITY_LABEL[task.priority]}</td>
+                  <td>
+                    <span
+                      className={
+                        task.priority === 'essential' ? 'badge badge-orange' : 'badge badge-purple'
+                      }
+                    >
+                      {PRIORITY_LABEL[task.priority]}
+                    </span>
+                  </td>
                   <td>{PERIOD_LABEL[task.period]}</td>
-                  <td>{task.requiresMedicationAuthority ? 'Needs Medication Authority' : '—'}</td>
+                  <td>{task.requiresMedicationAuthority ? 'Needs Medication Authority' : 'No'}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
-
-        <form
-          onSubmit={(event: FormEvent<HTMLFormElement>) => {
-            event.preventDefault()
-            const form = event.currentTarget
-            const data = new FormData(form)
-            void act(() =>
-              client.post('/tasks', {
-                subjectKind: data.get('subjectKind') as Task['subjectKind'],
-                priority: data.get('priority') as Task['priority'],
-                period: data.get('period') as Task['period'],
-                requiresMedicationAuthority: data.get('requiresMedicationAuthority') === 'on',
-                closing: data.get('closing') === 'on',
-                instructionText: String(data.get('instructionText') ?? ''),
-              }),
-            ).then((landed) => {
-              if (landed) form.reset()
-            })
-          }}
-        >
-          <h3>Add a Task</h3>
-          <label htmlFor="new-task-subject">About</label>
-          <select id="new-task-subject" name="subjectKind" defaultValue="horse">
-            {TASK_SUBJECT_KINDS.map((kind) => (
-              <option key={kind} value={kind}>
-                {SUBJECT_KIND_LABEL[kind]}
-              </option>
-            ))}
-          </select>
-          <label htmlFor="new-task-priority">Priority</label>
-          <select id="new-task-priority" name="priority" defaultValue="essential">
-            {TASK_PRIORITIES.map((priority) => (
-              <option key={priority} value={priority}>
-                {PRIORITY_LABEL[priority]}
-              </option>
-            ))}
-          </select>
-          <label htmlFor="new-task-period">Period</label>
-          <select id="new-task-period" name="period" defaultValue="shift">
-            {TASK_PERIODS.map((period) => (
-              <option key={period} value={period}>
-                {PERIOD_LABEL[period]}
-              </option>
-            ))}
-          </select>
-          <label htmlFor="new-task-medication">Needs Medication Authority</label>
-          <input id="new-task-medication" name="requiresMedicationAuthority" type="checkbox" />
-          <label htmlFor="new-task-closing">Closing checklist</label>
-          <input id="new-task-closing" name="closing" type="checkbox" />
-          <label htmlFor="new-task-instruction">Instruction</label>
-          <input
-            id="new-task-instruction"
-            name="instructionText"
-            required
-            maxLength={2000}
-            placeholder="Muck the stalls."
-          />
-          <button type="submit">Add</button>
-        </form>
       </section>
 
       <section>
@@ -222,7 +197,128 @@ function Tasks() {
           })
         )}
       </section>
+
+      {adding && (
+        <Sheet
+          title="Add a Task"
+          description="What a Task may carry is fixed. These are the whole of the decisions."
+          onClose={() => {
+            setAdding(false)
+          }}
+        >
+          <NewTask
+            act={act}
+            onSaved={() => {
+              setAdding(false)
+            }}
+          />
+        </Sheet>
+      )}
     </main>
+  )
+}
+
+/**
+ * The Task form. Three closed lists of two or three options each, which is
+ * exactly where a segmented control beats a native picker: the whole decision
+ * is visible without a tap.
+ */
+function NewTask({
+  act,
+  onSaved,
+}: {
+  act: (work: () => Promise<unknown>) => Promise<boolean>
+  onSaved: () => void
+}) {
+  const { pending, saved, save } = useSaving()
+
+  return (
+    <form
+      onSubmit={(event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
+        const form = event.currentTarget
+        const data = new FormData(form)
+        void save(() =>
+          act(() =>
+            client.post('/tasks', {
+              subjectKind: data.get('subjectKind') as Task['subjectKind'],
+              priority: data.get('priority') as Task['priority'],
+              period: data.get('period') as Task['period'],
+              requiresMedicationAuthority: data.get('requiresMedicationAuthority') === 'on',
+              closing: data.get('closing') === 'on',
+              instructionText: String(data.get('instructionText') ?? ''),
+            }),
+          ).then((landed) => {
+            if (landed) {
+              form.reset()
+              onSaved()
+            }
+          }),
+        )
+      }}
+    >
+      <Fields>
+        <div className="field-wide">
+          <Field label="Instruction" htmlFor="new-task-instruction">
+            <input
+              id="new-task-instruction"
+              name="instructionText"
+              required
+              maxLength={2000}
+              placeholder="Muck the stalls."
+              autoFocus
+            />
+          </Field>
+        </div>
+        <div className="field-wide">
+          <Choice
+            legend="About"
+            name="subjectKind"
+            defaultValue="horse"
+            options={TASK_SUBJECT_KINDS.map((kind) => ({
+              value: kind,
+              label: SUBJECT_KIND_LABEL[kind],
+            }))}
+          />
+        </div>
+        <div className="field">
+          <Choice
+            legend="Priority"
+            name="priority"
+            defaultValue="essential"
+            options={TASK_PRIORITIES.map((priority) => ({
+              value: priority,
+              label: PRIORITY_LABEL[priority],
+            }))}
+          />
+        </div>
+        <div className="field">
+          <Choice
+            legend="Period"
+            name="period"
+            defaultValue="shift"
+            options={TASK_PERIODS.map((period) => ({
+              value: period,
+              label: PERIOD_LABEL[period],
+            }))}
+          />
+        </div>
+        <div className="field-wide">
+          <label htmlFor="new-task-medication">
+            <input id="new-task-medication" name="requiresMedicationAuthority" type="checkbox" />
+            Needs Medication Authority
+          </label>
+          <label htmlFor="new-task-closing">
+            <input id="new-task-closing" name="closing" type="checkbox" />
+            Closing checklist
+          </label>
+        </div>
+      </Fields>
+      <Actions>
+        <SaveButton pending={pending}>Add</SaveButton>
+        <Saved saved={saved} />
+      </Actions>
+    </form>
   )
 }
 
@@ -239,19 +335,23 @@ function TaskAssignments({
 }) {
   const assignments = forTask?.assignments ?? []
   const undecided = forTask?.undecided ?? []
+  // Controlled, because *deliberately none* has no Shift Type and showing the
+  // picker anyway asks a question whose answer is about to be thrown away.
+  const [stance, setStance] = useState<'assigned' | 'deliberately_none'>('assigned')
+  const { pending, saved, save } = useSaving()
 
   return (
     <article>
       <h3>{task.instructionText}</h3>
       {assignments.length === 0 ? (
-        <p>No decisions recorded yet.</p>
+        <p className="field-hint">No decisions recorded yet.</p>
       ) : (
         <ul>
           {assignments.map((assignment) => (
             <li key={subjectKey(assignment)}>
-              {assignment.name} —{' '}
+              {assignment.name} &mdash;{' '}
               {assignment.stance === 'assigned' && assignment.shiftType !== null ? (
-                <>normally {SHIFT_TYPE_LABEL[assignment.shiftType]}'s</>
+                <>normally {SHIFT_TYPE_LABEL[assignment.shiftType]}&apos;s</>
               ) : (
                 <>deliberately none</>
               )}
@@ -262,9 +362,9 @@ function TaskAssignments({
 
       {/* The unanswered question, said out loud rather than read as no work (ADR 0013, ADR 0015). */}
       {undecided.length > 0 && (
-        <p>
-          Not yet decided: {undecided.map((subject) => subject.name).join(', ')} — Essential work
-          still shows on the checklist while this is unanswered.
+        <p className="owed" role="status">
+          Not yet decided: {undecided.map((subject) => subject.name).join(', ')} &mdash; Essential
+          work still shows on the checklist while this is unanswered.
         </p>
       )}
 
@@ -272,47 +372,69 @@ function TaskAssignments({
         <form
           onSubmit={(event: FormEvent<HTMLFormElement>) => {
             event.preventDefault()
-            const form = event.currentTarget
-            const data = new FormData(form)
+            const data = new FormData(event.currentTarget)
             const subject = subjectOf(String(data.get('subject') ?? ''))
-            const stance = data.get('stance') === 'deliberately_none' ? 'deliberately_none' : 'assigned'
-            void act(() =>
-              client.post('/task-assignments', {
-                taskId: task.id,
-                horseId: subject.horseId,
-                spaceId: subject.spaceId,
-                stance,
-                shiftType: stance === 'assigned' ? (data.get('shiftType') as ShiftType) : null,
-                validFrom: today,
-              }),
+            void save(() =>
+              act(() =>
+                client.post('/task-assignments', {
+                  taskId: task.id,
+                  horseId: subject.horseId,
+                  spaceId: subject.spaceId,
+                  stance,
+                  shiftType: stance === 'assigned' ? (data.get('shiftType') as ShiftType) : null,
+                  validFrom: today,
+                }),
+              ),
             )
           }}
         >
-          <label htmlFor={`subject-${task.id}`}>Subject</label>
-          <select id={`subject-${task.id}`} name="subject" defaultValue={subjectKey(undecided[0] as UndecidedSubject)}>
-            {undecided.map((subject) => (
-              <option key={subjectKey(subject)} value={subjectKey(subject)}>
-                {subject.name}
-              </option>
-            ))}
-          </select>
+          <Fields>
+            <Field label="Subject" htmlFor={`subject-${task.id}`}>
+              <select
+                id={`subject-${task.id}`}
+                name="subject"
+                defaultValue={subjectKey(undecided[0] as UndecidedSubject)}
+              >
+                {undecided.map((subject) => (
+                  <option key={subjectKey(subject)} value={subjectKey(subject)}>
+                    {subject.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <div className="field">
+              <Choice
+                legend="Decision"
+                name="stance"
+                value={stance}
+                onChange={setStance}
+                options={[
+                  { value: 'assigned', label: 'A Shift Type does it' },
+                  { value: 'deliberately_none', label: 'Deliberately none' },
+                ]}
+              />
+            </div>
+            {stance === 'assigned' && (
+              <div className="field">
+                <Choice
+                  legend="Shift Type"
+                  name="shiftType"
+                  defaultValue="feed_am"
+                  options={SHIFT_TYPES.map((shiftType) => ({
+                    value: shiftType,
+                    label: SHIFT_TYPE_LABEL[shiftType],
+                  }))}
+                />
+              </div>
+            )}
+          </Fields>
 
-          <label htmlFor={`stance-${task.id}`}>Decision</label>
-          <select id={`stance-${task.id}`} name="stance" defaultValue="assigned">
-            <option value="assigned">Assigned to a Shift Type</option>
-            <option value="deliberately_none">Deliberately none</option>
-          </select>
-
-          <label htmlFor={`shift-type-${task.id}`}>Shift Type</label>
-          <select id={`shift-type-${task.id}`} name="shiftType" defaultValue="feed_am">
-            {SHIFT_TYPES.map((shiftType) => (
-              <option key={shiftType} value={shiftType}>
-                {SHIFT_TYPE_LABEL[shiftType]}
-              </option>
-            ))}
-          </select>
-
-          <button type="submit">Publish</button>
+          <Actions>
+            <SaveButton pending={pending} pendingLabel="Publishing…">
+              Publish
+            </SaveButton>
+            <Saved saved={saved} what="Published" />
+          </Actions>
         </form>
       )}
     </article>

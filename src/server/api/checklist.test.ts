@@ -162,7 +162,7 @@ describe.skipIf(!reachable)('Tasks, Task Assignments and Items, through the API'
   }
 
   async function seedSpace(api: ReturnType<typeof apiAs>, name: string): Promise<string> {
-    const created = await post(api, '/spaces', { kind: 'field', name })
+    const created = await post(api, '/spaces', { kind: 'pasture', name })
     return created.body.spaceId as string
   }
 

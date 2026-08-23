@@ -666,7 +666,11 @@ describe.skipIf(!reachable)('weather, through the API', () => {
     })
 
     it('sees no Threshold of another organisation', async () => {
-      const elsewhere = '00000000-0000-0000-0000-0000000000e7'
+      // An id no other test file owns. `...e7` was `products.test.ts`'s own
+      // organisation, and the two files run in parallel against one Postgres:
+      // the `delete from orgs` below was tearing that suite's rescue out from
+      // under it whenever the timing lined up.
+      const elsewhere = '00000000-0000-0000-0000-0000000000f0'
       await owner`delete from threshold_versions where org_id = ${elsewhere}`
       await owner`delete from orgs where id = ${elsewhere}`
       await owner`

@@ -9,6 +9,8 @@ import { eq } from 'drizzle-orm'
 import type { OrgScopedDatabase } from '../../db/for-org'
 import { products, suppliers } from '../../db/schema'
 import { isProductKind, type ProductKind } from '../../shared/products'
+import { dayString, type DayString } from '../../shared/time'
+import { horsesByProductOnCurrentSchedules } from '../horses/feed-schedules'
 
 export interface Supplier {
   readonly id: string
@@ -34,24 +36,46 @@ export interface Product {
   readonly prescription: boolean
   readonly reorderPointDays: number | null
   readonly orderingNote: string | null
+  /** The day the rescue stopped using it, or null — a Retired Product (#64). */
+  readonly retiredOn: DayString | null
+  /** How many non-Departed horses' current Feed Schedules name it. */
+  readonly onFeedSchedules: number
 }
 
-/** Every Product, name order, with its Supplier's name carried along so a list renders in one read. */
+/**
+ * Every Product, name order, with its Supplier's name carried along so a list
+ * renders in one read.
+ *
+ * **A Retired Product is included, carrying its date** — the same call
+ * `horseList` makes for a Departed horse: the catalogue is where the history
+ * stays, and hiding a Retired Product from the pickers is each surface's own
+ * job rather than this read's.
+ *
+ * `onFeedSchedules` is counted from `horsesByProductOnCurrentSchedules`, the
+ * one place the *in use* rule lives, so the number the catalogue shows and
+ * `retireProduct`'s own refusal are answering from the same function. Horses
+ * rather than lines: a horse eating Senior at both AM and PM is one horse
+ * somebody has to go and edit.
+ */
 export async function productList(db: OrgScopedDatabase): Promise<readonly Product[]> {
-  const rows = await db
-    .select({
-      id: products.id,
-      name: products.name,
-      kind: products.kind,
-      supplierId: products.supplierId,
-      supplierName: suppliers.name,
-      prescription: products.prescription,
-      reorderPointDays: products.reorderPointDays,
-      orderingNote: products.orderingNote,
-    })
-    .from(products)
-    .leftJoin(suppliers, eq(suppliers.id, products.supplierId))
-    .orderBy(products.name)
+  const [rows, byProduct] = await Promise.all([
+    db
+      .select({
+        id: products.id,
+        name: products.name,
+        kind: products.kind,
+        supplierId: products.supplierId,
+        supplierName: suppliers.name,
+        prescription: products.prescription,
+        reorderPointDays: products.reorderPointDays,
+        orderingNote: products.orderingNote,
+        retiredOn: products.retiredOn,
+      })
+      .from(products)
+      .leftJoin(suppliers, eq(suppliers.id, products.supplierId))
+      .orderBy(products.name),
+    horsesByProductOnCurrentSchedules(db),
+  ])
 
   // The column is text and a deploy can be older than a row (the same reason
   // `spaceList` filters on `isSpaceKind`); a kind this build does not know is
@@ -62,5 +86,7 @@ export async function productList(db: OrgScopedDatabase): Promise<readonly Produ
       ...row,
       kind: row.kind as ProductKind,
       supplierName: row.supplierName ?? null,
+      retiredOn: row.retiredOn === null ? null : dayString(row.retiredOn),
+      onFeedSchedules: byProduct.get(row.id)?.size ?? 0,
     }))
 }

@@ -24,9 +24,11 @@
 import { Link, createFileRoute, useParams } from '@tanstack/react-router'
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 
+import { Loading } from '../components/forms'
 import { client } from '../shared/api-client'
 import type { Answers, contract } from '../shared/api-contract'
 import { report } from '../shared/observability.browser'
+import { ALERT_KIND_LABEL } from '../shared/alerts'
 import { arrangePrepQueue } from '../shared/prep-queue'
 import { refusalText } from '../shared/refusals'
 import { closeBlockers, type CloseBlockerKind } from '../shared/shift-close'
@@ -39,6 +41,7 @@ export const Route = createFileRoute('/shifts/$shiftId')({
 
 type Checklist = Answers<typeof contract, '/shifts/:shiftId'>
 type Item = Checklist['items'][number]
+type Alert = Checklist['alerts'][number]
 
 const SHIFT_TYPE_LABEL: Record<Checklist['shiftType'], string> = {
   feed_am: 'Feed AM',
@@ -266,6 +269,32 @@ function ItemLine({
   )
 }
 
+/**
+ * A horse's standing Alerts, above her work and in full text (ADR 0024).
+ *
+ * Nothing is shown when there are none — a card that says *no alerts* on
+ * every horse teaches a volunteer to skip the place the words appear, which is
+ * the opposite of what putting them at the top is for.
+ */
+function HorseAlerts({
+  alerts,
+  horseName,
+}: {
+  readonly alerts: readonly Alert[]
+  readonly horseName: string
+}) {
+  if (alerts.length === 0) return null
+  return (
+    <ul className="alerts" aria-label={`Alerts — ${horseName}`}>
+      {alerts.map((alert) => (
+        <li key={alert.id} className="alert" data-kind={alert.kind}>
+          <strong>{ALERT_KIND_LABEL[alert.kind]}</strong> {alert.text}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 /** Read-only: what this Shift is owed from an earlier one, never tickable from here (ADR 0013). */
 function PrepOwedLine({ item }: { readonly item: Item }) {
   return (
@@ -472,6 +501,18 @@ export function ShiftChecklist() {
 
   const arranged = useMemo(() => arrangePrepQueue(checklist?.items ?? []), [checklist])
 
+  // Grouped once rather than filtered per card: the read answers a flat list,
+  // and sixty cards each scanning it is sixty passes over the same array.
+  const alertsFor = useMemo(() => {
+    const by = new Map<string, Alert[]>()
+    for (const alert of checklist?.alerts ?? []) {
+      const held = by.get(alert.horseId)
+      if (held === undefined) by.set(alert.horseId, [alert])
+      else held.push(alert)
+    }
+    return by
+  }, [checklist])
+
   if (problem !== null) {
     return (
       <main>
@@ -484,7 +525,7 @@ export function ShiftChecklist() {
   if (checklist === null || shiftId === undefined) {
     return (
       <main>
-        <p>One moment…</p>
+        <Loading what="the checklist" />
       </main>
     )
   }
@@ -541,6 +582,10 @@ export function ShiftChecklist() {
           {arranged.horses.map((card) => (
             <section key={card.horseId}>
               <h2>{card.horseName}</h2>
+              {/* Above the work, in full: a volunteer who reads the card and
+                  not the warning has already walked into the stall (ADR
+                  0024). */}
+              <HorseAlerts alerts={alertsFor.get(card.horseId) ?? []} horseName={card.horseName} />
               <ul>
                 {card.items.map((item) => (
                   <ItemLine
