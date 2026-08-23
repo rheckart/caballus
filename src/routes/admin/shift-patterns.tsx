@@ -38,6 +38,26 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 
 import { Actions, Choice, Empty, Field, Fields, Loading } from '../../components/forms'
+import { Alert, AlertTitle } from '../../components/ui/alert'
+import { Badge } from '../../components/ui/badge'
+import { Button } from '../../components/ui/button'
+import { Checkbox } from '../../components/ui/checkbox'
+import { Input } from '../../components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../components/ui/select'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../../components/ui/table'
 import { client } from '../../shared/api-client'
 import { refusalText } from '../../shared/refusals'
 import {
@@ -91,6 +111,15 @@ const GAP_LABEL: Record<RosterGap, string> = {
   no_consent: 'no parental consent',
 }
 
+/** A card section, now that a `<section>` is no longer one by element rule. */
+const CARD = 'mb-4 rounded-lg border border-border bg-background p-4 sm:p-6'
+
+/** The composer surface an *add one of these* form gets inside a card. */
+const COMPOSER = 'mt-4 rounded-md border border-border bg-card p-4'
+
+/** A checkbox label sits beside its control, not above it. */
+const CHECK_LABEL = 'm-0 flex min-h-11 items-center gap-2 text-sm font-medium text-foreground'
+
 function ShiftPatterns() {
   const [patterns, setPatterns] = useState<PatternList | null>(null)
   const [schedule, setSchedule] = useState<ScheduleList | null>(null)
@@ -98,6 +127,7 @@ function ShiftPatterns() {
   const [problem, setProblem] = useState<string | null>(null)
   const [said, setSaid] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [newWeekday, setNewWeekday] = useState<Weekday>('monday')
 
   const load = useCallback(async () => {
     const [listedPatterns, listedShifts, listedPeople] = await Promise.all([
@@ -142,99 +172,122 @@ function ShiftPatterns() {
   if (patterns === null || schedule === null) {
     return (
       <main>
-        <h1>Shifts</h1>
-        {problem === null ? <Loading what="the fortnight" /> : <p role="alert">{problem}</p>}
+        <h1 className="text-foreground">Shifts</h1>
+        {problem === null ? (
+          <Loading what="the fortnight" />
+        ) : (
+          <Alert variant="destructive">
+            <AlertTitle>{problem}</AlertTitle>
+          </Alert>
+        )}
       </main>
     )
   }
 
   return (
     <main>
-      <h1>Shifts</h1>
+      <h1 className="text-foreground">Shifts</h1>
 
-      {problem !== null && <p role="alert">{problem}</p>}
-      {said !== null && <p role="status">{said}</p>}
+      {problem !== null && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertTitle>{problem}</AlertTitle>
+        </Alert>
+      )}
+      {said !== null && (
+        <p
+          role="status"
+          className="mb-3 rounded-md border border-border bg-secondary px-4 py-3 text-sm"
+        >
+          {said}
+        </p>
+      )}
 
-      <section>
-        <h2>The fortnight</h2>
+      <section className={CARD}>
+        <h2 className="mt-0">The fortnight</h2>
         <p>
           Shifts are generated two weeks ahead, copying each Pattern’s roster and start time as they
           stand at that moment. Running this twice creates nothing twice.
         </p>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => {
-            void act(
-              () => client.post('/shifts/generation', {}),
-              (answer) => {
-                const { created, through } = answer as { created: number; through: string }
-                return created === 0
-                  ? `Nothing to generate; the horizon is full through ${through}.`
-                  : `Generated ${String(created)} Shift${created === 1 ? '' : 's'} through ${through}.`
-              },
-            )
-          }}
-        >
-          Generate the horizon
-        </button>
+        <div className="mb-4 flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={busy}
+            onClick={() => {
+              void act(
+                () => client.post('/shifts/generation', {}),
+                (answer) => {
+                  const { created, through } = answer as { created: number; through: string }
+                  return created === 0
+                    ? `Nothing to generate; the horizon is full through ${through}.`
+                    : `Generated ${String(created)} Shift${created === 1 ? '' : 's'} through ${through}.`
+                },
+              )
+            }}
+          >
+            Generate the horizon
+          </Button>
 
-        {/* The one thing the app sends about staffing, on a deliberate press.
-            The counts come back so a send that failed is visible rather than
-            assumed — with email as the only channel, a swallowed failure is a
-            Coordinator who thinks the roster was told (ADR 0009, ADR 0011). */}
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => {
-            void act(
-              () => client.post('/shifts/digest', {}),
-              (answer) => {
-                const { recipients, sent, shifts } = answer as {
-                  recipients: number
-                  sent: number
-                  shifts: number
-                }
-                return `Sent to ${String(sent)} of ${String(recipients)}, covering ${String(shifts)} shift${shifts === 1 ? '' : 's'}.`
-              },
-            )
-          }}
-        >
-          Send the evening digest
-        </button>
+          {/* The one thing the app sends about staffing, on a deliberate press.
+              The counts come back so a send that failed is visible rather than
+              assumed — with email as the only channel, a swallowed failure is a
+              Coordinator who thinks the roster was told (ADR 0009, ADR 0011). */}
+          <Button
+            type="button"
+            variant="outline"
+            disabled={busy}
+            onClick={() => {
+              void act(
+                () => client.post('/shifts/digest', {}),
+                (answer) => {
+                  const { recipients, sent, shifts } = answer as {
+                    recipients: number
+                    sent: number
+                    shifts: number
+                  }
+                  return `Sent to ${String(sent)} of ${String(recipients)}, covering ${String(shifts)} shift${shifts === 1 ? '' : 's'}.`
+                },
+              )
+            }}
+          >
+            Send the evening digest
+          </Button>
+        </div>
 
         {schedule.shifts.length === 0 ? (
           <p>No Shifts yet.</p>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">Day</th>
-                <th scope="col">Shift</th>
-                <th scope="col">Starts</th>
-                <th scope="col">On it</th>
-                <th scope="col">Missing</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead scope="col">Day</TableHead>
+                <TableHead scope="col">Shift</TableHead>
+                <TableHead scope="col">Starts</TableHead>
+                <TableHead scope="col">On it</TableHead>
+                <TableHead scope="col">Missing</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {schedule.shifts.map((shift) => (
-                <tr key={shift.id}>
-                  <th scope="row">{shift.day}</th>
-                  <td>
+                <TableRow key={shift.id}>
+                  <th scope="row" className="px-4 py-3 text-left align-top text-sm font-medium">
+                    {shift.day}
+                  </th>
+                  <TableCell>
                     {SHIFT_TYPE_LABEL[shift.shiftType]}
                     {shift.staffingMode === 'sign_up' && <em> — open to sign-up</em>}
                     {shift.purpose !== null && <span> — {shift.purpose}</span>}
-                  </td>
-                  <td>{shift.startTime}</td>
-                  <td>
+                  </TableCell>
+                  <TableCell>{shift.startTime}</TableCell>
+                  <TableCell>
                     {shift.roster.filter((member) => member.endedAs === null).length === 0 ? (
                       // Nobody at all, said out loud: a Shift nobody can staff
                       // is still a Shift and still needs doing (ADR 0001).
                       <em>nobody yet</em>
                     ) : (
-                      <ul>
+                      <ul className="m-0 list-disc pl-5">
                         {shift.roster.map((member) => (
-                          <li key={member.volunteerId}>
+                          <li key={member.volunteerId} className="mb-1 last:mb-0">
                             {member.name} — {POSITION_LABEL[member.position]}
                             {member.origin === 'cover' && <span> (covering)</span>}
                             {member.endedAs !== null && (
@@ -254,40 +307,45 @@ function ShiftPatterns() {
                         ))}
                       </ul>
                     )}
-                  </td>
-                  <td>
+                  </TableCell>
+                  <TableCell>
                     <WhatIsMissing shift={shift} />
                     {/* Declaring and clearing are the same judgement pointed
                         two ways, so one button whose label changes. Never
                         disabled by the arithmetic beside it: Short is fewer
                         people than the Essential Work needs, and the app does
                         not know what that is (ADR 0011). */}
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => {
-                        void act(() =>
-                          client.post('/shifts/short', {
-                            shiftId: shift.id,
-                            short: shift.short === null,
-                          }),
-                        )
-                      }}
-                    >
-                      {shift.short === null ? 'Call it short' : 'Clear short'}
-                    </button>
-                  </td>
-                </tr>
+                    <div className="mt-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => {
+                          void act(() =>
+                            client.post('/shifts/short', {
+                              shiftId: shift.id,
+                              short: shift.short === null,
+                            }),
+                          )
+                        }}
+                      >
+                        {shift.short === null ? 'Call it short' : 'Clear short'}
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         )}
       </section>
 
-      <section>
-        <h2>A Pop-up</h2>
+      <section className={CARD}>
+        <h2 className="mt-0">A Pop-up</h2>
         <p>An ad-hoc Shift, staffed by sign-up: hosing horses down in heat, a welfare check.</p>
         <form
+          className={COMPOSER}
           onSubmit={(event: FormEvent<HTMLFormElement>) => {
             event.preventDefault()
             const form = event.currentTarget
@@ -306,13 +364,13 @@ function ShiftPatterns() {
         >
           <Fields>
             <Field label="Day" htmlFor="popup-day">
-              <input id="popup-day" name="day" type="date" required defaultValue={patterns.today} />
+              <Input id="popup-day" name="day" type="date" required defaultValue={patterns.today} />
             </Field>
             <Field label="Starts" htmlFor="popup-start">
-              <input id="popup-start" name="startTime" type="time" required defaultValue="13:00" />
+              <Input id="popup-start" name="startTime" type="time" required defaultValue="13:00" />
             </Field>
             <Field label="People wanted" htmlFor="popup-headcount">
-              <input
+              <Input
                 id="popup-headcount"
                 name="targetHeadcount"
                 type="number"
@@ -322,13 +380,13 @@ function ShiftPatterns() {
                 defaultValue="2"
               />
             </Field>
-            <div className="field-wide">
+            <div className="sm:col-span-2">
               <Field
                 label="What it is for"
                 htmlFor="popup-purpose"
                 hint="This is what a volunteer reads when deciding to sign up."
               >
-                <input
+                <Input
                   id="popup-purpose"
                   name="purpose"
                   required
@@ -339,13 +397,13 @@ function ShiftPatterns() {
             </div>
           </Fields>
           <Actions>
-            <button type="submit">Call a Pop-up</button>
+            <Button type="submit">Call a Pop-up</Button>
           </Actions>
         </form>
       </section>
 
-      <section>
-        <h2>The Patterns</h2>
+      <section className={CARD}>
+        <h2 className="mt-0">The Patterns</h2>
         {patterns.patterns.length === 0 && (
           <Empty>
             No Patterns yet. A Pattern is the recurring commitment the fortnight is filled from.
@@ -356,37 +414,51 @@ function ShiftPatterns() {
         ))}
 
         <form
+          className={COMPOSER}
           onSubmit={(event: FormEvent<HTMLFormElement>) => {
             event.preventDefault()
             const form = event.currentTarget
             const data = new FormData(form)
             void act(() =>
               client.post('/shift-patterns', {
-                weekday: data.get('weekday') as Weekday,
+                weekday: newWeekday,
                 shiftType: data.get('shiftType') as ShiftType,
                 startTime: String(data.get('startTime') ?? ''),
                 targetHeadcount: Number(data.get('targetHeadcount') ?? ''),
               }),
             ).then((landed) => {
-              if (landed) form.reset()
+              if (landed) {
+                form.reset()
+                setNewWeekday('monday')
+              }
             })
           }}
         >
-          <h3>Add a Pattern</h3>
+          <h3 className="m-0 mb-1 text-base font-semibold text-foreground">Add a Pattern</h3>
           <Fields>
             <Field label="Day of the week" htmlFor="new-weekday">
-              <select id="new-weekday" name="weekday" defaultValue="monday">
-                {WEEKDAYS.map((weekday) => (
-                  <option key={weekday} value={weekday}>
-                    {WEEKDAY_LABEL[weekday]}
-                  </option>
-                ))}
-              </select>
+              <Select
+                value={newWeekday}
+                onValueChange={(weekday) => {
+                  setNewWeekday(weekday as Weekday)
+                }}
+              >
+                <SelectTrigger id="new-weekday" aria-label="Day of the week">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {WEEKDAYS.map((weekday) => (
+                    <SelectItem key={weekday} value={weekday}>
+                      {WEEKDAY_LABEL[weekday]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </Field>
             <Field label="Starts" htmlFor="new-start">
-              <input id="new-start" name="startTime" type="time" required defaultValue="06:30" />
+              <Input id="new-start" name="startTime" type="time" required defaultValue="06:30" />
             </Field>
-            <div className="field-wide">
+            <div className="sm:col-span-2">
               <Choice
                 legend="Shift"
                 name="shiftType"
@@ -398,7 +470,7 @@ function ShiftPatterns() {
               />
             </div>
             <Field label="People wanted" htmlFor="new-headcount">
-              <input
+              <Input
                 id="new-headcount"
                 name="targetHeadcount"
                 type="number"
@@ -410,7 +482,7 @@ function ShiftPatterns() {
             </Field>
           </Fields>
           <Actions>
-            <button type="submit">Add</button>
+            <Button type="submit">Add</Button>
           </Actions>
         </form>
       </section>
@@ -452,6 +524,11 @@ function PatternCard({
   people: People | null
   act: (work: () => Promise<unknown>, saying?: (answer: unknown) => string) => Promise<boolean>
 }) {
+  /** Radix's Select cannot carry an empty-string item, so unpicked is ''. */
+  const [who, setWho] = useState('')
+  const [applyOnRoster, setApplyOnRoster] = useState(false)
+  const [applyOnEdit, setApplyOnEdit] = useState(false)
+
   const scheduled = (answer: unknown) => {
     const { scheduledTouched, leadHeldOn = 0 } = answer as {
       scheduledTouched: number
@@ -476,16 +553,18 @@ function PatternCard({
   const onIt = new Set(pattern.roster.map((member) => member.volunteerId))
 
   return (
-    <article>
-      <h3>
+    <article className="mb-3 rounded-md border border-border bg-background p-4">
+      <h3 className="mt-0">
         {WEEKDAY_LABEL[pattern.weekday]} {SHIFT_TYPE_LABEL[pattern.shiftType]} at{' '}
         {pattern.startTime}
         {pattern.retired && <em> — retired</em>}
       </h3>
-      <p>
-        {pattern.targetHeadcount} people wanted.{' '}
-        <button
+      <p className="flex flex-wrap items-center gap-2">
+        <span>{pattern.targetHeadcount} people wanted.</span>
+        <Button
           type="button"
+          variant="outline"
+          size="sm"
           onClick={() => {
             void act(() =>
               client.post('/shift-patterns/retirement', {
@@ -496,7 +575,7 @@ function PatternCard({
           }}
         >
           {pattern.retired ? 'Bring it back' : 'Retire it'}
-        </button>
+        </Button>
       </p>
       {pattern.retired && (
         <p>
@@ -507,24 +586,30 @@ function PatternCard({
         </p>
       )}
 
-      <ul className="grants">
+      <ul className="m-0 mb-4 list-none overflow-hidden rounded-md border border-border p-0">
         {pattern.roster.length === 0 && (
-          <li>
+          <li className="m-0 border-b border-border bg-background px-4 py-2 last:border-b-0">
             <em>Nobody on the standing roster.</em>
           </li>
         )}
         {pattern.roster.map((member) => (
-          <li key={member.volunteerId} className="row">
+          <li
+            key={member.volunteerId}
+            className="m-0 flex items-center justify-between gap-4 border-b border-border bg-background px-4 py-2 last:border-b-0"
+          >
             <span>
               {member.name} &mdash; {POSITION_LABEL[member.position]}
               {member.gaps.map((gap) => (
-                <span key={gap} className="badge badge-orange">
+                <Badge key={gap} variant="orange" className="ml-2">
                   {GAP_LABEL[gap]}
-                </span>
+                </Badge>
               ))}
             </span>
-            <button
+            <Button
               type="button"
+              variant="outline"
+              size="sm"
+              className="flex-none"
               onClick={() => {
                 void act(
                   () =>
@@ -540,53 +625,64 @@ function PatternCard({
               }}
             >
               Take off
-            </button>
+            </Button>
           </li>
         ))}
       </ul>
 
       <form
+        className="mt-4"
         onSubmit={(event: FormEvent<HTMLFormElement>) => {
           event.preventDefault()
           const form = event.currentTarget
           const data = new FormData(form)
+          // The native select's `required` used to stop this submit; the
+          // picker's placeholder carries no value, so an unpicked form still
+          // posts nothing.
+          if (who === '') return
           void act(
             () =>
               client.post('/shift-patterns/roster', {
                 shiftPatternId: pattern.id,
-                volunteerId: String(data.get('volunteerId') ?? ''),
+                volunteerId: who,
                 position: data.get('position') as AssignablePosition,
                 // ADR 0001's prompt, asked rather than assumed. A default
                 // either way would be the app deciding what the Coordinator
                 // meant about next Tuesday.
-                applyToScheduled: data.get('applyToScheduled') === 'on',
+                applyToScheduled: applyOnRoster,
               }),
             scheduled,
           ).then((landed) => {
-            if (landed) form.reset()
+            if (landed) {
+              form.reset()
+              setWho('')
+              setApplyOnRoster(false)
+            }
           })
         }}
       >
-        <h4>Put somebody on</h4>
+        <h4 className="mt-0">Put somebody on</h4>
         <Fields>
           <Field label="Volunteer" htmlFor={`who-${pattern.id}`}>
-            <select id={`who-${pattern.id}`} name="volunteerId" required defaultValue="">
-              <option value="" disabled>
-                Choose somebody
-              </option>
-              {(people?.people ?? [])
-                .filter((person) => !onIt.has(person.id))
-                .map((person) => (
-                  <option key={person.id} value={person.id}>
-                    {person.name}
-                    {person.rosterable
-                      ? ''
-                      : ` — ${person.gaps.map((gap) => GAP_LABEL[gap]).join(', ')}`}
-                  </option>
-                ))}
-            </select>
+            <Select value={who} onValueChange={setWho}>
+              <SelectTrigger id={`who-${pattern.id}`} aria-label="Volunteer">
+                <SelectValue placeholder="Choose somebody" />
+              </SelectTrigger>
+              <SelectContent>
+                {(people?.people ?? [])
+                  .filter((person) => !onIt.has(person.id))
+                  .map((person) => (
+                    <SelectItem key={person.id} value={person.id}>
+                      {person.name}
+                      {person.rosterable
+                        ? ''
+                        : ` — ${person.gaps.map((gap) => GAP_LABEL[gap]).join(', ')}`}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
           </Field>
-          <div className="field">
+          <div className="min-w-0">
             <Choice
               legend="Position"
               name="position"
@@ -597,19 +693,26 @@ function PatternCard({
               }))}
             />
           </div>
-          <div className="field-wide">
-            <label htmlFor={`apply-${pattern.id}`}>
-              <input id={`apply-${pattern.id}`} name="applyToScheduled" type="checkbox" />
+          <div className="sm:col-span-2">
+            <label htmlFor={`apply-${pattern.id}`} className={CHECK_LABEL}>
+              <Checkbox
+                id={`apply-${pattern.id}`}
+                checked={applyOnRoster}
+                onCheckedChange={(checked) => {
+                  setApplyOnRoster(checked === true)
+                }}
+              />
               Also put them on the Shifts already scheduled
             </label>
           </div>
         </Fields>
         <Actions>
-          <button type="submit">Put on the standing roster</button>
+          <Button type="submit">Put on the standing roster</Button>
         </Actions>
       </form>
 
       <form
+        className="mt-4"
         onSubmit={(event: FormEvent<HTMLFormElement>) => {
           event.preventDefault()
           const form = event.currentTarget
@@ -620,16 +723,16 @@ function PatternCard({
                 shiftPatternId: pattern.id,
                 startTime: String(data.get('startTime') ?? ''),
                 targetHeadcount: Number(data.get('targetHeadcount') ?? ''),
-                applyToScheduled: data.get('applyToScheduled') === 'on',
+                applyToScheduled: applyOnEdit,
               }),
             scheduled,
           )
         }}
       >
-        <h4>Change it</h4>
+        <h4 className="mt-0">Change it</h4>
         <Fields>
           <Field label="Starts" htmlFor={`start-${pattern.id}`}>
-            <input
+            <Input
               id={`start-${pattern.id}`}
               name="startTime"
               type="time"
@@ -638,7 +741,7 @@ function PatternCard({
             />
           </Field>
           <Field label="People wanted" htmlFor={`headcount-${pattern.id}`}>
-            <input
+            <Input
               id={`headcount-${pattern.id}`}
               name="targetHeadcount"
               type="number"
@@ -650,15 +753,21 @@ function PatternCard({
           </Field>
           {/* ADR 0001's prompt, asked rather than assumed: without it the app
               is quietly wrong in the most common editing case. */}
-          <div className="field-wide">
-            <label htmlFor={`apply-edit-${pattern.id}`}>
-              <input id={`apply-edit-${pattern.id}`} name="applyToScheduled" type="checkbox" />
+          <div className="sm:col-span-2">
+            <label htmlFor={`apply-edit-${pattern.id}`} className={CHECK_LABEL}>
+              <Checkbox
+                id={`apply-edit-${pattern.id}`}
+                checked={applyOnEdit}
+                onCheckedChange={(checked) => {
+                  setApplyOnEdit(checked === true)
+                }}
+              />
               Also change the Shifts already scheduled
             </label>
           </div>
         </Fields>
         <Actions>
-          <button type="submit">Change the Pattern</button>
+          <Button type="submit">Change the Pattern</Button>
         </Actions>
       </form>
     </article>

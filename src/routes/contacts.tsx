@@ -15,7 +15,8 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 
-import { Loading } from '../components/forms'
+import { Empty, Loading } from '../components/forms'
+import { Alert, AlertTitle } from '../components/ui/alert'
 import { client } from '../shared/api-client'
 import { refusalText } from '../shared/refusals'
 import type { Answers, contract } from '../shared/api-contract'
@@ -48,8 +49,10 @@ export function Contacts() {
   if (problem !== null) {
     return (
       <main>
-        <h1>Contacts</h1>
-        <p role="alert">{problem}</p>
+        <h1 className="text-foreground">Contacts</h1>
+        <Alert variant="destructive" className="mb-4">
+          <AlertTitle>{problem}</AlertTitle>
+        </Alert>
       </main>
     )
   }
@@ -57,7 +60,7 @@ export function Contacts() {
   if (page === null) {
     return (
       <main>
-        <h1>Contacts</h1>
+        <h1 className="text-foreground">Contacts</h1>
         <Loading what="contacts" />
       </main>
     )
@@ -65,25 +68,43 @@ export function Contacts() {
 
   return (
     <main>
-      <h1>Contacts</h1>
-      <ul>
-        {page.contacts.map((contact) => (
-          <li key={contact.id}>
-            <strong>{contact.name}</strong> — {contact.number}
-            {contact.hours !== null && ` — ${contact.hours}`}
-            {` — ${contact.purpose}`}
-          </li>
-        ))}
-      </ul>
-      {page.contacts.length === 0 && <p>No contacts posted yet.</p>}
+      <h1 className="text-foreground">Contacts</h1>
+      {page.contacts.length === 0 ? (
+        <Empty>No contacts posted yet.</Empty>
+      ) : (
+        <section className="mb-4 rounded-lg border border-border bg-background p-4 sm:p-6">
+          <ul className="m-0 list-none p-0">
+            {page.contacts.map((contact) => (
+              <li
+                key={contact.id}
+                className="border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0"
+              >
+                <strong>{contact.name}</strong> — {contact.number}
+                {contact.hours !== null && ` — ${contact.hours}`}
+                {` — ${contact.purpose}`}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
-      <h2>Standing rules</h2>
-      <ul>
-        {page.standingRules.map((rule) => (
-          <li key={rule.id}>{rule.text}</li>
-        ))}
-      </ul>
-      {page.standingRules.length === 0 && <p>No standing rules posted yet.</p>}
+      <h2 className="mb-3 mt-6 text-foreground">Standing rules</h2>
+      {page.standingRules.length === 0 ? (
+        <Empty>No standing rules posted yet.</Empty>
+      ) : (
+        <section className="mb-4 rounded-lg border border-border bg-background p-4 sm:p-6">
+          <ul className="m-0 list-none p-0">
+            {page.standingRules.map((rule) => (
+              <li
+                key={rule.id}
+                className="border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0"
+              >
+                {rule.text}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </main>
   )
 }

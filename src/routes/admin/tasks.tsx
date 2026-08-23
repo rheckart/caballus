@@ -27,8 +27,28 @@ import {
   SaveButton,
   Saved,
   Sheet,
+  WideField,
   useSaving,
 } from '../../components/forms'
+import { Alert, AlertTitle } from '../../components/ui/alert'
+import { Badge } from '../../components/ui/badge'
+import { Checkbox } from '../../components/ui/checkbox'
+import { Input } from '../../components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../components/ui/select'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../../components/ui/table'
 import { client } from '../../shared/api-client'
 import type { ShiftType } from '../../shared/feed-schedule'
 import { SHIFT_TYPES } from '../../shared/feed-schedule'
@@ -68,7 +88,7 @@ const SHIFT_TYPE_LABEL: Record<ShiftType, string> = {
   lunch: 'Lunch',
 }
 
-/** A Subject encoded onto one `<option>` value, and decoded back off it. */
+/** A Subject encoded onto one Select item value, and decoded back off it. */
 function subjectKey(subject: { horseId: string | null; spaceId: string | null }): string {
   return `${subject.horseId ?? ''}:${subject.spaceId ?? ''}`
 }
@@ -119,17 +139,21 @@ function Tasks() {
 
   return (
     <main>
-      <h1>Tasks and Task Assignments</h1>
-      <p className="lede">
+      <h1 className="text-foreground">Tasks and Task Assignments</h1>
+      <p className="mb-5 max-w-[68ch] text-base leading-relaxed text-muted-foreground">
         A Task is one line of the checklist: what it is, who it is about, and whether it is
         Essential. A Task Assignment says which Shift Type normally does it for a horse or a Space,
         the same way the whiteboard&rsquo;s <em>GROOM</em> column did.
       </p>
 
-      {problem !== null && <p role="alert">{problem}</p>}
+      {problem !== null && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertTitle>{problem}</AlertTitle>
+        </Alert>
+      )}
 
-      <div className="list-head">
-        <h2>The catalogue</h2>
+      <div className="mb-3 mt-6 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="m-0 text-foreground">The catalogue</h2>
         <AddButton
           onClick={() => {
             setAdding(true)
@@ -139,47 +163,43 @@ function Tasks() {
         </AddButton>
       </div>
 
-      <section>
-        {tasks === null ? (
-          <Loading what="the catalogue" />
-        ) : tasks.tasks.length === 0 ? (
-          <Empty>No Tasks yet. A Task is one line of the checklist.</Empty>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">Instruction</th>
-                <th scope="col">About</th>
-                <th scope="col">Priority</th>
-                <th scope="col">Period</th>
-                <th scope="col">Medication</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tasks.tasks.map((task) => (
-                <tr key={task.id}>
-                  <td>{task.instructionText}</td>
-                  <td>{SUBJECT_KIND_LABEL[task.subjectKind]}</td>
-                  <td>
-                    <span
-                      className={
-                        task.priority === 'essential' ? 'badge badge-orange' : 'badge badge-purple'
-                      }
-                    >
-                      {PRIORITY_LABEL[task.priority]}
-                    </span>
-                  </td>
-                  <td>{PERIOD_LABEL[task.period]}</td>
-                  <td>{task.requiresMedicationAuthority ? 'Needs Medication Authority' : 'No'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
+      {tasks === null ? (
+        <Loading what="the catalogue" />
+      ) : tasks.tasks.length === 0 ? (
+        <Empty>No Tasks yet. A Task is one line of the checklist.</Empty>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead scope="col">Instruction</TableHead>
+              <TableHead scope="col">About</TableHead>
+              <TableHead scope="col">Priority</TableHead>
+              <TableHead scope="col">Period</TableHead>
+              <TableHead scope="col">Medication</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {tasks.tasks.map((task) => (
+              <TableRow key={task.id}>
+                <TableCell>{task.instructionText}</TableCell>
+                <TableCell>{SUBJECT_KIND_LABEL[task.subjectKind]}</TableCell>
+                <TableCell>
+                  <Badge variant={task.priority === 'essential' ? 'orange' : 'purple'}>
+                    {PRIORITY_LABEL[task.priority]}
+                  </Badge>
+                </TableCell>
+                <TableCell>{PERIOD_LABEL[task.period]}</TableCell>
+                <TableCell>
+                  {task.requiresMedicationAuthority ? 'Needs Medication Authority' : 'No'}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
 
-      <section>
-        <h2>Task Assignments</h2>
+      <section className="mb-4 mt-6 rounded-lg border border-border bg-background p-4 sm:p-6">
+        <h2 className="mt-0 text-foreground">Task Assignments</h2>
         {tasks === null || assignments === null ? (
           <p>One moment…</p>
         ) : (
@@ -231,6 +251,10 @@ function NewTask({
   onSaved: () => void
 }) {
   const { pending, saved, save } = useSaving()
+  // State rather than FormData reads, because Radix's Checkbox carries no
+  // form name for a FormData read to find.
+  const [requiresMedicationAuthority, setRequiresMedicationAuthority] = useState(false)
+  const [closing, setClosing] = useState(false)
 
   return (
     <form
@@ -244,8 +268,8 @@ function NewTask({
               subjectKind: data.get('subjectKind') as Task['subjectKind'],
               priority: data.get('priority') as Task['priority'],
               period: data.get('period') as Task['period'],
-              requiresMedicationAuthority: data.get('requiresMedicationAuthority') === 'on',
-              closing: data.get('closing') === 'on',
+              requiresMedicationAuthority,
+              closing,
               instructionText: String(data.get('instructionText') ?? ''),
             }),
           ).then((landed) => {
@@ -258,19 +282,17 @@ function NewTask({
       }}
     >
       <Fields>
-        <div className="field-wide">
-          <Field label="Instruction" htmlFor="new-task-instruction">
-            <input
-              id="new-task-instruction"
-              name="instructionText"
-              required
-              maxLength={2000}
-              placeholder="Muck the stalls."
-              autoFocus
-            />
-          </Field>
-        </div>
-        <div className="field-wide">
+        <WideField label="Instruction" htmlFor="new-task-instruction">
+          <Input
+            id="new-task-instruction"
+            name="instructionText"
+            required
+            maxLength={2000}
+            placeholder="Muck the stalls."
+            autoFocus
+          />
+        </WideField>
+        <div className="sm:col-span-2">
           <Choice
             legend="About"
             name="subjectKind"
@@ -281,7 +303,7 @@ function NewTask({
             }))}
           />
         </div>
-        <div className="field">
+        <div className="min-w-0">
           <Choice
             legend="Priority"
             name="priority"
@@ -292,7 +314,7 @@ function NewTask({
             }))}
           />
         </div>
-        <div className="field">
+        <div className="min-w-0">
           <Choice
             legend="Period"
             name="period"
@@ -303,13 +325,23 @@ function NewTask({
             }))}
           />
         </div>
-        <div className="field-wide">
-          <label htmlFor="new-task-medication">
-            <input id="new-task-medication" name="requiresMedicationAuthority" type="checkbox" />
+        <div className="flex flex-wrap gap-x-6 gap-y-1 sm:col-span-2">
+          <label className="mt-3 flex min-h-11 items-center gap-2 text-sm font-medium">
+            <Checkbox
+              checked={requiresMedicationAuthority}
+              onCheckedChange={(checked) => {
+                setRequiresMedicationAuthority(checked === true)
+              }}
+            />
             Needs Medication Authority
           </label>
-          <label htmlFor="new-task-closing">
-            <input id="new-task-closing" name="closing" type="checkbox" />
+          <label className="mt-3 flex min-h-11 items-center gap-2 text-sm font-medium">
+            <Checkbox
+              checked={closing}
+              onCheckedChange={(checked) => {
+                setClosing(checked === true)
+              }}
+            />
             Closing checklist
           </label>
         </div>
@@ -338,17 +370,33 @@ function TaskAssignments({
   // Controlled, because *deliberately none* has no Shift Type and showing the
   // picker anyway asks a question whose answer is about to be thrown away.
   const [stance, setStance] = useState<'assigned' | 'deliberately_none'>('assigned')
+  // The picked Subject, held here because Radix's Select carries no form name
+  // for a FormData read to find. Falls back to the first undecided Subject
+  // when nothing has been picked — or when what was picked has since been
+  // decided and left the list.
+  const [picked, setPicked] = useState<string | null>(null)
+  const subject =
+    picked !== null && undecided.some((each) => subjectKey(each) === picked)
+      ? picked
+      : undecided.length > 0
+        ? subjectKey(undecided[0] as UndecidedSubject)
+        : null
   const { pending, saved, save } = useSaving()
 
   return (
-    <article>
-      <h3>{task.instructionText}</h3>
+    <article className="mb-3 rounded-lg border border-border bg-background p-4 last:mb-0">
+      <h3 className="mt-0">{task.instructionText}</h3>
       {assignments.length === 0 ? (
-        <p className="field-hint">No decisions recorded yet.</p>
+        <p className="mt-1 text-[13px] leading-snug text-muted-foreground">
+          No decisions recorded yet.
+        </p>
       ) : (
-        <ul>
+        <ul className="m-0 list-none p-0">
           {assignments.map((assignment) => (
-            <li key={subjectKey(assignment)}>
+            <li
+              key={subjectKey(assignment)}
+              className="border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0"
+            >
               {assignment.name} &mdash;{' '}
               {assignment.stance === 'assigned' && assignment.shiftType !== null ? (
                 <>normally {SHIFT_TYPE_LABEL[assignment.shiftType]}&apos;s</>
@@ -362,8 +410,11 @@ function TaskAssignments({
 
       {/* The unanswered question, said out loud rather than read as no work (ADR 0013, ADR 0015). */}
       {undecided.length > 0 && (
-        <p className="owed" role="status">
-          Not yet decided: {undecided.map((subject) => subject.name).join(', ')} &mdash; Essential
+        <p
+          className="my-3 rounded-md bg-card-tint-peach px-4 py-3 text-sm text-brand-orange-deep dark:border dark:border-card-tint-peach/40 dark:bg-transparent dark:text-card-tint-peach"
+          role="status"
+        >
+          Not yet decided: {undecided.map((subject_) => subject_.name).join(', ')} &mdash; Essential
           work still shows on the checklist while this is unanswered.
         </p>
       )}
@@ -373,13 +424,13 @@ function TaskAssignments({
           onSubmit={(event: FormEvent<HTMLFormElement>) => {
             event.preventDefault()
             const data = new FormData(event.currentTarget)
-            const subject = subjectOf(String(data.get('subject') ?? ''))
+            const chosen = subjectOf(subject ?? '')
             void save(() =>
               act(() =>
                 client.post('/task-assignments', {
                   taskId: task.id,
-                  horseId: subject.horseId,
-                  spaceId: subject.spaceId,
+                  horseId: chosen.horseId,
+                  spaceId: chosen.spaceId,
                   stance,
                   shiftType: stance === 'assigned' ? (data.get('shiftType') as ShiftType) : null,
                   validFrom: today,
@@ -390,19 +441,20 @@ function TaskAssignments({
         >
           <Fields>
             <Field label="Subject" htmlFor={`subject-${task.id}`}>
-              <select
-                id={`subject-${task.id}`}
-                name="subject"
-                defaultValue={subjectKey(undecided[0] as UndecidedSubject)}
-              >
-                {undecided.map((subject) => (
-                  <option key={subjectKey(subject)} value={subjectKey(subject)}>
-                    {subject.name}
-                  </option>
-                ))}
-              </select>
+              <Select value={subject ?? undefined} onValueChange={setPicked}>
+                <SelectTrigger id={`subject-${task.id}`} aria-label="Subject">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {undecided.map((each) => (
+                    <SelectItem key={subjectKey(each)} value={subjectKey(each)}>
+                      {each.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </Field>
-            <div className="field">
+            <div className="min-w-0">
               <Choice
                 legend="Decision"
                 name="stance"
@@ -415,7 +467,7 @@ function TaskAssignments({
               />
             </div>
             {stance === 'assigned' && (
-              <div className="field">
+              <div className="min-w-0">
                 <Choice
                   legend="Shift Type"
                   name="shiftType"

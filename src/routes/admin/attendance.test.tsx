@@ -7,11 +7,11 @@
  * letter reporting hours nobody closed is exactly the fabrication ADR 0012
  * writes itself against.
  */
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { stubApi } from '../../test/api-stub'
-import { renderRoutes } from '../../test/route-harness'
+import { chooseOption, renderRoutes } from '../../test/route-harness'
 import { Route } from './attendance'
 
 afterEach(() => {
@@ -74,7 +74,7 @@ describe('the hours report', () => {
     renderReport()
 
     await screen.findByText('One row per visit, for a signature each')
-    fireEvent.change(screen.getByLabelText('County'), { target: { value: 'anne_arundel' } })
+    await chooseOption('County', 'Anne Arundel')
 
     expect(await screen.findByText('Dates and a total, no line items')).toBeTruthy()
     expect(screen.getByText('Beth Ann')).toBeTruthy()

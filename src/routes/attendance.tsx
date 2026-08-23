@@ -25,7 +25,17 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 
-import { Actions, Field, Fields, Loading } from '../components/forms'
+import { Actions, Field, Fields, Loading, WideField } from '../components/forms'
+import { Alert, AlertTitle } from '../components/ui/alert'
+import { Button } from '../components/ui/button'
+import { Input } from '../components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select'
 import { client } from '../shared/api-client'
 import { VISIT_CATEGORIES, type AttendanceCategory } from '../shared/attendance'
 import type { DomainScope } from '../shared/domain-scopes'
@@ -51,6 +61,9 @@ const CATEGORY_LABEL: Record<AttendanceCategory, string> = {
   other: 'Other',
 }
 
+/** Radix's Select cannot carry an empty-string item, so *no horse* is a word. */
+const NO_HORSE = 'none'
+
 function ObservationRowView({
   observation,
   scopesHeld,
@@ -62,6 +75,7 @@ function ObservationRowView({
 }) {
   const [busy, setBusy] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
+  const [scope, setScope] = useState<DomainScope>(scopesHeld[0] ?? 'horse_care')
 
   const noteNoAction = useCallback(async () => {
     setProblem(null)
@@ -81,7 +95,6 @@ function ObservationRowView({
       event.preventDefault()
       const form = event.currentTarget
       const data = new FormData(form)
-      const scope = String(data.get('scope') ?? '') as DomainScope
       const framing = String(data.get('framing') ?? '')
       setProblem(null)
       setBusy(true)
@@ -94,12 +107,12 @@ function ObservationRowView({
         setBusy(false)
       }
     },
-    [observation.id, onDispositioned],
+    [observation.id, onDispositioned, scope],
   )
 
   if (observation.dispositionedAt !== null) {
     return (
-      <li>
+      <li className="border-b border-border py-3 text-sm text-muted-foreground first:pt-0 last:border-b-0 last:pb-0">
         {observation.text} —{' '}
         {observation.disposition === 'escalated' ? 'Escalated' : 'Noted, no action'}
       </li>
@@ -107,37 +120,57 @@ function ObservationRowView({
   }
 
   return (
-    <li>
-      <p>
+    <li className="border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0">
+      <p className="m-0 mb-2">
         {observation.text}
         {observation.subjectLabel !== null && ` (${observation.subjectLabel})`}
       </p>
-      {problem !== null && <p role="alert">{problem}</p>}
+      {problem !== null && (
+        <Alert variant="destructive" className="mb-2">
+          <AlertTitle>{problem}</AlertTitle>
+        </Alert>
+      )}
 
-      <button type="button" onClick={() => void noteNoAction()} disabled={busy}>
+      <Button type="button" variant="outline" onClick={() => void noteNoAction()} disabled={busy}>
         Note, no action
-      </button>
+      </Button>
 
       {scopesHeld.length > 0 && (
-        <form onSubmit={(event) => void escalate(event)}>
-          <label htmlFor={`escalate-scope-${observation.id}`}>Escalate to</label>
-          <select id={`escalate-scope-${observation.id}`} name="scope" defaultValue={scopesHeld[0]}>
-            {scopesHeld.map((scope) => (
-              <option key={scope} value={scope}>
-                {scope}
-              </option>
-            ))}
-          </select>
-          <label htmlFor={`escalate-framing-${observation.id}`}>In your own words</label>
-          <input
-            id={`escalate-framing-${observation.id}`}
-            name="framing"
-            required
-            maxLength={2000}
-          />
-          <button type="submit" disabled={busy}>
-            Escalate
-          </button>
+        <form onSubmit={(event) => void escalate(event)} className="mt-3">
+          <Fields>
+            <Field label="Escalate to" htmlFor={`escalate-scope-${observation.id}`}>
+              <Select
+                value={scope}
+                onValueChange={(value) => {
+                  setScope(value as DomainScope)
+                }}
+              >
+                <SelectTrigger id={`escalate-scope-${observation.id}`} aria-label="Escalate to">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {scopesHeld.map((held) => (
+                    <SelectItem key={held} value={held}>
+                      {held}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="In your own words" htmlFor={`escalate-framing-${observation.id}`}>
+              <Input
+                id={`escalate-framing-${observation.id}`}
+                name="framing"
+                required
+                maxLength={2000}
+              />
+            </Field>
+          </Fields>
+          <div className="mt-3">
+            <Button type="submit" disabled={busy}>
+              Escalate
+            </Button>
+          </div>
         </form>
       )}
     </li>
@@ -151,6 +184,13 @@ function VisitAttendance() {
   const [problem, setProblem] = useState<string | null>(null)
   const [confirmed, setConfirmed] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+
+  // The pickers' own state, since a Radix Select posts nothing to FormData:
+  // null means the volunteer looking at the phone, the picker's default.
+  const [signInWho, setSignInWho] = useState<string | null>(null)
+  const [signInCategory, setSignInCategory] = useState<AttendanceCategory>('other')
+  const [signOutWho, setSignOutWho] = useState<string | null>(null)
+  const [subjectId, setSubjectId] = useState<string>(NO_HORSE)
 
   // Known only once this session has signed the actor in themselves — the
   // Attendance a recorded Observation attaches to, and a Visit's disposition
@@ -201,7 +241,13 @@ function VisitAttendance() {
     return (
       <main>
         <h1>Visit</h1>
-        {problem === null ? <Loading what="the sheet" /> : <p role="alert">{problem}</p>}
+        {problem === null ? (
+          <Loading what="the sheet" />
+        ) : (
+          <Alert variant="destructive" className="mb-4">
+            <AlertTitle>{problem}</AlertTitle>
+          </Alert>
+        )}
       </main>
     )
   }
@@ -215,22 +261,34 @@ function VisitAttendance() {
   return (
     <main>
       <h1>Visit</h1>
-      {problem !== null && <p role="alert">{problem}</p>}
-      {confirmed !== null && <p role="status">{confirmed}</p>}
+      {problem !== null && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertTitle>{problem}</AlertTitle>
+        </Alert>
+      )}
+      {confirmed !== null && (
+        <p
+          role="status"
+          className="mb-3 rounded-md border border-border bg-secondary px-4 py-3 text-sm"
+        >
+          {confirmed}
+        </p>
+      )}
 
       <form
+        className="mb-4 rounded-lg border border-border bg-background p-4 sm:p-6"
         onSubmit={(event: FormEvent<HTMLFormElement>) => {
           event.preventDefault()
           const form = event.currentTarget
           const data = new FormData(form)
-          const volunteerId = String(data.get('volunteerId') ?? me.volunteerId)
+          const volunteerId = signInWho ?? me.volunteerId
           const description = String(data.get('description') ?? '')
-          const category = String(data.get('category') ?? 'other')
+          const category = signInCategory
           void act(async () => {
             const answered = await client.post('/attendance/sign-in', {
               volunteerId,
               description,
-              category: category as AttendanceCategory,
+              category,
             })
             // Only the actor's own sign-in gives this screen an Attendance to
             // attach an Observation to — recording on somebody else's behalf
@@ -241,87 +299,114 @@ function VisitAttendance() {
             }
           }, 'Signed in.').then(() => {
             form.reset()
+            setSignInWho(null)
+            setSignInCategory('other')
           })
         }}
       >
-        <h2>Sign in</h2>
+        <h2 className="mt-0">Sign in</h2>
         <Fields>
-          <div className="field-wide">
-            <Field label="What are you here to do?" htmlFor="sign-in-description">
-              <input id="sign-in-description" name="description" required maxLength={1000} />
-            </Field>
-          </div>
+          <WideField label="What are you here to do?" htmlFor="sign-in-description">
+            <Input id="sign-in-description" name="description" required maxLength={1000} />
+          </WideField>
           <Field label="Who" htmlFor="sign-in-who">
-            <select id="sign-in-who" name="volunteerId" defaultValue={me.volunteerId}>
-              <option value={me.volunteerId}>Me &mdash; {me.name}</option>
-              {everyone
-                .filter((person) => person.id !== me.volunteerId)
-                .map((person) => (
-                  <option key={person.id} value={person.id}>
-                    {person.name}
-                  </option>
-                ))}
-            </select>
+            <Select value={signInWho ?? me.volunteerId} onValueChange={setSignInWho}>
+              <SelectTrigger id="sign-in-who" aria-label="Who">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={me.volunteerId}>Me — {me.name}</SelectItem>
+                {everyone
+                  .filter((person) => person.id !== me.volunteerId)
+                  .map((person) => (
+                    <SelectItem key={person.id} value={person.id}>
+                      {person.name}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
           </Field>
           <Field label="Category" htmlFor="sign-in-category">
-            <select id="sign-in-category" name="category" defaultValue="other">
-              {VISIT_CATEGORIES.map((category) => (
-                <option key={category} value={category}>
-                  {CATEGORY_LABEL[category]}
-                </option>
-              ))}
-            </select>
+            <Select
+              value={signInCategory}
+              onValueChange={(value) => {
+                setSignInCategory(value as AttendanceCategory)
+              }}
+            >
+              <SelectTrigger id="sign-in-category" aria-label="Category">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {VISIT_CATEGORIES.map((category) => (
+                  <SelectItem key={category} value={category}>
+                    {CATEGORY_LABEL[category]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
         </Fields>
         <Actions>
-          <button type="submit" disabled={busy}>
+          <Button type="submit" disabled={busy}>
             {busy ? 'Signing in…' : 'Sign in'}
-          </button>
+          </Button>
         </Actions>
       </form>
 
       {attendanceId !== null && (
-        <section>
-          <h2>Record an Observation</h2>
+        <section className="mb-4 rounded-lg border border-border bg-background p-4 sm:p-6">
+          <h2 className="mt-0">Record an Observation</h2>
           <form
             onSubmit={(event: FormEvent<HTMLFormElement>) => {
               event.preventDefault()
               const form = event.currentTarget
               const data = new FormData(form)
               const text = String(data.get('text') ?? '')
-              const subjectId = String(data.get('subjectId') ?? '')
+              const subject = subjectId === NO_HORSE ? null : subjectId
               void act(async () => {
                 await client.post('/observations', {
                   text,
-                  subjectKind: subjectId === '' ? null : 'horse',
-                  subjectId: subjectId === '' ? null : subjectId,
+                  subjectKind: subject === null ? null : 'horse',
+                  subjectId: subject,
                 })
                 reloadObservations(attendanceId)
               }, 'Recorded.').then(() => {
                 form.reset()
+                setSubjectId(NO_HORSE)
               })
             }}
           >
-            <label htmlFor="observation-text">What did you see?</label>
-            <input id="observation-text" name="text" required maxLength={2000} />
-            <label htmlFor="observation-subject">About a horse (optional)</label>
-            <select id="observation-subject" name="subjectId" defaultValue="">
-              <option value="">No horse in particular</option>
-              {horses.horses.map((horse) => (
-                <option key={horse.id} value={horse.id}>
-                  {horse.name}
-                </option>
-              ))}
-            </select>
-            <button type="submit" disabled={busy}>
-              Record
-            </button>
+            <Fields>
+              <WideField label="What did you see?" htmlFor="observation-text">
+                <Input id="observation-text" name="text" required maxLength={2000} />
+              </WideField>
+              <Field label="About a horse (optional)" htmlFor="observation-subject">
+                <Select value={subjectId} onValueChange={setSubjectId}>
+                  <SelectTrigger id="observation-subject" aria-label="About a horse (optional)">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_HORSE}>No horse in particular</SelectItem>
+                    {horses.horses.map((horse) => (
+                      <SelectItem key={horse.id} value={horse.id}>
+                        {horse.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+            </Fields>
+            <Actions>
+              <Button type="submit" disabled={busy}>
+                Record
+              </Button>
+            </Actions>
           </form>
 
           {undispositioned.length > 0 && (
-            <div>
-              <h3>Before you sign out</h3>
-              <ul>
+            <div className="mt-6 border-t border-border pt-4">
+              <h3 className="mt-0">Before you sign out</h3>
+              <ul className="m-0 list-none p-0">
                 {undispositioned.map((observation) => (
                   <ObservationRowView
                     key={observation.id}
@@ -337,14 +422,15 @@ function VisitAttendance() {
       )}
 
       <form
+        className="mb-4 rounded-lg border border-border bg-background p-4 sm:p-6"
         onSubmit={(event: FormEvent<HTMLFormElement>) => {
           event.preventDefault()
           const form = event.currentTarget
-          const data = new FormData(form)
-          const volunteerId = String(data.get('volunteerId') ?? me.volunteerId)
+          const volunteerId = signOutWho ?? me.volunteerId
           void act(() => client.post('/attendance/sign-out', { volunteerId }), 'Signed out.').then(
             () => {
               form.reset()
+              setSignOutWho(null)
               if (volunteerId === me.volunteerId) {
                 setAttendanceId(null)
                 setObservations(null)
@@ -353,21 +439,31 @@ function VisitAttendance() {
           )
         }}
       >
-        <h2>Sign out</h2>
-        <label htmlFor="sign-out-who">Who</label>
-        <select id="sign-out-who" name="volunteerId" defaultValue={me.volunteerId}>
-          <option value={me.volunteerId}>Me — {me.name}</option>
-          {everyone
-            .filter((person) => person.id !== me.volunteerId)
-            .map((person) => (
-              <option key={person.id} value={person.id}>
-                {person.name}
-              </option>
-            ))}
-        </select>
-        <button type="submit" disabled={busy}>
-          Sign out
-        </button>
+        <h2 className="mt-0">Sign out</h2>
+        <Fields>
+          <Field label="Who" htmlFor="sign-out-who">
+            <Select value={signOutWho ?? me.volunteerId} onValueChange={setSignOutWho}>
+              <SelectTrigger id="sign-out-who" aria-label="Who">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={me.volunteerId}>Me — {me.name}</SelectItem>
+                {everyone
+                  .filter((person) => person.id !== me.volunteerId)
+                  .map((person) => (
+                    <SelectItem key={person.id} value={person.id}>
+                      {person.name}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          </Field>
+        </Fields>
+        <Actions>
+          <Button type="submit" disabled={busy}>
+            Sign out
+          </Button>
+        </Actions>
       </form>
     </main>
   )

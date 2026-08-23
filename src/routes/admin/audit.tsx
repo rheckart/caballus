@@ -17,6 +17,16 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 
 import { Loading } from '../../components/forms'
+import { Alert, AlertTitle } from '../../components/ui/alert'
+import {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../../components/ui/table'
 import { client } from '../../shared/api-client'
 import { refusalText } from '../../shared/refusals'
 import type { Answers, contract } from '../../shared/api-contract'
@@ -51,39 +61,43 @@ function Audit() {
 
   return (
     <main>
-      <h1>Audit log</h1>
-      {problem !== null && <p role="alert">{problem}</p>}
+      <h1 className="text-foreground">Audit log</h1>
+      {problem !== null && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertTitle>{problem}</AlertTitle>
+        </Alert>
+      )}
       {log === null && problem === null && <Loading what="the log" />}
       {log !== null && (
-        <table>
-          <caption>Newest first</caption>
-          <thead>
-            <tr>
-              <th scope="col">What</th>
-              <th scope="col">Field</th>
-              <th scope="col">Was</th>
-              <th scope="col">Became</th>
-              <th scope="col">Reason</th>
-              <th scope="col">Who</th>
-            </tr>
-          </thead>
-          <tbody>
+        <Table>
+          <TableCaption>Newest first</TableCaption>
+          <TableHeader>
+            <TableRow>
+              <TableHead scope="col">What</TableHead>
+              <TableHead scope="col">Field</TableHead>
+              <TableHead scope="col">Was</TableHead>
+              <TableHead scope="col">Became</TableHead>
+              <TableHead scope="col">Reason</TableHead>
+              <TableHead scope="col">Who</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {log.entries.map((entry) => (
-              <tr key={entry.id}>
-                <td>{ENTITY_TEXT[entry.entity] ?? entry.entity}</td>
+              <TableRow key={entry.id}>
+                <TableCell>{ENTITY_TEXT[entry.entity] ?? entry.entity}</TableCell>
                 {/* Null means the record as a whole — a creation, a removal, a
                     grant. A grant has no field to name. */}
-                <td>{entry.field ?? '—'}</td>
-                <td>{entry.before ?? '—'}</td>
-                <td>{entry.after ?? '—'}</td>
-                <td>{entry.reason ?? '—'}</td>
+                <TableCell>{entry.field ?? '—'}</TableCell>
+                <TableCell>{entry.before ?? '—'}</TableCell>
+                <TableCell>{entry.after ?? '—'}</TableCell>
+                <TableCell>{entry.reason ?? '—'}</TableCell>
                 {/* Null only for the bootstrap command, which makes the first
                     President before anybody can sign in to be one. */}
-                <td>{entry.actorVolunteerId ?? 'the bootstrap command'}</td>
-              </tr>
+                <TableCell>{entry.actorVolunteerId ?? 'the bootstrap command'}</TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       )}
     </main>
   )

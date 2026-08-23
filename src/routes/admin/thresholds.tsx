@@ -22,6 +22,16 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 
 import { Actions, Empty, Field, Fields, SaveButton, Saved, useSaving } from '../../components/forms'
+import { Alert, AlertTitle } from '../../components/ui/alert'
+import { Button } from '../../components/ui/button'
+import { Input } from '../../components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../components/ui/select'
 import { client } from '../../shared/api-client'
 import { refusalText } from '../../shared/refusals'
 import {
@@ -55,9 +65,17 @@ const METRIC_LABEL: Record<ThresholdRecord['metric'], string> = {
   wbgt: 'wet bulb globe temperature',
 }
 
+/** A card section, now that a `<section>` is no longer one by element rule. */
+const CARD = 'mb-4 rounded-lg border border-border bg-background p-4 sm:p-6'
+
+/** The Choice idiom for a radio spent as a button (`src/components/forms.tsx`). */
+const CHOICE_BUTTON =
+  'inline-flex min-h-11 cursor-pointer items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-medium text-secondary-foreground transition-colors hover:bg-secondary peer-checked:border-primary peer-checked:bg-primary peer-checked:text-primary-foreground peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-background'
+
 function Thresholds() {
   const [listed, setListed] = useState<ThresholdList | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
+  const [defaultKind, setDefaultKind] = useState<ThresholdKind>('sheet')
 
   const load = useCallback(async () => {
     setListed(await client.get('/thresholds'))
@@ -94,8 +112,14 @@ function Thresholds() {
   if (listed === null) {
     return (
       <main>
-        <h1>Thresholds</h1>
-        {problem === null ? <p>One moment…</p> : <p role="alert">{problem}</p>}
+        <h1 className="text-foreground">Thresholds</h1>
+        {problem === null ? (
+          <p>One moment…</p>
+        ) : (
+          <Alert variant="destructive">
+            <AlertTitle>{problem}</AlertTitle>
+          </Alert>
+        )}
       </main>
     )
   }
@@ -105,22 +129,29 @@ function Thresholds() {
 
   return (
     <main>
-      <h1>Thresholds</h1>
-      <p className="lede">
+      <h1 className="text-foreground">Thresholds</h1>
+      <p className="mb-5 max-w-[68ch] text-base leading-relaxed text-muted-foreground">
         The temperatures the weather rules turn at. An edit publishes a new version; the old one
         stays, so what a horse’s number was in January is still answerable.
       </p>
 
-      {problem !== null && <p role="alert">{problem}</p>}
+      {problem !== null && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertTitle>{problem}</AlertTitle>
+        </Alert>
+      )}
 
-      <section>
-        <h2>The rescue’s numbers</h2>
+      <section className={CARD}>
+        <h2 className="mt-0">The rescue’s numbers</h2>
         <p>What every horse follows unless somebody decided otherwise for it.</p>
-        <ul>
+        <ul className="m-0 mb-3 list-none p-0">
           {THRESHOLD_KINDS.map((kind) => {
             const record = byKind.get(kind)
             return (
-              <li key={kind}>
+              <li
+                key={kind}
+                className="border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0"
+              >
                 {KIND_LABEL[kind]}{' '}
                 {record === undefined ? (
                   // Never a zero and never a blank: a number nobody has set is
@@ -141,6 +172,7 @@ function Thresholds() {
         </ul>
 
         <form
+          className="mt-4 rounded-md border border-border bg-card p-4"
           onSubmit={(event: FormEvent<HTMLFormElement>) => {
             event.preventDefault()
             const form = event.currentTarget
@@ -148,29 +180,44 @@ function Thresholds() {
             void act(() =>
               client.post('/thresholds', {
                 horseId: null,
-                kind: data.get('kind') as ThresholdKind,
+                kind: defaultKind,
                 stance: 'overridden',
                 value: Number(data.get('value') ?? ''),
                 validFrom: listed.today,
               }),
             ).then((landed) => {
-              if (landed) form.reset()
+              if (landed) {
+                form.reset()
+                setDefaultKind('sheet')
+              }
             })
           }}
         >
-          <h3>Set one of the rescue’s numbers</h3>
+          <h3 className="m-0 mb-1 text-base font-semibold text-foreground">
+            Set one of the rescue’s numbers
+          </h3>
           <Fields>
             <Field label="Which" htmlFor="default-kind">
-              <select id="default-kind" name="kind" defaultValue="sheet">
-                {THRESHOLD_KINDS.map((kind) => (
-                  <option key={kind} value={kind}>
-                    {KIND_LABEL[kind]}
-                  </option>
-                ))}
-              </select>
+              <Select
+                value={defaultKind}
+                onValueChange={(kind) => {
+                  setDefaultKind(kind as ThresholdKind)
+                }}
+              >
+                <SelectTrigger id="default-kind" aria-label="Which">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {THRESHOLD_KINDS.map((kind) => (
+                    <SelectItem key={kind} value={kind}>
+                      {KIND_LABEL[kind]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </Field>
             <Field label="Degrees Fahrenheit" htmlFor="default-value">
-              <input
+              <Input
                 id="default-value"
                 name="value"
                 type="number"
@@ -181,38 +228,39 @@ function Thresholds() {
             </Field>
           </Fields>
           <Actions>
-            <button type="submit">Publish</button>
+            <Button type="submit">Publish</Button>
           </Actions>
         </form>
       </section>
 
-      <section>
-        <h2>Today’s weather</h2>
+      <section className={CARD}>
+        <h2 className="mt-0">Today’s weather</h2>
         <p>
           Fetches the forecast and works out what it means for today — what the Board shows, and
           what a Shift’s list will be fixed against. It becomes the daily job’s first step the day
           there is a daily job; until then it is this button.
         </p>
-        <button
+        <Button
           type="button"
+          variant="outline"
           onClick={() => {
             void act(() => client.post('/weather/readings', {}))
           }}
         >
           Read today’s weather
-        </button>
+        </Button>
       </section>
 
-      <section>
-        <h2>Decisions owed</h2>
+      <section className={CARD}>
+        <h2 className="mt-0">Decisions owed</h2>
         {owed.length === 0 ? (
-          <p className="field-hint">
+          <p className="m-0 text-[13px] leading-snug text-muted-foreground">
             Every horse has a sheet and a blanket number, or has been put on the rescue’s.
           </p>
         ) : (
-          <ul className="owed-list">
+          <ul className="my-3 list-none rounded-md bg-card-tint-peach px-4 py-3 text-sm text-brand-orange-deep dark:border dark:border-card-tint-peach/40 dark:bg-transparent dark:text-card-tint-peach">
             {owed.map((horse) => (
-              <li key={horse.horseId}>
+              <li key={horse.horseId} className="mb-1 last:mb-0">
                 {horse.horseName} —{' '}
                 {horse.undecided.map((kind) => KIND_LABEL[kind].toLowerCase()).join(' and ')}{' '}
                 <em>not yet decided</em>; the rescue’s number is being used meanwhile.
@@ -222,8 +270,8 @@ function Thresholds() {
         )}
       </section>
 
-      <section>
-        <h2>Each horse</h2>
+      <section className={CARD}>
+        <h2 className="mt-0">Each horse</h2>
         {listed.horses.length === 0 && <Empty>No horses yet.</Empty>}
         {listed.horses.map((horse) => (
           <Horse key={horse.horseId} horse={horse} today={listed.today} act={act} />
@@ -244,16 +292,17 @@ function Horse({
 }) {
   const held = new Map(horse.records.map((record) => [record.kind, record]))
   const { pending, saved, save } = useSaving()
+  const [kind, setKind] = useState<ThresholdKind>('sheet')
 
   return (
-    <article>
-      <h3>{horse.horseName}</h3>
-      <ul>
-        {PER_HORSE_THRESHOLD_KINDS.map((kind) => {
-          const record = held.get(kind)
+    <article className="mb-3 rounded-md border border-border bg-background p-4 last:mb-0">
+      <h3 className="mt-0">{horse.horseName}</h3>
+      <ul className="m-0 mb-3 list-disc pl-5">
+        {PER_HORSE_THRESHOLD_KINDS.map((recordKind) => {
+          const record = held.get(recordKind)
           return (
-            <li key={kind}>
-              {KIND_LABEL[kind]}:{' '}
+            <li key={recordKind} className="mb-1 last:mb-0">
+              {KIND_LABEL[recordKind]}:{' '}
               {record === undefined ? (
                 <em>not yet decided</em>
               ) : record.stance === 'follows_default' ? (
@@ -280,7 +329,7 @@ function Horse({
             act(() =>
               client.post('/thresholds', {
                 horseId: horse.horseId,
-                kind: data.get('kind') as ThresholdKind,
+                kind,
                 stance,
                 // A horse deliberately on the rescue's number carries none of its
                 // own: one copied here would stop moving when the default did.
@@ -288,27 +337,40 @@ function Horse({
                 validFrom: today,
               }),
             ).then((landed) => {
-              if (landed) form.reset()
+              if (landed) {
+                form.reset()
+                setKind('sheet')
+              }
             }),
           )
         }}
       >
         <Fields>
           <Field label="Which" htmlFor={`kind-${horse.horseId}`}>
-            <select id={`kind-${horse.horseId}`} name="kind" defaultValue="sheet">
-              {PER_HORSE_THRESHOLD_KINDS.map((kind) => (
-                <option key={kind} value={kind}>
-                  {KIND_LABEL[kind]} ({METRIC_LABEL[THRESHOLD_SPECS[kind].metric]})
-                </option>
-              ))}
-            </select>
+            <Select
+              value={kind}
+              onValueChange={(next) => {
+                setKind(next as ThresholdKind)
+              }}
+            >
+              <SelectTrigger id={`kind-${horse.horseId}`} aria-label="Which">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PER_HORSE_THRESHOLD_KINDS.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {KIND_LABEL[option]} ({METRIC_LABEL[THRESHOLD_SPECS[option].metric]})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
           <Field
             label="Degrees Fahrenheit"
             htmlFor={`value-${horse.horseId}`}
             hint="Left blank when this horse follows the rescue’s number."
           >
-            <input
+            <Input
               id={`value-${horse.horseId}`}
               name="value"
               type="number"
@@ -321,27 +383,31 @@ function Horse({
           {/* The tri-state, as two buttons rather than two loose radios: the
               third state is the absence of a row and is not offered here,
               because a decision is what this form records (ADR 0015). */}
-          <fieldset className="choice field-wide">
-            <legend>Which number it follows</legend>
-            <div className="choice-options">
-              <label htmlFor={`stance-own-${horse.horseId}`}>
+          <fieldset className="mt-3 min-w-0 border-0 p-0 sm:col-span-2">
+            <legend className="mb-1 block p-0 text-sm font-medium text-foreground">
+              Which number it follows
+            </legend>
+            <div className="flex flex-wrap gap-2">
+              <label htmlFor={`stance-own-${horse.horseId}`} className="m-0 block">
                 <input
+                  className="peer sr-only"
                   id={`stance-own-${horse.horseId}`}
                   name="stance"
                   type="radio"
                   value="overridden"
                   defaultChecked
                 />
-                <span>Its own number</span>
+                <span className={CHOICE_BUTTON}>Its own number</span>
               </label>
-              <label htmlFor={`stance-default-${horse.horseId}`}>
+              <label htmlFor={`stance-default-${horse.horseId}`} className="m-0 block">
                 <input
+                  className="peer sr-only"
                   id={`stance-default-${horse.horseId}`}
                   name="stance"
                   type="radio"
                   value="follows_default"
                 />
-                <span>The rescue’s number, deliberately</span>
+                <span className={CHOICE_BUTTON}>The rescue’s number, deliberately</span>
               </label>
             </div>
           </fieldset>

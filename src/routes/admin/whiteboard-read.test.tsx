@@ -7,12 +7,13 @@
  * **in words** here rather than downstream, and the report names all four of
  * its sections rather than only what worked.
  */
-import { fireEvent, screen } from '@testing-library/react'
+import { fireEvent, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { PANEL_LABEL, MOST_IMAGE_BASE64_CHARS } from '../../shared/whiteboard'
 import { stubApi } from '../../test/api-stub'
-import { renderRoute } from '../../test/route-harness'
+import { chooseOption, renderRoute } from '../../test/route-harness'
 import { Route } from './whiteboard-read'
 
 afterEach(() => {
@@ -55,8 +56,13 @@ describe('the Whiteboard Read screen', () => {
     renderScreen()
 
     await photographInput()
+    // The panel picker is a shadcn Select: its options live in a portal, so
+    // the dropdown is opened the way a person opens it and read from there.
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('combobox', { name: 'Which panel is this?' }))
+    const listbox = await screen.findByRole('listbox')
     for (const label of Object.values(PANEL_LABEL)) {
-      expect(screen.getByLabelText(label)).toBeTruthy()
+      expect(within(listbox).getByRole('option', { name: label })).toBeTruthy()
     }
   })
 
@@ -96,7 +102,7 @@ describe('the Whiteboard Read screen', () => {
     renderScreen()
 
     const input = await photographInput()
-    fireEvent.click(screen.getByLabelText(PANEL_LABEL.contacts))
+    await chooseOption('Which panel is this?', PANEL_LABEL.contacts)
     chooseFile(input, photograph(16))
     // Reading the file to base64 is asynchronous; the screen says when it has.
     await screen.findByText('Ready to read: panel.png')

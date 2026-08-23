@@ -29,7 +29,17 @@ import {
   createRootRoute,
   useRouterState,
 } from '@tanstack/react-router'
-import { Monitor, Moon, Sun, SunMoon } from 'lucide-react'
+import {
+  CalendarDays,
+  House,
+  Monitor,
+  Moon,
+  Package,
+  PawPrint,
+  Phone,
+  Sun,
+  SunMoon,
+} from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 
 import { Button } from '../components/ui/button'
@@ -53,11 +63,11 @@ import appCss from '../styles/tailwind.css?url'
 
 /** Where the phone's tab bar goes, in the order a thumb meets them. */
 const tabs = [
-  { to: '/', glyph: '\u{1F3E0}', label: 'Home' },
-  { to: '/shifts', glyph: '\u{1F5D3}', label: 'Shifts' },
-  { to: '/horses', glyph: '\u{1F434}', label: 'Horses' },
-  { to: '/supplies', glyph: '\u{1F4E6}', label: 'Supplies' },
-  { to: '/contacts', glyph: '\u{260E}', label: 'Contacts' },
+  { to: '/', Icon: House, label: 'Home' },
+  { to: '/shifts', Icon: CalendarDays, label: 'Shifts' },
+  { to: '/horses', Icon: PawPrint, label: 'Horses' },
+  { to: '/supplies', Icon: Package, label: 'Supplies' },
+  { to: '/contacts', Icon: Phone, label: 'Contacts' },
 ] as const
 
 /** The same destinations plus the Board, for a screen with a top bar's room. */
@@ -177,19 +187,31 @@ function Shell() {
 
   return (
     <>
-      <header className="appbar">
+      <header className="sticky top-0 z-20 flex h-(--shell-top) items-center gap-2 border-b border-border bg-background px-4">
         {/* The way home, on every screen, from the mark itself. */}
-        <Link to="/" className="appbar-home" aria-label="Caballus home">
-          <span className="appbar-mark" aria-hidden="true">
+        <Link
+          to="/"
+          className="flex min-h-11 items-center gap-2 pr-2 text-base font-semibold tracking-[-0.2px] text-foreground hover:text-primary hover:no-underline"
+          aria-label="Caballus home"
+        >
+          <span
+            className="grid size-7 flex-none place-items-center rounded-md bg-brand-navy text-[15px] font-semibold text-on-dark"
+            aria-hidden="true"
+          >
             C
           </span>
           Caballus
         </Link>
         <ThemeMenu />
-        <span className="appbar-spacer" />
-        <nav className="appbar-links" aria-label="Sections">
+        <span className="flex-1" />
+        <nav className="hidden items-center gap-1 min-[900px]:flex" aria-label="Sections">
           {barLinks.map((link) => (
-            <Link key={link.to} to={link.to} data-current={path === link.to}>
+            <Link
+              key={link.to}
+              to={link.to}
+              className="rounded-sm px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-secondary hover:text-foreground hover:no-underline data-[current=true]:bg-secondary data-[current=true]:text-foreground"
+              data-current={path === link.to}
+            >
               {link.label}
             </Link>
           ))}
@@ -198,12 +220,18 @@ function Shell() {
 
       <Outlet />
 
-      <nav className="tabbar" aria-label="Main">
+      <nav
+        className="fixed inset-x-0 bottom-0 z-20 grid auto-cols-fr grid-flow-col border-t border-border bg-background pb-[env(safe-area-inset-bottom,0px)] min-[900px]:hidden"
+        aria-label="Main"
+      >
         {tabs.map((tab) => (
-          <Link key={tab.to} to={tab.to} data-current={path === tab.to}>
-            <span className="tabbar-glyph" aria-hidden="true">
-              {tab.glyph}
-            </span>
+          <Link
+            key={tab.to}
+            to={tab.to}
+            className="flex min-h-[60px] flex-col items-center justify-center gap-0.5 px-0.5 py-1 text-center text-[11px] font-medium leading-tight text-muted-foreground hover:no-underline data-[current=true]:text-primary"
+            data-current={path === tab.to}
+          >
+            <tab.Icon aria-hidden="true" className="size-5" />
             {tab.label}
           </Link>
         ))}

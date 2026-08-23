@@ -28,8 +28,14 @@
  * applied to navigation).
  */
 import { Link, createFileRoute } from '@tanstack/react-router'
+import { ChevronDown, Pencil } from 'lucide-react'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 
+import { Actions, Field, Fields, WideField } from '../components/forms'
+import { Alert, AlertTitle } from '../components/ui/alert'
+import { Button } from '../components/ui/button'
+import { Input } from '../components/ui/input'
+import { Textarea } from '../components/ui/textarea'
 import { signOutHere } from '../server/auth/login'
 import { ApiError, client } from '../shared/api-client'
 import { refusalText } from '../shared/refusals'
@@ -59,12 +65,14 @@ type Who =
   | { readonly state: 'signed-out' }
   | { readonly state: 'broken'; readonly because: string }
 
+type Tint = 'lavender' | 'peach' | 'sky' | 'mint' | 'yellow' | 'rose' | 'cream' | 'gray'
+
 interface Destination {
   readonly to: string
   readonly glyph: string
   readonly name: string
   readonly what: string
-  readonly tint: string
+  readonly tint: Tint
 }
 
 /** What a volunteer standing in the barn came here to open. */
@@ -208,23 +216,54 @@ const desk: readonly Destination[] = [
   },
 ]
 
+/**
+ * In Light the tint is the tile's fill; in Dark it becomes a left accent on
+ * the ordinary card surface, because the pastel family is single-valued and a
+ * pastel fill under Dark's foreground is unreadable (ADR 0025).
+ */
+const TILE_TINT: Record<Tint, string> = {
+  lavender:
+    'border-transparent bg-card-tint-lavender dark:border-l-4 dark:border-border dark:border-l-card-tint-lavender dark:bg-background',
+  peach:
+    'border-transparent bg-card-tint-peach dark:border-l-4 dark:border-border dark:border-l-card-tint-peach dark:bg-background',
+  sky: 'border-transparent bg-card-tint-sky dark:border-l-4 dark:border-border dark:border-l-card-tint-sky dark:bg-background',
+  mint: 'border-transparent bg-card-tint-mint dark:border-l-4 dark:border-border dark:border-l-card-tint-mint dark:bg-background',
+  yellow:
+    'border-transparent bg-card-tint-yellow dark:border-l-4 dark:border-border dark:border-l-card-tint-yellow dark:bg-background',
+  rose: 'border-transparent bg-card-tint-rose dark:border-l-4 dark:border-border dark:border-l-card-tint-rose dark:bg-background',
+  cream:
+    'border-transparent bg-card-tint-cream dark:border-l-4 dark:border-border dark:border-l-card-tint-cream dark:bg-background',
+  gray: 'border-transparent bg-card-tint-gray dark:border-l-4 dark:border-border dark:border-l-card-tint-gray dark:bg-background',
+}
+
 function Tiles({ destinations }: { destinations: readonly Destination[] }) {
   return (
-    <ul className="tiles">
+    <ul className="m-0 mb-4 grid list-none grid-cols-2 gap-3 p-0 min-[600px]:grid-cols-3 min-[900px]:grid-cols-4">
       {destinations.map((destination) => (
-        <li key={destination.to}>
-          <Link to={destination.to} className="tile" data-tint={destination.tint}>
-            <span className="tile-glyph" aria-hidden="true">
+        <li key={destination.to} className="m-0 p-0">
+          <Link
+            to={destination.to}
+            className={`flex h-full min-h-[104px] flex-col gap-1 rounded-lg border p-4 text-secondary-foreground transition hover:-translate-y-0.5 hover:no-underline hover:shadow-md ${TILE_TINT[destination.tint]}`}
+          >
+            <span className="text-[22px] leading-none" aria-hidden="true">
               {destination.glyph}
             </span>
-            <span className="tile-name">{destination.name}</span>
-            <span className="tile-what">{destination.what}</span>
+            <span className="text-base font-semibold text-foreground">{destination.name}</span>
+            <span className="text-[13px] leading-snug text-muted-foreground">
+              {destination.what}
+            </span>
           </Link>
         </li>
       ))}
     </ul>
   )
 }
+
+/** The quiet variant of the *now* card: grey where the real one is lavender. */
+const NOW_QUIET_CARD =
+  'mb-5 rounded-lg border-0 bg-secondary p-5 dark:border dark:border-border dark:bg-transparent'
+const NOW_QUIET_WHEN = 'm-0 mb-1 text-base font-medium text-muted-foreground'
+const NOW_ACTIONS = 'mt-4 flex flex-wrap items-center gap-3'
 
 /**
  * **The one thing to do now**, which is the question this screen did not
@@ -248,20 +287,20 @@ function Tiles({ destinations }: { destinations: readonly Destination[] }) {
 function RightNow({ schedule, me }: { schedule: Schedule | 'unreadable' | null; me: Me }) {
   if (schedule === null) {
     return (
-      <section className="now now-quiet" aria-label="Your next shift">
-        <p className="now-when">Looking up your shifts…</p>
+      <section className={NOW_QUIET_CARD} aria-label="Your next shift">
+        <p className={NOW_QUIET_WHEN}>Looking up your shifts…</p>
       </section>
     )
   }
 
   if (schedule === 'unreadable') {
     return (
-      <section className="now now-quiet" aria-label="Your next shift">
-        <p className="now-when">Your shifts could not be read just now.</p>
-        <div className="now-actions">
-          <Link to="/shifts" className="now-go">
-            Open Shifts
-          </Link>
+      <section className={NOW_QUIET_CARD} aria-label="Your next shift">
+        <p className={NOW_QUIET_WHEN}>Your shifts could not be read just now.</p>
+        <div className={NOW_ACTIONS}>
+          <Button asChild size="lg">
+            <Link to="/shifts">Open Shifts</Link>
+          </Button>
         </div>
       </section>
     )
@@ -282,16 +321,16 @@ function RightNow({ schedule, me }: { schedule: Schedule | 'unreadable' | null; 
 
   if (next === undefined) {
     return (
-      <section className="now now-quiet" aria-label="Your next shift">
-        <p className="now-when">You are not rostered on anything yet.</p>
-        <p className="now-what">
+      <section className={NOW_QUIET_CARD} aria-label="Your next shift">
+        <p className={NOW_QUIET_WHEN}>You are not rostered on anything yet.</p>
+        <p className="m-0 max-w-[58ch] text-sm text-muted-foreground">
           Anybody with an Orientation may Cover a Shift that needs people. No approval step, and no
           waiting to be asked.
         </p>
-        <div className="now-actions">
-          <Link to="/shifts" className="now-go">
-            Find a Shift to cover
-          </Link>
+        <div className={NOW_ACTIONS}>
+          <Button asChild size="lg">
+            <Link to="/shifts">Find a Shift to cover</Link>
+          </Button>
         </div>
       </section>
     )
@@ -302,21 +341,32 @@ function RightNow({ schedule, me }: { schedule: Schedule | 'unreadable' | null; 
   const started = away === 0 && next.state === 'in_progress'
 
   return (
-    <section className="now" aria-label="Your next shift">
-      <p className="now-when">
+    <section
+      className="mb-5 rounded-lg border-0 bg-card-tint-lavender p-5 dark:border dark:border-card-tint-lavender/40 dark:bg-transparent"
+      aria-label="Your next shift"
+    >
+      <p className="m-0 mb-1 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-widest text-brand-purple-800 dark:text-card-tint-lavender">
         {when}
-        {started && <span className="now-live">Underway</span>}
+        {started && (
+          <span className="rounded-full bg-success px-2 py-0.5 text-[11px] tracking-widest text-primary-foreground">
+            Underway
+          </span>
+        )}
       </p>
-      <h2 className="now-what">
+      <h2 className="m-0 text-[26px] leading-tight tracking-tight text-foreground">
         {SHIFT_TYPE_LABEL[next.shiftType]} at {next.startTime}
       </h2>
-      {next.purpose !== null && <p className="now-why">{next.purpose}</p>}
-      <div className="now-actions">
-        <Link to="/shifts/$shiftId" params={{ shiftId: next.id }} className="now-go">
-          {started ? 'Open the checklist' : 'Open the Shift'}
-        </Link>
+      {next.purpose !== null && (
+        <p className="m-0 mt-1 text-sm text-muted-foreground">{next.purpose}</p>
+      )}
+      <div className={NOW_ACTIONS}>
+        <Button asChild size="lg">
+          <Link to="/shifts/$shiftId" params={{ shiftId: next.id }}>
+            {started ? 'Open the checklist' : 'Open the Shift'}
+          </Link>
+        </Button>
         {mine.length > 1 && (
-          <Link to="/shifts" className="now-more">
+          <Link to="/shifts" className="text-sm text-muted-foreground">
             {mine.length - 1} more after this
           </Link>
         )}
@@ -324,6 +374,8 @@ function RightNow({ schedule, me }: { schedule: Schedule | 'unreadable' | null; 
     </section>
   )
 }
+
+const HERO_LINE = 'm-0 max-w-[46ch] text-base text-on-dark-muted'
 
 function Home() {
   const [who, setWho] = useState<Who>({ state: 'asking' })
@@ -408,24 +460,34 @@ function Home() {
     <main>
       {/* The hero band: navy, one line of who you are, and nothing to press
           that is not the one thing this state is for (DESIGN.md). */}
-      <div className="hero">
-        <h1>Caballus</h1>
-        {who.state === 'asking' && <p>One moment…</p>}
+      <div className="mb-5 rounded-lg bg-brand-navy px-5 py-8 min-[600px]:px-8 min-[600px]:py-12">
+        <h1 className="mb-2 text-4xl text-on-dark min-[600px]:text-5xl">Caballus</h1>
+        {who.state === 'asking' && <p className={HERO_LINE}>One moment…</p>}
         {who.state === 'signed-out' && (
-          <p>
-            <Link to="/login">Sign in</Link> to get started.
+          <p className={HERO_LINE}>
+            <Link to="/login" className="text-on-dark underline">
+              Sign in
+            </Link>{' '}
+            to get started.
           </p>
         )}
-        {who.state === 'broken' && <p role="alert">Something is wrong: {who.because}</p>}
+        {who.state === 'broken' && (
+          <p role="alert" className="m-0 max-w-[46ch] text-base text-on-dark">
+            Something is wrong: {who.because}
+          </p>
+        )}
         {who.state === 'signed-in' && (
           <>
-            <p>Signed in as {who.me.name}.</p>
+            <p className={HERO_LINE}>Signed in as {who.me.name}.</p>
             {who.me.domainScopes.length === 0 ? (
-              <p>You hold no domain scopes.</p>
+              <p className={HERO_LINE}>You hold no domain scopes.</p>
             ) : (
-              <p className="hero-scopes">
+              <p className="m-0 mt-4 flex flex-wrap gap-2">
                 {who.me.domainScopes.map((scope) => (
-                  <span key={scope} className="hero-scope">
+                  <span
+                    key={scope}
+                    className="rounded-full bg-brand-navy-mid px-2.5 py-1 text-[13px] font-semibold text-on-dark"
+                  >
                     {scope}
                   </span>
                 ))}
@@ -437,7 +499,11 @@ function Home() {
 
       {who.state === 'signed-in' && (
         <>
-          {problem !== null && <p role="alert">{problem}</p>}
+          {problem !== null && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertTitle>{problem}</AlertTitle>
+            </Alert>
+          )}
 
           {/* First on the screen, because it is the answer to *what do I do
               now* and everything below it is the answer to *what else is
@@ -448,46 +514,62 @@ function Home() {
               usually blank teaches people not to look under it (ADR 0011). */}
           {announcements !== null && announcements.announcements.length > 0 && (
             <section>
-              <h2>Announcements</h2>
-              <ul>
-                {announcements.announcements.map((announcement) =>
-                  editing === announcement.id ? (
-                    <li key={announcement.id}>
-                      <EditAnnouncement
-                        announcement={announcement}
-                        onCancel={() => {
-                          setEditing(null)
-                        }}
-                        act={async (work) => {
-                          await act(work)
-                          setEditing(null)
-                        }}
-                      />
-                    </li>
-                  ) : (
-                    <li key={announcement.id}>
-                      {announcement.text} — expires {announcement.expiresOn}, posted by{' '}
-                      {announcement.authoredByName}
-                      {announcement.lastEditedByName !== null &&
-                        ` (last edited by ${announcement.lastEditedByName})`}
-                      {who.me.domainScopes.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditing(announcement.id)
+              <h2 className="mb-3 mt-6 text-foreground">Announcements</h2>
+              <div className="mb-4 rounded-lg border border-border bg-background p-4 sm:p-6">
+                <ul className="m-0 list-none p-0">
+                  {announcements.announcements.map((announcement) =>
+                    editing === announcement.id ? (
+                      <li
+                        key={announcement.id}
+                        className="border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0"
+                      >
+                        <EditAnnouncement
+                          announcement={announcement}
+                          onCancel={() => {
+                            setEditing(null)
                           }}
-                        >
-                          Edit
-                        </button>
-                      )}
-                    </li>
-                  ),
-                )}
-              </ul>
+                          act={async (work) => {
+                            await act(work)
+                            setEditing(null)
+                          }}
+                        />
+                      </li>
+                    ) : (
+                      <li
+                        key={announcement.id}
+                        className="flex items-center justify-between gap-4 border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0"
+                      >
+                        <span>
+                          {announcement.text} — expires {announcement.expiresOn}, posted by{' '}
+                          {announcement.authoredByName}
+                          {announcement.lastEditedByName !== null &&
+                            ` (last edited by ${announcement.lastEditedByName})`}
+                        </span>
+                        {who.me.domainScopes.length > 0 && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="flex-none"
+                            onClick={() => {
+                              setEditing(announcement.id)
+                            }}
+                          >
+                            <Pencil aria-hidden="true" />
+                            Edit
+                          </Button>
+                        )}
+                      </li>
+                    ),
+                  )}
+                </ul>
+              </div>
             </section>
           )}
 
-          <p className="section-label">The barn</p>
+          <p className="mb-3 mt-6 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+            The barn
+          </p>
           <Tiles destinations={barn} />
 
           {/* The desk is folded away rather than removed. Eleven admin screens
@@ -496,18 +578,26 @@ function Home() {
               volunteer on a phone never opens them at all. Every one of them
               stays present and one tap away, because a link that is not there
               is indistinguishable from a broken app (ADR 0011). */}
-          <details className="desk">
-            <summary>
-              <span className="desk-name">The desk</span>
-              <span className="desk-what">Setup, records and reports. {desk.length} screens.</span>
+          <details className="group relative mb-4 mt-5 rounded-lg border border-border bg-background">
+            <summary className="flex min-h-14 cursor-pointer list-none flex-col justify-center gap-0.5 rounded-lg px-4 py-3 hover:bg-card [&::-webkit-details-marker]:hidden">
+              <span className="text-base font-semibold text-foreground">The desk</span>
+              <span className="text-[13px] text-muted-foreground">
+                Setup, records and reports. {desk.length} screens.
+              </span>
+              <ChevronDown
+                aria-hidden="true"
+                className="absolute right-5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground transition-transform group-open:rotate-180"
+              />
             </summary>
-            <Tiles destinations={desk} />
+            <div className="px-4 pb-4">
+              <Tiles destinations={desk} />
+            </div>
           </details>
 
           {/* Posting takes any single Domain Scope, not the enumerated pair
               other forms in this application check (ADR 0018). */}
           {who.me.domainScopes.length > 0 && (
-            <section>
+            <section className="mb-4 mt-6 rounded-lg border border-border bg-background p-4 sm:p-6">
               <form
                 onSubmit={(event: FormEvent<HTMLFormElement>) => {
                   event.preventDefault()
@@ -523,12 +613,18 @@ function Home() {
                   })
                 }}
               >
-                <h3>Post an announcement</h3>
-                <label htmlFor="new-announcement-text">Text</label>
-                <textarea id="new-announcement-text" name="text" required maxLength={2000} />
-                <label htmlFor="new-announcement-expires">Expires on</label>
-                <input id="new-announcement-expires" name="expiresOn" type="date" required />
-                <button type="submit">Post</button>
+                <h3 className="m-0">Post an announcement</h3>
+                <Fields>
+                  <WideField label="Text" htmlFor="new-announcement-text">
+                    <Textarea id="new-announcement-text" name="text" required maxLength={2000} />
+                  </WideField>
+                  <Field label="Expires on" htmlFor="new-announcement-expires">
+                    <Input id="new-announcement-expires" name="expiresOn" type="date" required />
+                  </Field>
+                </Fields>
+                <Actions>
+                  <Button type="submit">Post</Button>
+                </Actions>
               </form>
             </section>
           )}
@@ -536,9 +632,10 @@ function Home() {
           {/* Reachable, because a session lasts until somebody ends it and the
               barn has a shared tablet on it. This ends *this* session only —
               revoking every session an Account holds is an officer's act. */}
-          <div className="quiet-actions">
-            <button
+          <div className="mt-6 border-t border-border pt-4">
+            <Button
               type="button"
+              variant="outline"
               onClick={() => {
                 void signOutHere().then(() => {
                   window.location.assign('/login')
@@ -546,7 +643,7 @@ function Home() {
               }}
             >
               Sign out
-            </button>
+            </Button>
           </div>
         </>
       )}
@@ -583,26 +680,32 @@ function EditAnnouncement({
         )
       }}
     >
-      <label htmlFor={`edit-announcement-text-${announcement.id}`}>Text</label>
-      <textarea
-        id={`edit-announcement-text-${announcement.id}`}
-        name="text"
-        required
-        maxLength={2000}
-        defaultValue={announcement.text}
-      />
-      <label htmlFor={`edit-announcement-expires-${announcement.id}`}>Expires on</label>
-      <input
-        id={`edit-announcement-expires-${announcement.id}`}
-        name="expiresOn"
-        type="date"
-        required
-        defaultValue={announcement.expiresOn}
-      />
-      <button type="submit">Save</button>
-      <button type="button" onClick={onCancel}>
-        Cancel
-      </button>
+      <Fields>
+        <WideField label="Text" htmlFor={`edit-announcement-text-${announcement.id}`}>
+          <Textarea
+            id={`edit-announcement-text-${announcement.id}`}
+            name="text"
+            required
+            maxLength={2000}
+            defaultValue={announcement.text}
+          />
+        </WideField>
+        <Field label="Expires on" htmlFor={`edit-announcement-expires-${announcement.id}`}>
+          <Input
+            id={`edit-announcement-expires-${announcement.id}`}
+            name="expiresOn"
+            type="date"
+            required
+            defaultValue={announcement.expiresOn}
+          />
+        </Field>
+      </Fields>
+      <Actions>
+        <Button type="submit">Save</Button>
+        <Button type="button" variant="outline" onClick={onCancel}>
+          Cancel
+        </Button>
+      </Actions>
     </form>
   )
 }

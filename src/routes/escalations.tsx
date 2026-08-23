@@ -16,7 +16,11 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 
 import type { DomainScope } from '../shared/domain-scopes'
-import { Empty, Loading } from '../components/forms'
+import { Empty, Field, Loading } from '../components/forms'
+import { Alert, AlertTitle } from '../components/ui/alert'
+import { Badge } from '../components/ui/badge'
+import { Button } from '../components/ui/button'
+import { Input } from '../components/ui/input'
 import { client } from '../shared/api-client'
 import { refusalText } from '../shared/refusals'
 import type { Answers, contract } from '../shared/api-contract'
@@ -92,49 +96,66 @@ function EscalationCard({
   )
 
   return (
-    <li>
-      <p>
+    <li className="mb-4 rounded-lg border border-border bg-background p-4 sm:p-6">
+      <div className="mb-1 flex flex-wrap items-center gap-2">
         <strong>{SCOPE_LABEL[escalation.scope]}</strong>
-        {escalation.observationSubjectLabel !== null && ` — ${escalation.observationSubjectLabel}`}
-        {escalation.closedAt === null ? ' — Open' : ' — Closed'}
-      </p>
-      <p>
+        {escalation.observationSubjectLabel !== null && (
+          <span className="text-sm text-muted-foreground">
+            {escalation.observationSubjectLabel}
+          </span>
+        )}
+        {escalation.closedAt === null ? <Badge variant="green">Open</Badge> : <Badge>Closed</Badge>}
+      </div>
+      <p className="m-0 mb-1">
         <em>{escalation.framing}</em>
       </p>
-      <p>The Observation: {escalation.observationText}</p>
-      <p>
+      <p className="m-0 mb-1 text-sm">The Observation: {escalation.observationText}</p>
+      <p className="m-0 mb-3 text-sm text-muted-foreground">
         Escalated by {escalation.escalatedByName}
         {escalation.closedAt !== null &&
           `. Closed by ${escalation.closedByName ?? 'somebody'}: ${escalation.closingNote ?? ''}`}
       </p>
 
       {escalation.comments.length > 0 && (
-        <ul>
-          {escalation.comments.map((comment) => (
-            <li key={comment.id}>
-              {comment.authoredByName}: {comment.text}
+        <ul className="m-0 mb-3 list-none overflow-hidden rounded-md border border-border p-0">
+          {escalation.comments.map((entry) => (
+            <li
+              key={entry.id}
+              className="m-0 border-b border-border px-3 py-2 text-sm last:border-b-0"
+            >
+              {entry.authoredByName}: {entry.text}
             </li>
           ))}
         </ul>
       )}
 
-      {problem !== null && <p role="alert">{problem}</p>}
+      {problem !== null && (
+        <Alert variant="destructive" className="mb-3">
+          <AlertTitle>{problem}</AlertTitle>
+        </Alert>
+      )}
 
-      <form onSubmit={(event) => void comment(event)}>
-        <label htmlFor={`comment-${escalation.id}`}>Add to the thread</label>
-        <input id={`comment-${escalation.id}`} name="text" required maxLength={2000} />
-        <button type="submit" disabled={busy}>
-          Comment
-        </button>
+      <form onSubmit={(event) => void comment(event)} className="mt-3">
+        <Field label="Add to the thread" htmlFor={`comment-${escalation.id}`}>
+          <Input id={`comment-${escalation.id}`} name="text" required maxLength={2000} />
+        </Field>
+        <div className="mt-2">
+          <Button type="submit" variant="outline" disabled={busy}>
+            Comment
+          </Button>
+        </div>
       </form>
 
       {canClose && escalation.closedAt === null && (
-        <form onSubmit={(event) => void close(event)}>
-          <label htmlFor={`close-${escalation.id}`}>Close with a note</label>
-          <input id={`close-${escalation.id}`} name="note" required maxLength={2000} />
-          <button type="submit" disabled={busy}>
-            Close
-          </button>
+        <form onSubmit={(event) => void close(event)} className="mt-4">
+          <Field label="Close with a note" htmlFor={`close-${escalation.id}`}>
+            <Input id={`close-${escalation.id}`} name="note" required maxLength={2000} />
+          </Field>
+          <div className="mt-2">
+            <Button type="submit" disabled={busy}>
+              Close
+            </Button>
+          </div>
         </form>
       )}
     </li>
@@ -170,7 +191,9 @@ export function Escalations() {
     return (
       <main>
         <h1>Escalations</h1>
-        <p role="alert">{problem}</p>
+        <Alert variant="destructive" className="mb-4">
+          <AlertTitle>{problem}</AlertTitle>
+        </Alert>
       </main>
     )
   }
@@ -192,12 +215,16 @@ export function Escalations() {
   return (
     <main>
       <h1>Escalations</h1>
-      {problem !== null && <p role="alert">{problem}</p>}
+      {problem !== null && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertTitle>{problem}</AlertTitle>
+        </Alert>
+      )}
 
       {myOpen.length > 0 && (
         <section>
-          <h2>Open, addressed to a Scope you hold</h2>
-          <ul>
+          <h2 className="mb-3 mt-6">Open, addressed to a Scope you hold</h2>
+          <ul className="m-0 list-none p-0">
             {myOpen.map((escalation) => (
               <EscalationCard
                 key={escalation.id}
@@ -211,11 +238,11 @@ export function Escalations() {
       )}
 
       <section>
-        <h2>Every Escalation</h2>
+        <h2 className="mb-3 mt-6">Every Escalation</h2>
         {list.escalations.length === 0 ? (
           <Empty>Nothing has been escalated yet.</Empty>
         ) : (
-          <ul>
+          <ul className="m-0 list-none p-0">
             {list.escalations.map((escalation) => (
               <EscalationCard
                 key={escalation.id}

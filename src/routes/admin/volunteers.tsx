@@ -32,9 +32,30 @@ import {
   SaveButton,
   Saved,
   Sheet,
+  WideField,
   matches,
   useSaving,
 } from '../../components/forms'
+import { Alert, AlertTitle } from '../../components/ui/alert'
+import { Badge } from '../../components/ui/badge'
+import { Button } from '../../components/ui/button'
+import { Checkbox } from '../../components/ui/checkbox'
+import { Input } from '../../components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../components/ui/select'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../../components/ui/table'
 import { client } from '../../shared/api-client'
 import { refusalText } from '../../shared/refusals'
 import type { Answers, contract } from '../../shared/api-contract'
@@ -62,6 +83,12 @@ const GAP_TEXT: Record<RosterGap, string> = {
   no_current_release: 'No current release on file',
   no_consent: 'No parental consent, and under 18',
 }
+
+/**
+ * A sub-form inside the record panel, separated from what is above it — the
+ * hairline `.record form` used to draw.
+ */
+const RECORD_FORM = 'mt-6 border-t border-border pt-4'
 
 function Volunteers() {
   const [people, setPeople] = useState<People | null>(null)
@@ -119,8 +146,14 @@ function Volunteers() {
   if (people === null) {
     return (
       <main>
-        <h1>Volunteers</h1>
-        {problem === null ? <Loading what="people" /> : <p role="alert">{problem}</p>}
+        <h1 className="text-foreground">Volunteers</h1>
+        {problem === null ? (
+          <Loading what="people" />
+        ) : (
+          <Alert variant="destructive">
+            <AlertTitle>{problem}</AlertTitle>
+          </Alert>
+        )}
       </main>
     )
   }
@@ -132,37 +165,47 @@ function Volunteers() {
 
   return (
     <main>
-      <h1>Volunteers</h1>
+      <h1 className="text-foreground">Volunteers</h1>
 
-      {problem !== null && <p role="alert">{problem}</p>}
+      {problem !== null && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertTitle>{problem}</AlertTitle>
+        </Alert>
+      )}
 
       {/* The two things the Coordinator opened this screen for, said before the
           list rather than found in it, and as figures rather than as a
           sentence to read past. */}
-      <div className="stats">
-        <div className="stat">
-          <span className="stat-figure">{candidates.length}</span>
-          <span className="stat-what">awaiting orientation</span>
+      <div className="mb-5 grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-3">
+        <div className="rounded-lg bg-secondary p-4">
+          <span className="block text-[28px] font-semibold leading-tight tracking-tight text-foreground">
+            {candidates.length}
+          </span>
+          <span className="block text-[13px] text-muted-foreground">awaiting orientation</span>
         </div>
-        <div className="stat">
-          <span className="stat-figure">{flagged.length}</span>
-          <span className="stat-what">rostered with a gap</span>
+        <div className="rounded-lg bg-secondary p-4">
+          <span className="block text-[28px] font-semibold leading-tight tracking-tight text-foreground">
+            {flagged.length}
+          </span>
+          <span className="block text-[13px] text-muted-foreground">rostered with a gap</span>
         </div>
-        <div className="stat">
-          <span className="stat-figure">{people.people.length}</span>
-          <span className="stat-what">people in total</span>
+        <div className="rounded-lg bg-secondary p-4">
+          <span className="block text-[28px] font-semibold leading-tight tracking-tight text-foreground">
+            {people.people.length}
+          </span>
+          <span className="block text-[13px] text-muted-foreground">people in total</span>
         </div>
       </div>
 
       {people.unstaffedScopes.length > 0 && (
-        <p className="lede">
+        <p className="mb-5 max-w-[68ch] text-base leading-relaxed text-muted-foreground">
           Nobody but an officer holds: {people.unstaffedScopes.join(', ')}. That is a staffing
           question rather than a fault.
         </p>
       )}
 
-      <div className="list-head">
-        <h2>Everyone at the rescue</h2>
+      <div className="mb-3 mt-6 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="m-0 text-foreground">Everyone at the rescue</h2>
         <AddButton
           onClick={() => {
             setAdding(true)
@@ -188,54 +231,60 @@ function Volunteers() {
           {people.people.length === 0 ? 'Nobody at the rescue yet.' : `Nobody matches “${filter}”.`}
         </Empty>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th scope="col">Name</th>
-              <th scope="col">State</th>
-              <th scope="col">Rosterable</th>
-              <th scope="col">Roles</th>
-              <th scope="col">Medication</th>
-              <th scope="col" />
-            </tr>
-          </thead>
-          <tbody>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead scope="col">Name</TableHead>
+              <TableHead scope="col">State</TableHead>
+              <TableHead scope="col">Rosterable</TableHead>
+              <TableHead scope="col">Roles</TableHead>
+              <TableHead scope="col">Medication</TableHead>
+              <TableHead scope="col" />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {shown.map((person) => (
-              <tr key={person.id} data-open={openFor === person.id}>
-                <td>
+              <TableRow key={person.id} data-state={openFor === person.id ? 'selected' : undefined}>
+                <TableCell>
                   {person.name}
-                  {person.isMinor && <span className="badge">Under 18</span>}
-                </td>
-                <td>{person.state === 'candidate' ? 'Candidate' : 'Volunteer'}</td>
-                <td>
+                  {person.isMinor && <Badge className="ml-2">Under 18</Badge>}
+                </TableCell>
+                <TableCell>{person.state === 'candidate' ? 'Candidate' : 'Volunteer'}</TableCell>
+                <TableCell>
                   {person.rosterable ? (
-                    <span className="badge badge-green">Yes</span>
+                    <Badge variant="green">Yes</Badge>
                   ) : (
                     // Every open gate, each as its own tag: three of them run
                     // together in one sentence is what made this column unread.
-                    person.gaps.map((gap) => (
-                      <span key={gap} className="badge badge-orange">
-                        {GAP_TEXT[gap]}
-                      </span>
-                    ))
+                    <span className="inline-flex flex-wrap gap-1">
+                      {person.gaps.map((gap) => (
+                        <Badge key={gap} variant="orange">
+                          {GAP_TEXT[gap]}
+                        </Badge>
+                      ))}
+                    </span>
                   )}
-                </td>
-                <td>{person.roles.map((role) => ROLE_NAMES[role]).join(', ') || 'None'}</td>
-                <td>{person.medicationAuthority ? 'Yes' : 'No'}</td>
-                <td>
-                  <button
+                </TableCell>
+                <TableCell>
+                  {person.roles.map((role) => ROLE_NAMES[role]).join(', ') || 'None'}
+                </TableCell>
+                <TableCell>{person.medicationAuthority ? 'Yes' : 'No'}</TableCell>
+                <TableCell>
+                  <Button
                     type="button"
+                    variant="outline"
+                    size="sm"
                     onClick={() => {
                       setOpenFor(openFor === person.id ? null : person.id)
                     }}
                   >
                     {openFor === person.id ? 'Close' : 'Open'}
-                  </button>
-                </td>
-              </tr>
+                  </Button>
+                </TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       )}
 
       {openFor !== null && (
@@ -303,14 +352,14 @@ function NewVolunteer({
           and a Candidate until then. */}
       <Fields>
         <Field label="Name" htmlFor="new-name">
-          <input id="new-name" name="name" required maxLength={200} autoFocus />
+          <Input id="new-name" name="name" required maxLength={200} autoFocus />
         </Field>
         <Field
           label="Email address"
           htmlFor="new-email"
           hint="Where the six-digit sign-in code will go."
         >
-          <input
+          <Input
             id="new-email"
             name="email"
             type="email"
@@ -322,7 +371,7 @@ function NewVolunteer({
           />
         </Field>
         <Field label="Mobile" htmlFor="new-mobile" optional>
-          <input id="new-mobile" name="mobile" type="tel" inputMode="tel" maxLength={50} />
+          <Input id="new-mobile" name="mobile" type="tel" inputMode="tel" maxLength={50} />
         </Field>
       </Fields>
       <Actions>
@@ -353,19 +402,25 @@ function PersonRecord({
   const behind = person.behindRoster
 
   return (
-    <section className="record">
-      <header className="record-head">
-        <h2>{person.name}</h2>
-        <button type="button" onClick={onClose}>
+    // The accent along the edge marks it as *this row, expanded* rather than
+    // as a second page that arrived from nowhere.
+    <section className="mb-4 rounded-lg border border-border border-l-3 border-l-primary bg-background p-4 sm:p-6">
+      <header className="mb-4 flex items-center gap-4 border-b border-border pb-4">
+        <h2 className="m-0 flex-1">{person.name}</h2>
+        <Button type="button" variant="outline" size="sm" onClick={onClose}>
           Close
-        </button>
+        </Button>
       </header>
 
       {/* The same message as the one at the top of the page, repeated here
           because this is where the Coordinator is looking when an act on this
           person's row fails — a banner above a table scrolled out of view
           reads as nothing having happened. */}
-      {problem !== null && <p role="alert">{problem}</p>}
+      {problem !== null && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertTitle>{problem}</AlertTitle>
+        </Alert>
+      )}
 
       {behind === null ? (
         // Absent rather than empty: the reader does not hold `roster`, and
@@ -374,10 +429,14 @@ function PersonRecord({
       ) : (
         <>
           <h3>Record</h3>
-          <ul>
-            <li>Email: {behind.email}</li>
-            <li>Mobile: {behind.mobile ?? '—'}</li>
-            <li>
+          <ul className="m-0 mb-4 list-none p-0">
+            <li className="border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0">
+              Email: {behind.email}
+            </li>
+            <li className="border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0">
+              Mobile: {behind.mobile ?? '—'}
+            </li>
+            <li className="border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0">
               Date of birth: {behind.dateOfBirth ?? 'not established'}
               {behind.dateOfBirthProvenance !== null &&
                 ` (${behind.dateOfBirthProvenance === 'photo_id' ? 'photo ID sighted' : 'provided by a parent'})`}
@@ -387,17 +446,21 @@ function PersonRecord({
               // The one gate failure that arrives on schedule. It obsoletes a
               // parent's signature and retires the Consent, derived on the day
               // and never by a job (ADR 0017).
-              <li>
+              <li className="border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0">
                 Turns 18 on {behind.turnsEighteenOn}, which obsoletes a parent&rsquo;s signature
               </li>
             )}
-            <li>Orientation: {behind.orientedOn ?? 'not recorded'}</li>
-            <li>
+            <li className="border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0">
+              Orientation: {behind.orientedOn ?? 'not recorded'}
+            </li>
+            <li className="border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0">
               Consent: {behind.consentedOn ?? 'none'}
               {behind.parentName !== null && ` (${behind.parentName})`}
               {person.consentIsHistorical && ' — historical, and no longer gating'}
             </li>
-            <li>Account: {person.hasAccount ? 'claimed' : 'never signed in'}</li>
+            <li className="border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0">
+              Account: {person.hasAccount ? 'claimed' : 'never signed in'}
+            </li>
           </ul>
 
           <RecordDateOfBirth person={person} today={today} act={act} />
@@ -430,6 +493,7 @@ function RecordDateOfBirth({
 
   return (
     <form
+      className={RECORD_FORM}
       onSubmit={(event: FormEvent<HTMLFormElement>) => {
         event.preventDefault()
         const data = new FormData(event.currentTarget)
@@ -448,14 +512,14 @@ function RecordDateOfBirth({
         })
       }}
     >
-      <h3>Date of birth</h3>
+      <h3 className="mt-0">Date of birth</h3>
       {/* The app never holds the identity document — only how the date was
           established (ADR 0017). */}
       <Fields>
         <Field label="Date" htmlFor="dob">
-          <input id="dob" name="dateOfBirth" type="date" max={today} required />
+          <Input id="dob" name="dateOfBirth" type="date" max={today} required />
         </Field>
-        <div className="field">
+        <div className="min-w-0">
           <Choice
             legend="How it was established"
             name="provenance"
@@ -466,16 +530,14 @@ function RecordDateOfBirth({
             ]}
           />
         </div>
-        <div className="field-wide">
-          <Field label="Reason" htmlFor="dob-reason" optional hint="Only needed for a correction.">
-            <input
-              id="dob-reason"
-              name="reason"
-              maxLength={500}
-              aria-describedby="dob-reason-hint"
-            />
-          </Field>
-        </div>
+        <WideField
+          label="Reason"
+          htmlFor="dob-reason"
+          optional
+          hint="Only needed for a correction."
+        >
+          <Input id="dob-reason" name="reason" maxLength={500} aria-describedby="dob-reason-hint" />
+        </WideField>
       </Fields>
       <Actions>
         <SaveButton pending={pending}>Record</SaveButton>
@@ -498,6 +560,7 @@ function RecordOrientation({
 
   return (
     <form
+      className={RECORD_FORM}
       onSubmit={(event: FormEvent<HTMLFormElement>) => {
         event.preventDefault()
         const data = new FormData(event.currentTarget)
@@ -513,7 +576,7 @@ function RecordOrientation({
         })
       }}
     >
-      <h3>Orientation</h3>
+      <h3 className="mt-0">Orientation</h3>
       {/* It never lapses and is never revoked, so this appears once. */}
       <Fields>
         <Field
@@ -521,7 +584,7 @@ function RecordOrientation({
           htmlFor="oriented-on"
           hint="It never lapses, so this is recorded once."
         >
-          <input
+          <Input
             id="oriented-on"
             name="orientedOn"
             type="date"
@@ -553,6 +616,7 @@ function RecordConsent({
 
   return (
     <form
+      className={RECORD_FORM}
       onSubmit={(event: FormEvent<HTMLFormElement>) => {
         event.preventDefault()
         const data = new FormData(event.currentTarget)
@@ -569,12 +633,12 @@ function RecordConsent({
         })
       }}
     >
-      <h3>Consent</h3>
+      <h3 className="mt-0">Consent</h3>
       {/* A parent's permission, and a different record from the Release: one
           row cannot expire on two clocks (ADR 0017). */}
       <Fields>
         <Field label="Date given" htmlFor="consented-on">
-          <input
+          <Input
             id="consented-on"
             name="consentedOn"
             type="date"
@@ -584,7 +648,7 @@ function RecordConsent({
           />
         </Field>
         <Field label="Parent or guardian" htmlFor="parent-name">
-          <input id="parent-name" name="parentName" required maxLength={200} />
+          <Input id="parent-name" name="parentName" required maxLength={200} />
         </Field>
       </Fields>
       <Actions>
@@ -608,18 +672,25 @@ function RecordRelease({
 }) {
   const current = versions[0]
   const { pending, saved, save } = useSaving()
+  // The panel can mount before `/release-versions` answers, so the current
+  // version is the fallback rather than the initial state — the same default
+  // the native select carried.
+  const [versionId, setVersionId] = useState('')
+  const [byParent, setByParent] = useState(person.isMinor)
+  const chosenVersionId = versionId === '' ? (current?.id ?? '') : versionId
 
   if (current === undefined) {
     return (
-      <>
-        <h3>Release</h3>
+      <div className={RECORD_FORM}>
+        <h3 className="mt-0">Release</h3>
         <p>No release version has been published yet, so nothing can be signed against one.</p>
-      </>
+      </div>
     )
   }
 
   return (
     <form
+      className={RECORD_FORM}
       onSubmit={(event: FormEvent<HTMLFormElement>) => {
         event.preventDefault()
         const data = new FormData(event.currentTarget)
@@ -627,9 +698,9 @@ function RecordRelease({
           act(() =>
             client.post('/volunteers/release', {
               volunteerId: person.id,
-              releaseVersionId: String(data.get('releaseVersionId') ?? ''),
+              releaseVersionId: chosenVersionId,
               signedOn: dayString(String(data.get('signedOn') ?? '')),
-              byParent: data.get('byParent') === 'on',
+              byParent,
             }),
           ),
         ).catch(() => {
@@ -637,21 +708,26 @@ function RecordRelease({
         })
       }}
     >
-      <h3>Release</h3>
+      <h3 className="mt-0">Release</h3>
       {/* The record that a piece of paper exists — who signed, when, which
           version. The paper itself stays in the cabinet (ADR 0017). */}
       <Fields>
         <Field label="Version signed" htmlFor="release-version">
-          <select id="release-version" name="releaseVersionId" defaultValue={current.id}>
-            {versions.map((version) => (
-              <option key={version.id} value={version.id}>
-                {version.label} (from {version.validFrom})
-              </option>
-            ))}
-          </select>
+          <Select value={chosenVersionId} onValueChange={setVersionId}>
+            <SelectTrigger id="release-version" aria-label="Version signed">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {versions.map((version) => (
+                <SelectItem key={version.id} value={version.id}>
+                  {version.label} (from {version.validFrom})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </Field>
         <Field label="Date on the paper" htmlFor="signed-on">
-          <input
+          <Input
             id="signed-on"
             name="signedOn"
             type="date"
@@ -660,9 +736,18 @@ function RecordRelease({
             required
           />
         </Field>
-        <div className="field-wide">
-          <label htmlFor="by-parent">
-            <input id="by-parent" name="byParent" type="checkbox" defaultChecked={person.isMinor} />
+        <div className="sm:col-span-2">
+          <label
+            htmlFor="by-parent"
+            className="m-0 flex min-h-11 items-center gap-2 text-sm font-medium text-foreground"
+          >
+            <Checkbox
+              id="by-parent"
+              checked={byParent}
+              onCheckedChange={(checked) => {
+                setByParent(checked === true)
+              }}
+            />
             Signed by a parent or guardian
           </label>
         </div>
@@ -688,18 +773,24 @@ function Signatures({
   return (
     <>
       <h3>Signatures on file</h3>
-      <ul>
+      <ul className="m-0 mb-4 list-none p-0">
         {signatures.map((signature) => (
-          <li key={signature.id} className="row">
+          <li
+            key={signature.id}
+            className="flex items-center justify-between gap-4 border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0"
+          >
             <span>
               {signature.versionLabel}, signed {signature.signedOn}
               {signature.byParent && ' by a parent or guardian'}
             </span>
             {signature.revoked ? (
-              <span className="badge">Revoked</span>
+              <Badge>Revoked</Badge>
             ) : (
-              <button
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
+                className="flex-none"
                 onClick={() => {
                   void act(() =>
                     client.post('/volunteers/release-revocation', {
@@ -710,7 +801,7 @@ function Signatures({
                 }}
               >
                 Revoke
-              </button>
+              </Button>
             )}
           </li>
         ))}
@@ -742,15 +833,26 @@ function Grants({
       {/* One row per Role, held or not, with the act on it. A bulleted list of
           fourteen names each trailing a button was a column of identical text
           the Coordinator had to read to find the one they came for. */}
-      <ul className="grants">
+      <ul className="m-0 mb-4 list-none overflow-hidden rounded-md border border-border p-0">
         {ROLES.map((role) => (
-          <li key={role} className="row" data-held={held.has(role)}>
+          <li
+            key={role}
+            className="m-0 flex items-center justify-between gap-4 border-b border-border bg-background px-4 py-2 last:border-b-0 data-[held=true]:bg-card"
+            data-held={held.has(role)}
+          >
             <span>
               {ROLE_NAMES[role]}
-              {held.has(role) && <span className="badge badge-green">Held</span>}
+              {held.has(role) && (
+                <Badge variant="green" className="ml-2">
+                  Held
+                </Badge>
+              )}
             </span>
-            <button
+            <Button
               type="button"
+              variant="outline"
+              size="sm"
+              className="flex-none"
               onClick={() => {
                 void act(() =>
                   held.has(role)
@@ -770,7 +872,7 @@ function Grants({
               }}
             >
               {held.has(role) ? 'Revoke' : 'Grant'}
-            </button>
+            </Button>
           </li>
         ))}
       </ul>
@@ -778,11 +880,12 @@ function Grants({
       <h3>Medication Authority</h3>
       {/* A qualification on the person, granted under `horse_care` and not a
           Domain Scope (ADR 0010). */}
-      <p className="field-hint">
+      <p className="mb-2 text-[13px] leading-snug text-muted-foreground">
         Not a Role and not a Domain Scope. It is what lets somebody give medication on a Shift.
       </p>
-      <button
+      <Button
         type="button"
+        variant="outline"
         onClick={() => {
           void act(() =>
             client.post('/volunteers/medication-authority', {
@@ -796,7 +899,7 @@ function Grants({
         }}
       >
         {person.medicationAuthority ? 'Revoke medication authority' : 'Grant medication authority'}
-      </button>
+      </Button>
     </>
   )
 }
@@ -817,7 +920,7 @@ function Removal({
 
   return (
     <form
-      className="danger"
+      className="mt-5 rounded-md border border-destructive/30 border-l-3 border-l-destructive bg-destructive/4 p-4"
       onSubmit={(event: FormEvent<HTMLFormElement>) => {
         event.preventDefault()
         const data = new FormData(event.currentTarget)
@@ -833,17 +936,15 @@ function Removal({
         })
       }}
     >
-      <h3>Leaving the rescue</h3>
-      <p>
+      <h3 className="m-0 mb-1 text-base font-semibold">Leaving the rescue</h3>
+      <p className="m-0 mb-2 text-sm text-muted-foreground">
         Their record stays and so does everything they did. What they hold goes with them, and the
         next request they make is refused.
       </p>
       <Fields>
-        <div className="field-wide">
-          <Field label="Reason" htmlFor="removal-reason" optional>
-            <input id="removal-reason" name="reason" maxLength={500} />
-          </Field>
-        </div>
+        <WideField label="Reason" htmlFor="removal-reason" optional>
+          <Input id="removal-reason" name="reason" maxLength={500} />
+        </WideField>
       </Fields>
       <Actions>
         <SaveButton pending={pending}>Remove from the rescue</SaveButton>

@@ -30,6 +30,7 @@
  * not a mistake: those three are left alone and the preview says so first.
  */
 import { createFileRoute } from '@tanstack/react-router'
+import { Pencil } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 
 import {
@@ -44,9 +45,21 @@ import {
   SaveButton,
   Saved,
   Sheet,
+  WideField,
   matches,
   useSaving,
 } from '../../components/forms'
+import { Alert, AlertTitle } from '../../components/ui/alert'
+import { Button } from '../../components/ui/button'
+import { Input } from '../../components/ui/input'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../../components/ui/table'
 import { client } from '../../shared/api-client'
 import { refusalText } from '../../shared/refusals'
 import type { Answers, contract } from '../../shared/api-contract'
@@ -125,19 +138,23 @@ function Spaces() {
 
   return (
     <main>
-      <h1>Spaces</h1>
+      <h1 className="text-foreground">Spaces</h1>
 
-      <p className="lede">
+      <p className="mb-5 max-w-[68ch] text-base leading-relaxed text-muted-foreground">
         A Space is one named area — a stall, a pasture, a paddock or a barn — that may be more than
         one physical unit joined together. An empty Space is shown exactly like an occupied one:
         nothing here is removed for having nobody in it.
       </p>
 
-      {problem !== null && <p role="alert">{problem}</p>}
+      {problem !== null && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertTitle>{problem}</AlertTitle>
+        </Alert>
+      )}
 
-      <div className="list-head">
-        <h2>Every Space</h2>
-        <div className="list-head-actions">
+      <div className="mb-3 mt-6 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="m-0 text-foreground">Every Space</h2>
+        <div className="flex flex-wrap gap-2">
           {/* The run is the primary act on this screen, not the exception:
               describing a barn is where everybody starts. */}
           <AddButton
@@ -147,14 +164,15 @@ function Spaces() {
           >
             Add several
           </AddButton>
-          <button
+          <Button
             type="button"
+            variant="outline"
             onClick={() => {
               setOpen({ kind: 'add' })
             }}
           >
             Add one
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -180,42 +198,47 @@ function Spaces() {
           {shown.length === 0 ? (
             <Empty>No Space matches “{filter}”.</Empty>
           ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th scope="col">Name</th>
-                  <th scope="col">Kind</th>
-                  <th scope="col">Occupied by</th>
-                  <th scope="col">Status</th>
-                  <th scope="col" />
-                </tr>
-              </thead>
-              <tbody>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead scope="col">Name</TableHead>
+                  <TableHead scope="col">Kind</TableHead>
+                  <TableHead scope="col">Occupied by</TableHead>
+                  <TableHead scope="col">Status</TableHead>
+                  <TableHead scope="col" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {shown.map((space) => (
-                  <tr key={space.id}>
-                    <td>{space.name}</td>
-                    <td>{KIND_LABEL[space.kind]}</td>
-                    <td>
+                  <TableRow key={space.id}>
+                    <TableCell>{space.name}</TableCell>
+                    <TableCell>{KIND_LABEL[space.kind]}</TableCell>
+                    <TableCell>
                       {space.occupants.length === 0
                         ? 'Nobody'
                         : space.occupants.map((horse) => horse.name).join(', ')}
-                    </td>
-                    <td>{space.retiredOn === null ? 'Active' : `Retired ${space.retiredOn}`}</td>
-                    <td>
-                      <button
+                    </TableCell>
+                    <TableCell>
+                      {space.retiredOn === null ? 'Active' : `Retired ${space.retiredOn}`}
+                    </TableCell>
+                    <TableCell>
+                      <Button
                         type="button"
+                        variant="outline"
+                        size="sm"
                         onClick={() => {
                           setOpen({ kind: 'edit', space })
                         }}
                       >
+                        <Pencil aria-hidden="true" />
                         Edit
-                      </button>
+                      </Button>
                       <Retirement space={space} act={act} />
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           )}
         </>
       )}
@@ -273,6 +296,7 @@ function Retirement({
   if (space.retiredOn !== null) {
     return (
       <form
+        className="mt-2"
         onSubmit={(event: FormEvent<HTMLFormElement>) => {
           event.preventDefault()
           void act(() =>
@@ -281,13 +305,16 @@ function Retirement({
         }}
       >
         {/* A date is a correction, never a delete (ADR 0002) — the same as setting one below. */}
-        <button type="submit">Correct: not Retired</button>
+        <Button type="submit" variant="outline" size="sm">
+          Correct: not Retired
+        </Button>
       </form>
     )
   }
 
   return (
     <form
+      className="mt-2"
       onSubmit={(event: FormEvent<HTMLFormElement>) => {
         event.preventDefault()
         const data = new FormData(event.currentTarget)
@@ -300,14 +327,34 @@ function Retirement({
         )
       }}
     >
-      <label htmlFor={`retire-on-${space.id}`}>Retired on</label>
-      <input id={`retire-on-${space.id}`} name="retiredOn" type="date" required />
-      <label htmlFor={`retire-reason-${space.id}`}>Reason (optional)</label>
-      <input id={`retire-reason-${space.id}`} name="reason" maxLength={500} />
-      <button type="submit" disabled={space.occupants.length > 0}>
+      <label
+        htmlFor={`retire-on-${space.id}`}
+        className="mb-1 mt-2 block text-sm font-medium text-foreground"
+      >
+        Retired on
+      </label>
+      <Input id={`retire-on-${space.id}`} name="retiredOn" type="date" required />
+      <label
+        htmlFor={`retire-reason-${space.id}`}
+        className="mb-1 mt-2 block text-sm font-medium text-foreground"
+      >
+        Reason (optional)
+      </label>
+      <Input id={`retire-reason-${space.id}`} name="reason" maxLength={500} />
+      <Button
+        type="submit"
+        variant="outline"
+        size="sm"
+        className="mt-2"
+        disabled={space.occupants.length > 0}
+      >
         Retire
-      </button>
-      {space.occupants.length > 0 && <p>Move every horse out before retiring this Space.</p>}
+      </Button>
+      {space.occupants.length > 0 && (
+        <p className="m-0 mt-1 text-[13px] leading-snug text-muted-foreground">
+          Move every horse out before retiring this Space.
+        </p>
+      )}
     </form>
   )
 }
@@ -354,7 +401,7 @@ function SpaceForm({
     >
       <Fields>
         <Field label="Name" htmlFor="space-name" hint="What the barn calls it. “Stall 7”, “2 & 3”.">
-          <input
+          <Input
             id="space-name"
             name="name"
             defaultValue={space?.name}
@@ -364,7 +411,7 @@ function SpaceForm({
             aria-describedby="space-name-hint"
           />
         </Field>
-        <div className="field">
+        <div className="min-w-0">
           <Choice
             legend="Kind"
             name="kind"
@@ -373,21 +420,19 @@ function SpaceForm({
           />
         </div>
         {space !== null && (
-          <div className="field-wide">
-            <Field
-              label="Reason"
-              htmlFor="space-reason"
-              optional
-              hint="Why it changed. This is what the audit entry carries."
-            >
-              <input
-                id="space-reason"
-                name="reason"
-                maxLength={500}
-                aria-describedby="space-reason-hint"
-              />
-            </Field>
-          </div>
+          <WideField
+            label="Reason"
+            htmlFor="space-reason"
+            optional
+            hint="Why it changed. This is what the audit entry carries."
+          >
+            <Input
+              id="space-reason"
+              name="reason"
+              maxLength={500}
+              aria-describedby="space-reason-hint"
+            />
+          </WideField>
         )}
       </Fields>
 
@@ -454,7 +499,7 @@ function SeveralSpacesForm({
       }}
     >
       <Fields>
-        <div className="field-wide">
+        <div className="sm:col-span-2">
           <Choice
             legend="What are you adding?"
             name="kind"
@@ -475,7 +520,7 @@ function SeveralSpacesForm({
           htmlFor="several-count"
           hint={`Up to ${String(MOST_SPACES_AT_ONCE)} at a time.`}
         >
-          <input
+          <Input
             id="several-count"
             type="number"
             inputMode="numeric"
@@ -495,7 +540,7 @@ function SeveralSpacesForm({
           htmlFor="several-prefix"
           hint="What goes before the number. Keep the trailing space."
         >
-          <input
+          <Input
             id="several-prefix"
             value={prefix}
             maxLength={180}
@@ -506,7 +551,7 @@ function SeveralSpacesForm({
           />
         </Field>
 
-        <div className="field">
+        <div className="min-w-0">
           <Choice
             legend="Numbered"
             name="style"
@@ -524,7 +569,7 @@ function SeveralSpacesForm({
           htmlFor="several-from"
           hint="Where the run begins, for a barn that already has some."
         >
-          <input
+          <Input
             id="several-from"
             type="number"
             inputMode="numeric"
@@ -540,8 +585,8 @@ function SeveralSpacesForm({
 
       {/* Every name, not a summary of them: the whole reason this is safe to
           press is that nothing about it has to be imagined. */}
-      <div className="preview">
-        <p className="preview-head" role="status" aria-live="polite">
+      <div className="mt-5 rounded-lg bg-secondary p-4">
+        <p className="m-0 mb-2 text-sm font-medium" role="status" aria-live="polite">
           {fresh.length === 0
             ? 'Nothing to add.'
             : `Adds ${String(fresh.length)} ${fresh.length === 1 ? 'Space' : 'Spaces'}.`}
@@ -549,9 +594,20 @@ function SeveralSpacesForm({
             ` ${String(clashes)} ${clashes === 1 ? 'name is' : 'names are'} already taken and will be left alone.`}
         </p>
         {names.length > 0 && (
-          <ul className="preview-names" aria-label="The names to be added">
+          <ul
+            className="m-0 flex max-h-[30dvh] list-none flex-wrap gap-1 overflow-y-auto p-0"
+            aria-label="The names to be added"
+          >
             {names.map((name) => (
-              <li key={name} data-held={held.has(name)}>
+              <li
+                key={name}
+                data-held={held.has(name)}
+                className={
+                  held.has(name)
+                    ? 'm-0 rounded-sm border border-dashed border-border bg-transparent px-2.5 py-1 text-sm text-muted-foreground line-through'
+                    : 'm-0 rounded-sm border border-border bg-background px-2.5 py-1 text-sm'
+                }
+              >
                 {name}
               </li>
             ))}

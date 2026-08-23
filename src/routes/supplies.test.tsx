@@ -11,7 +11,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { stubApi } from '../test/api-stub'
-import { renderRoutes } from '../test/route-harness'
+import { chooseOption, renderRoutes } from '../test/route-harness'
 import { Route } from './supplies'
 
 afterEach(() => {
@@ -183,7 +183,8 @@ describe('the Supplies screen', () => {
     })
     renderSupplies()
 
-    fireEvent.change(await screen.findByLabelText('Product'), { target: { value: 'prod-1' } })
+    await screen.findByLabelText('Days remaining')
+    await chooseOption('Product', 'Senior')
     fireEvent.change(screen.getByLabelText('Days remaining'), { target: { value: '9.5' } })
     fireEvent.click(screen.getByRole('button', { name: 'Record' }))
 

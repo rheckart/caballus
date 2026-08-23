@@ -27,6 +27,17 @@ import {
   Sheet,
   useSaving,
 } from '../../components/forms'
+import { Alert, AlertTitle } from '../../components/ui/alert'
+import { Checkbox } from '../../components/ui/checkbox'
+import { Input } from '../../components/ui/input'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../../components/ui/table'
 import { client } from '../../shared/api-client'
 import { refusalText } from '../../shared/refusals'
 import type { Answers, contract } from '../../shared/api-contract'
@@ -43,6 +54,9 @@ function ReleaseVersions() {
   const [day, setDay] = useState<string>('')
   const [problem, setProblem] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
+  // The checkbox's own state: shadcn's Checkbox is a Radix button rather than
+  // a native input, so the value rides in the payload instead of in FormData.
+  const [obsoletesPrior, setObsoletesPrior] = useState(false)
   const { pending, saved, save } = useSaving()
 
   const load = useCallback(async () => {
@@ -73,7 +87,7 @@ function ReleaseVersions() {
         .post('/release-versions', {
           label: String(data.get('label') ?? ''),
           validFrom: dayString(String(data.get('validFrom') ?? '')),
-          obsoletesPrior: data.get('obsoletesPrior') === 'on',
+          obsoletesPrior,
         })
         .then(async () => {
           form.reset()
@@ -88,20 +102,25 @@ function ReleaseVersions() {
 
   return (
     <main>
-      <h1>Release versions</h1>
+      <h1 className="text-foreground">Release versions</h1>
 
-      {problem !== null && <p role="alert">{problem}</p>}
+      {problem !== null && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertTitle>{problem}</AlertTitle>
+        </Alert>
+      )}
 
-      <p className="lede">
+      <p className="mb-5 max-w-[68ch] text-base leading-relaxed text-muted-foreground">
         A version is one issue of the release text. It is immutable: a correction is a new version,
         and the current one is the newest. The signed papers stay in the cabinet; what is here is
         the record that they exist.
       </p>
 
-      <div className="list-head">
-        <h2>Published, newest first</h2>
+      <div className="mb-3 mt-6 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="m-0 text-foreground">Published, newest first</h2>
         <AddButton
           onClick={() => {
+            setObsoletesPrior(false)
             setOpen(true)
           }}
         >
@@ -114,24 +133,24 @@ function ReleaseVersions() {
       ) : versions.versions.length === 0 ? (
         <Empty>Nothing published yet. The first version is the one everybody signs against.</Empty>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th scope="col">Label</th>
-              <th scope="col">Valid from</th>
-              <th scope="col">Obsoleted prior signatures</th>
-            </tr>
-          </thead>
-          <tbody>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead scope="col">Label</TableHead>
+              <TableHead scope="col">Valid from</TableHead>
+              <TableHead scope="col">Obsoleted prior signatures</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {versions.versions.map((version) => (
-              <tr key={version.id}>
-                <td>{version.label}</td>
-                <td>{version.validFrom}</td>
-                <td>{version.obsoletesPrior ? 'Yes' : 'No'}</td>
-              </tr>
+              <TableRow key={version.id}>
+                <TableCell>{version.label}</TableCell>
+                <TableCell>{version.validFrom}</TableCell>
+                <TableCell>{version.obsoletesPrior ? 'Yes' : 'No'}</TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       )}
 
       {open && (
@@ -145,7 +164,7 @@ function ReleaseVersions() {
           <form onSubmit={publish}>
             <Fields>
               <Field label="Label" htmlFor="label" hint="What the paper itself says at the top.">
-                <input
+                <Input
                   id="label"
                   name="label"
                   required
@@ -156,18 +175,27 @@ function ReleaseVersions() {
                 />
               </Field>
               <Field label="Valid from" htmlFor="valid-from">
-                <input id="valid-from" name="validFrom" type="date" defaultValue={day} required />
+                <Input id="valid-from" name="validFrom" type="date" defaultValue={day} required />
               </Field>
             </Fields>
 
             {/* The sharpest control in the application, so what it does is
                 stated beside it at full size rather than in a hint. */}
-            <div className="danger">
-              <label htmlFor="obsoletes-prior">
-                <input id="obsoletes-prior" name="obsoletesPrior" type="checkbox" />
+            <div className="mt-5 rounded-md border border-destructive/30 border-l-3 border-l-destructive bg-destructive/4 p-4">
+              <label
+                htmlFor="obsoletes-prior"
+                className="flex cursor-pointer items-center gap-2 text-sm font-medium text-foreground"
+              >
+                <Checkbox
+                  id="obsoletes-prior"
+                  checked={obsoletesPrior}
+                  onCheckedChange={(checked) => {
+                    setObsoletesPrior(checked === true)
+                  }}
+                />
                 Obsolete every prior signature
               </label>
-              <p>
+              <p className="m-0 mt-2 text-sm text-muted-foreground">
                 This stales every release signed before that date. Nobody is removed from any
                 roster: they are flagged on the people list, and the Coordinator works the list.
               </p>

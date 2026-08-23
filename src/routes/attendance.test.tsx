@@ -7,11 +7,12 @@
  * — attributed to whoever taps the button, never to the person named
  * (ADR 0012).
  */
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { stubApi } from '../test/api-stub'
-import { renderRoutes } from '../test/route-harness'
+import { chooseOption, renderRoutes } from '../test/route-harness'
 import { Route } from './attendance'
 
 afterEach(() => {
@@ -88,7 +89,7 @@ describe('a Visit, on the phone', () => {
     fireEvent.change(await screen.findByLabelText('What are you here to do?'), {
       target: { value: 'Mowed the north field' },
     })
-    fireEvent.change(screen.getByLabelText('Category'), { target: { value: 'maintenance' } })
+    await chooseOption('Category', 'Maintenance and grounds')
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
 
     await waitFor(() => {
@@ -109,13 +110,17 @@ describe('a Visit, on the phone', () => {
     const posted = watchPosts()
     renderVisit()
 
-    fireEvent.change(await screen.findByLabelText('Who', { selector: '#sign-in-who' }), {
-      target: { value: 'valerie' },
-    })
+    // Two pickers are named "Who" — sign in and sign out — so `chooseOption`
+    // cannot disambiguate; this is its body, scoped to the sign-in one.
+    const user = userEvent.setup()
+    const whoTriggers = await screen.findAllByRole('combobox', { name: 'Who' })
+    await user.click(whoTriggers[0] as HTMLElement)
+    const listbox = await screen.findByRole('listbox')
+    await user.click(within(listbox).getByRole('option', { name: 'Valerie' }))
     fireEvent.change(screen.getByLabelText('What are you here to do?'), {
       target: { value: 'Fundraiser table' },
     })
-    fireEvent.change(screen.getByLabelText('Category'), { target: { value: 'fundraising' } })
+    await chooseOption('Category', 'Fundraising')
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
 
     await waitFor(() => {
