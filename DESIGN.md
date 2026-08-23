@@ -443,6 +443,12 @@ components:
     padding: '{spacing.xxs} 0'
 ---
 
+> **Going stale, on purpose.** `src/styles/app.css` was transcribed from this file, and both are being
+> replaced by Tailwind v4 and shadcn — see [ADR 0025](./docs/adr/0025-the-styling-system-is-tailwind-and-shadcn.md).
+> The 72 custom properties become Tailwind's `@theme`, so the palette and the type scale below survive;
+> everything describing hand-written CSS does not. This file is revised screen by screen as each one
+> migrates, rather than rewritten up front to describe a system that does not exist yet.
+
 ## Overview
 
 Notion presents itself as the all-in-one workspace through a confident, illustration-rich brand voice. The homepage opens with **"Meet the night shift."** rendered centered over a deep navy hero band ({colors.brand-navy}), decorated with brand-colored sticky-note dots and mesh wire illustrations scattered around the headline. The signature **purple pill primary CTA** ({colors.primary}) "Get Notion free" sits at the visual center, paired with an outlined "Request a demo" secondary. Below the buttons, a real Notion workspace UI mockup card (the "Ramp HQ" kanban board) breaks out of the hero band with a deep diffuse drop shadow.

@@ -4,6 +4,8 @@ Operations for a horse rescue: the daily care of horses and the coordination of 
 
 Terms are added only once settled with the rescue. The barn's own words win over ours.
 
+A term here is what the **model** calls a thing, not what a **screen** calls it. A screen may say _About her_ where the model says Attributes, or _Change her feed_ where the model says publish a Feed Schedule version, because the reader is a volunteer and not a reader of this file. The glossary does not follow the label; the label may not contradict the glossary.
+
 ## Language
 
 ### People
