@@ -8,15 +8,11 @@
  * reachable. Hiding one from a work surface is the phone list's concern, in
  * `src/routes/horses/index.tsx`.
  *
- * The record is a modal of five tabs — About her, Location, Alerts, Feeding,
- * She has left — and each tab is one form with one Save (#62, ADR 0025).
- * There is no Save-all: one button firing five writes has to explain a
- * half-failure. The rule the shape rests on is that **only one tab may ever
- * be unsaved**: switching tabs or closing with unsaved typing stops and asks,
- * so no save ever writes something the person cannot see. React Hook Form's
- * `formState.isDirty` answers *dirty*; the zod contract in
- * `src/shared/api-contract.ts` stays the single source of what a payload may
- * be (ADR 0021) — RHF does not re-validate it.
+ * The record is a modal of five tabs — Core Details, Location, Alerts,
+ * Feeding, Departure — and each tab is one form with one Save (#62, ADR
+ * 0025). The modal itself is `src/components/record-modal.tsx`, shared with
+ * the volunteer record, and it carries the rule the shape rests on: **only
+ * one tab may ever be unsaved**.
  *
  * Refusals render inline, under the button pressed. *Saved* stays until the
  * field is touched again. Departure and ending an Alert confirm inline inside
@@ -56,10 +52,19 @@ import {
   matches,
   useSaving,
 } from '../../components/forms'
+import {
+  DANGER_CARD,
+  HandledRefusal,
+  InlineRefusal,
+  RecordModal,
+  StickySaved,
+  useRecordForm,
+} from '../../components/record-modal'
+import { Refusal } from '../../components/refusal'
 import { Alert as AlertBox, AlertTitle } from '../../components/ui/alert'
 import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog'
+import { DialogTitle } from '../../components/ui/dialog'
 import { Input } from '../../components/ui/input'
 import {
   Select,
@@ -68,7 +73,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../../components/ui/select'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs'
 import {
   Table,
   TableBody,
@@ -138,6 +142,11 @@ function Horses() {
   const [problem, setProblem] = useState<string | null>(null)
   const [openFor, setOpenFor] = useState<string | null>(null)
   const [profile, setProfile] = useState<HorseProfile | null>(null)
+  // The profile read's own failure, kept apart from `problem` because it
+  // belongs *inside* the modal: a banner on the page behind an open dialog is
+  // invisible, and what the reader saw instead was *Loading the schedule…*
+  // that never resolved.
+  const [profileProblem, setProfileProblem] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
   const [filter, setFilter] = useState('')
 
@@ -164,15 +173,20 @@ function Horses() {
   const loadProfile = useCallback(async () => {
     if (openFor === null) {
       setProfile(null)
+      setProfileProblem(null)
       return
     }
-    setProfile(await client.get('/horses/:horseId', { horseId: openFor }))
+    try {
+      setProfile(await client.get('/horses/:horseId', { horseId: openFor }))
+      setProfileProblem(null)
+    } catch (error: unknown) {
+      setProfile(null)
+      setProfileProblem(refusalText(error))
+    }
   }, [openFor])
 
   useEffect(() => {
-    void loadProfile().catch((error: unknown) => {
-      setProblem(refusalText(error))
-    })
+    void loadProfile()
   }, [loadProfile])
 
   /**
@@ -206,7 +220,9 @@ function Horses() {
           <Loading what="horses" />
         ) : (
           <AlertBox variant="destructive">
-            <AlertTitle>{problem}</AlertTitle>
+            <AlertTitle>
+              <Refusal>{problem}</Refusal>
+            </AlertTitle>
           </AlertBox>
         )}
       </main>
@@ -226,7 +242,9 @@ function Horses() {
 
       {problem !== null && (
         <AlertBox variant="destructive" className="mb-4">
-          <AlertTitle>{problem}</AlertTitle>
+          <AlertTitle>
+            <Refusal>{problem}</Refusal>
+          </AlertTitle>
         </AlertBox>
       )}
 
@@ -319,6 +337,8 @@ function Horses() {
           spaces={spaces.spaces}
           products={products.products}
           profile={profile}
+          profileProblem={profileProblem}
+          retryProfile={loadProfile}
           reload={reload}
           onClose={() => {
             setOpenFor(null)
@@ -400,43 +420,29 @@ function NewHorse({ reload, onSaved }: { reload: () => Promise<void>; onSaved: (
 
 /* ------------------------------------------------------- the record modal -- */
 
-/** What a tab's form hands the modal, so the dirty-tab rule can hold. */
-interface TabFormControls {
-  isDirty: () => boolean
-  /** Runs the form's own save; true when it landed, false on a refusal. */
-  save: () => Promise<boolean>
-  discard: () => void
-}
-
-type RegisterForm = (id: string, controls: TabFormControls) => () => void
-
-/** Thrown by a write that already put its refusal beside the control. */
-class HandledRefusal extends Error {}
-
 const TAB_IDS = ['about', 'location', 'alerts', 'feeding', 'departed'] as const
 type TabId = (typeof TAB_IDS)[number]
 
 const TAB_LABEL: Record<TabId, string> = {
-  about: 'About her',
+  about: 'Core Details',
   location: 'Location',
   alerts: 'Alerts',
   feeding: 'Feeding',
-  departed: 'She has left',
+  departed: 'Departure',
 }
 
-type PendingAction = { kind: 'switch'; to: TabId } | { kind: 'close' }
-
 /**
- * The modal of five tabs. Escape, the backdrop and the tab bar all pass
- * through `attempt`, which is where the one rule lives: unsaved typing stops
- * the action and asks, so only one tab can ever be dirty and nothing saves
- * out of sight.
+ * The modal of five tabs. `RecordModal` owns Escape, the backdrop and the tab
+ * bar, and with them the one rule: unsaved typing stops the action and asks,
+ * so only one tab can ever be dirty and nothing saves out of sight.
  */
 function HorseRecord({
   horse,
   spaces,
   products,
   profile,
+  profileProblem,
+  retryProfile,
   reload,
   onClose,
 }: {
@@ -444,256 +450,97 @@ function HorseRecord({
   spaces: SpaceList['spaces']
   products: ProductList['products']
   profile: HorseProfile | null
+  profileProblem: string | null
+  retryProfile: () => Promise<void>
   reload: () => Promise<void>
   onClose: () => void
 }) {
-  const [tab, setTab] = useState<TabId>('about')
-  const [pending, setPending] = useState<PendingAction | null>(null)
-  const [savingThem, setSavingThem] = useState(false)
-  const forms = useRef(new Map<string, TabFormControls>())
-
-  const register = useCallback<RegisterForm>((id, controls) => {
-    forms.current.set(id, controls)
-    return () => {
-      forms.current.delete(id)
-    }
-  }, [])
-
-  const dirtyForms = () => [...forms.current.values()].filter((controls) => controls.isDirty())
-
-  const perform = (action: PendingAction) => {
-    if (action.kind === 'close') onClose()
-    else setTab(action.to)
-  }
-
-  const attempt = (action: PendingAction) => {
-    if (dirtyForms().length === 0) {
-      setPending(null)
-      perform(action)
-    } else {
-      setPending(action)
-    }
-  }
-
-  const saveThem = async () => {
-    setSavingThem(true)
-    try {
-      let allSaved = true
-      for (const controls of dirtyForms()) {
-        if (!(await controls.save())) allSaved = false
-      }
-      const action = pending
-      setPending(null)
-      // A refusal keeps the tab open with its message beside the button; the
-      // action the person wanted is dropped rather than done half-blind.
-      if (allSaved && action !== null) perform(action)
-    } finally {
-      setSavingThem(false)
-    }
-  }
-
-  const throwThemAway = () => {
-    for (const controls of dirtyForms()) controls.discard()
-    const action = pending
-    setPending(null)
-    if (action !== null) perform(action)
+  const content: Record<TabId, ReactNode> = {
+    about: <AboutTab horse={horse} reload={reload} />,
+    location: <LocationTab horse={horse} spaces={spaces} reload={reload} />,
+    alerts: (
+      <AlertsTab
+        horse={horse}
+        profile={profile}
+        profileProblem={profileProblem}
+        retryProfile={retryProfile}
+        reload={reload}
+      />
+    ),
+    feeding: (
+      <FeedingTab
+        horse={horse}
+        profile={profile}
+        profileProblem={profileProblem}
+        retryProfile={retryProfile}
+        products={products}
+        reload={reload}
+      />
+    ),
+    departed: <DepartedTab horse={horse} reload={reload} />,
   }
 
   return (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open) attempt({ kind: 'close' })
-      }}
-    >
-      <DialogContent className="sm:max-w-[780px]" {...{ 'aria-describedby': undefined }}>
-        <DialogHeader>
-          <div className="flex items-center gap-3">
-            {horse.photoUrl !== null && (
-              <img
-                src={horse.photoUrl}
-                alt={horse.name}
-                className="size-14 flex-none rounded-md object-cover"
-              />
-            )}
-            <div>
-              <DialogTitle>{horse.name}</DialogTitle>
-              {horse.departedOn !== null && (
-                <p className="m-0 mt-1 text-sm text-muted-foreground">
-                  Departed {horse.departedOn}
-                </p>
-              )}
-            </div>
-          </div>
-        </DialogHeader>
-
-        {pending !== null && (
-          <div
-            role="alertdialog"
-            aria-label="Unsaved changes"
-            className="rounded-md border border-warning/40 bg-card-tint-peach/60 p-3 dark:bg-transparent"
-          >
-            <p className="m-0 mb-2 text-sm font-medium text-foreground">
-              You have changes you haven’t saved.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                size="sm"
-                disabled={savingThem}
-                onClick={() => {
-                  void saveThem()
-                }}
-              >
-                {savingThem ? 'Saving…' : 'Save them'}
-              </Button>
-              <Button type="button" size="sm" variant="outline" onClick={throwThemAway}>
-                Throw them away
-              </Button>
-            </div>
-          </div>
-        )}
-
-        <Tabs
-          value={tab}
-          onValueChange={(next) => {
-            if (next !== tab) attempt({ kind: 'switch', to: next as TabId })
-          }}
-        >
-          <TabsList className="w-full">
-            {TAB_IDS.map((id) => (
-              <TabsTrigger key={id} value={id}>
-                {TAB_LABEL[id]}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-
-          <TabsContent value="about">
-            <AboutTab horse={horse} register={register} reload={reload} />
-          </TabsContent>
-          <TabsContent value="location">
-            <LocationTab horse={horse} spaces={spaces} register={register} reload={reload} />
-          </TabsContent>
-          <TabsContent value="alerts">
-            <AlertsTab horse={horse} profile={profile} register={register} reload={reload} />
-          </TabsContent>
-          <TabsContent value="feeding">
-            <FeedingTab
-              horse={horse}
-              profile={profile}
-              products={products}
-              register={register}
-              reload={reload}
+    <RecordModal
+      onClose={onClose}
+      tabs={TAB_IDS.map((id) => ({ id, label: TAB_LABEL[id], content: content[id] }))}
+      header={
+        <div className="flex items-center gap-3">
+          {horse.photoUrl !== null && (
+            <img
+              src={horse.photoUrl}
+              alt={horse.name}
+              className="size-14 flex-none rounded-md object-cover"
             />
-          </TabsContent>
-          <TabsContent value="departed">
-            <DepartedTab horse={horse} register={register} reload={reload} />
-          </TabsContent>
-        </Tabs>
-      </DialogContent>
-    </Dialog>
+          )}
+          <div>
+            <DialogTitle>{horse.name}</DialogTitle>
+            {horse.departedOn !== null && (
+              <p className="m-0 mt-1 text-sm text-muted-foreground">Departed {horse.departedOn}</p>
+            )}
+          </div>
+        </div>
+      }
+    />
   )
 }
-
-/* ------------------------------------------------------- the form plumbing -- */
 
 /**
- * One tab-resident form: RHF answers *dirty*, `save` runs the write and
- * reports whether it landed, the refusal renders under the button pressed,
- * and *Saved* stays until the field is touched again (#62).
+ * The profile read said no.
+ *
+ * Two tabs need `/horses/:horseId` and neither can do anything without it, so
+ * the failure is theirs to show. It used to land in the page's own banner
+ * behind the open dialog, which nobody can see — the tab simply said
+ * *Loading…* for as long as the modal stayed open.
  */
-function useRecordForm<T extends FieldValues>({
-  id,
-  register,
-  form,
-  write,
-}: {
-  id: string
-  register: RegisterForm
-  form: UseFormReturn<T>
-  write: (values: T) => Promise<void>
-}) {
-  const [pending, setPending] = useState(false)
-  const [refusal, setRefusal] = useState<string | null>(null)
-  const [savedOnce, setSavedOnce] = useState(false)
-
-  const { isDirty } = form.formState
-  const dirtyRef = useRef(isDirty)
-  dirtyRef.current = isDirty
-
-  const submit = useCallback(async (): Promise<boolean> => {
-    let landed = false
-    await form.handleSubmit(async (values) => {
-      setPending(true)
-      setRefusal(null)
-      try {
-        await write(values)
-        // Resetting *to the submitted values* is what clears dirty while
-        // keeping the typing: the saved state becomes the new baseline.
-        form.reset(values)
-        setSavedOnce(true)
-        landed = true
-      } catch (error: unknown) {
-        if (!(error instanceof HandledRefusal)) setRefusal(refusalText(error))
-      } finally {
-        setPending(false)
-      }
-    })()
-    return landed
-  }, [form, write])
-
-  const submitRef = useRef(submit)
-  submitRef.current = submit
-  const formRef = useRef(form)
-  formRef.current = form
-
-  useEffect(
-    () =>
-      register(id, {
-        isDirty: () => dirtyRef.current,
-        save: () => submitRef.current(),
-        discard: () => {
-          formRef.current.reset()
-        },
-      }),
-    [id, register],
-  )
-
-  return {
-    pending,
-    refusal,
-    saved: savedOnce && !isDirty,
-    submit,
-    onSubmit: (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault()
-      void submit()
-    },
-  }
-}
-
-/** A refusal, rendered where the button is rather than at the top of a page. */
-function InlineRefusal({ children }: { children: ReactNode }) {
+function ProfileProblem({ because, retry }: { because: string; retry: () => Promise<void> }) {
+  const [trying, setTrying] = useState(false)
   return (
-    <AlertBox variant="destructive" className="mt-3">
-      <AlertTitle>{children}</AlertTitle>
+    <AlertBox variant="destructive">
+      <AlertTitle>
+        <Refusal>{because}</Refusal>
+      </AlertTitle>
+      <div className="col-start-2 mt-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={trying}
+          onClick={() => {
+            setTrying(true)
+            void retry().finally(() => {
+              setTrying(false)
+            })
+          }}
+        >
+          {trying ? 'Trying…' : 'Try again'}
+        </Button>
+      </div>
     </AlertBox>
   )
 }
 
-/** The sticky *Saved*: visible from the moment it lands until the next touch. */
-function StickySaved({ shown, what = 'Saved' }: { shown: boolean; what?: string }) {
-  return (
-    <span
-      className="inline-flex min-h-[1lh] items-center gap-1 text-sm font-medium text-success"
-      role="status"
-      aria-live="polite"
-    >
-      {shown && what}
-    </span>
-  )
-}
-
-/* ------------------------------------------------------------ 1. About her -- */
+/* --------------------------------------------------------- 1. Core Details -- */
 
 interface AboutValues extends FieldValues {
   name: string
@@ -703,15 +550,7 @@ interface AboutValues extends FieldValues {
   reason: string
 }
 
-function AboutTab({
-  horse,
-  register,
-  reload,
-}: {
-  horse: Horse
-  register: RegisterForm
-  reload: () => Promise<void>
-}) {
+function AboutTab({ horse, reload }: { horse: Horse; reload: () => Promise<void> }) {
   const form = useForm<AboutValues>({
     defaultValues: {
       name: horse.name,
@@ -724,7 +563,6 @@ function AboutTab({
 
   const { pending, refusal, saved, onSubmit } = useRecordForm({
     id: 'about',
-    register,
     form,
     write: async (values) => {
       await client.post('/horses/attributes', {
@@ -788,12 +626,10 @@ type LocationValues = Record<SpaceKind, string>
 function LocationTab({
   horse,
   spaces,
-  register,
   reload,
 }: {
   horse: Horse
   spaces: SpaceList['spaces']
-  register: RegisterForm
   reload: () => Promise<void>
 }) {
   const initial = useRef(
@@ -810,7 +646,6 @@ function LocationTab({
 
   const { pending, saved, onSubmit } = useRecordForm({
     id: 'location',
-    register,
     form,
     write: async (values) => {
       setKindProblems({})
@@ -839,8 +674,8 @@ function LocationTab({
   return (
     <form onSubmit={onSubmit}>
       <p className="m-0 mb-3 text-sm text-muted-foreground">
-        Where she is: one Space of each kind at most. A horse turned out is in a Pasture and may be
-        in its Paddock at the same time.
+        Where the horse is: one Space of each kind at most. A horse turned out is in a Pasture and
+        may in its Paddock at the same time.
       </p>
       <Fields>
         {SPACE_KINDS.map((kind) => {
@@ -910,12 +745,14 @@ function LocationTab({
 function AlertsTab({
   horse,
   profile,
-  register,
+  profileProblem,
+  retryProfile,
   reload,
 }: {
   horse: Horse
   profile: HorseProfile | null
-  register: RegisterForm
+  profileProblem: string | null
+  retryProfile: () => Promise<void>
   reload: () => Promise<void>
 }) {
   const [openLine, setOpenLine] = useState<
@@ -935,7 +772,9 @@ function AlertsTab({
         profile, the shift work surface and the Board, and it stays until somebody ends it.
       </p>
 
-      {profile === null ? (
+      {profileProblem !== null ? (
+        <ProfileProblem because={profileProblem} retry={retryProfile} />
+      ) : profile === null ? (
         <Loading what="the alerts" />
       ) : profile.alerts.length === 0 ? (
         <Empty>No alerts on this horse.</Empty>
@@ -950,7 +789,6 @@ function AlertsTab({
                 openLine.mode === 'edit' ? (
                   <EditAlertForm
                     alert={alert}
-                    register={register}
                     reload={reload}
                     onDone={() => {
                       setOpenLine(null)
@@ -959,7 +797,6 @@ function AlertsTab({
                 ) : (
                   <EndAlertForm
                     alert={alert}
-                    register={register}
                     reload={reload}
                     onDone={() => {
                       setOpenLine(null)
@@ -1005,7 +842,6 @@ function AlertsTab({
       {openLine !== null && 'id' in openLine && openLine.id === 'new' ? (
         <RaiseAlertForm
           horse={horse}
-          register={register}
           reload={reload}
           onDone={() => {
             setOpenLine(null)
@@ -1077,19 +913,16 @@ function AlertKindChoice({
 
 function RaiseAlertForm({
   horse,
-  register,
   reload,
   onDone,
 }: {
   horse: Horse
-  register: RegisterForm
   reload: () => Promise<void>
   onDone: () => void
 }) {
   const form = useForm<AlertValues>({ defaultValues: { kind: 'care', text: '' } })
   const { pending, refusal, onSubmit } = useRecordForm({
     id: 'alert-new',
-    register,
     form,
     write: async (values) => {
       await client.post('/alerts', { horseId: horse.id, kind: values.kind, text: values.text })
@@ -1125,19 +958,16 @@ function RaiseAlertForm({
 
 function EditAlertForm({
   alert,
-  register,
   reload,
   onDone,
 }: {
   alert: HorseAlert
-  register: RegisterForm
   reload: () => Promise<void>
   onDone: () => void
 }) {
   const form = useForm<AlertValues>({ defaultValues: { kind: alert.kind, text: alert.text } })
   const { pending, refusal, onSubmit } = useRecordForm({
     id: `alert-edit-${alert.id}`,
-    register,
     form,
     write: async (values) => {
       await client.post('/alerts/edit', { alertId: alert.id, kind: values.kind, text: values.text })
@@ -1184,20 +1014,20 @@ interface EndAlertValues extends FieldValues {
  */
 function EndAlertForm({
   alert,
-  register,
   reload,
   onDone,
 }: {
   alert: HorseAlert
-  register: RegisterForm
   reload: () => Promise<void>
   onDone: () => void
 }) {
   const form = useForm<EndAlertValues>({ defaultValues: { reason: '' } })
   const { pending, refusal, onSubmit } = useRecordForm({
     id: `alert-end-${alert.id}`,
-    register,
     form,
+    // Confirmed inline in its own card (#62), so the modal's *Save them*
+    // must never perform it.
+    guarded: true,
     write: async (values) => {
       await client.post('/alerts/end', { alertId: alert.id, reason: values.reason })
       await reload()
@@ -1243,14 +1073,16 @@ function EndAlertForm({
 function FeedingTab({
   horse,
   profile,
+  profileProblem,
+  retryProfile,
   products,
-  register,
   reload,
 }: {
   horse: Horse
   profile: HorseProfile | null
+  profileProblem: string | null
+  retryProfile: () => Promise<void>
   products: ProductList['products']
-  register: RegisterForm
   reload: () => Promise<void>
 }) {
   const [changing, setChanging] = useState(false)
@@ -1258,7 +1090,9 @@ function FeedingTab({
 
   return (
     <div>
-      {profile === null ? (
+      {profileProblem !== null ? (
+        <ProfileProblem because={profileProblem} retry={retryProfile} />
+      ) : profile === null ? (
         <Loading what="the schedule" />
       ) : profile.feedSchedules.length === 0 ? (
         <Empty>No feed schedule recorded for this horse.</Empty>
@@ -1271,18 +1105,25 @@ function FeedingTab({
                 starting on {schedule.validFrom}
               </span>
               {schedule.isNew && <Badge variant="purple">New</Badge>}
+              {schedule.lines.length === 0 && <Badge>Retired</Badge>}
             </h4>
             {schedule.lines.length === 0 ? (
-              <p className="m-0 text-sm text-muted-foreground">No feeding at this Shift Type.</p>
+              <p className="m-0 text-sm text-muted-foreground">
+                No feeding at this Shift Type. The Shift Type keeps its place here, because a
+                deliberate none and a question nobody answered are different facts.
+              </p>
             ) : (
-              <ul className="m-0 list-disc pl-5">
-                {schedule.lines.map((line) => (
-                  <li key={line.productId} className="mb-1">
-                    <strong>{line.amount}</strong> of {line.productName}
-                    {line.route !== 'in_feed' && `, ${ROUTE_LABEL[line.route].toLowerCase()}`}
-                  </li>
-                ))}
-              </ul>
+              <>
+                <ul className="m-0 list-disc pl-5">
+                  {schedule.lines.map((line) => (
+                    <li key={line.productId} className="mb-1">
+                      <strong>{line.amount}</strong> of {line.productName}
+                      {line.route !== 'in_feed' && `, ${ROUTE_LABEL[line.route].toLowerCase()}`}
+                    </li>
+                  ))}
+                </ul>
+                <RetireSchedule horse={horse} schedule={schedule} reload={reload} />
+              </>
             )}
           </div>
         ))
@@ -1292,7 +1133,6 @@ function FeedingTab({
         <ChangeFeedForm
           horse={horse}
           products={products}
-          register={register}
           reload={reload}
           onDone={() => {
             setChanging(false)
@@ -1312,13 +1152,122 @@ function FeedingTab({
             }}
           >
             <Pencil aria-hidden="true" />
-            Change her feed
+            Change the feed
           </Button>
           <StickySaved shown={published} what="Published" />
         </div>
       )}
     </div>
   )
+}
+
+/**
+ * Retiring one Shift Type's feeding, which is a **version with no lines** and
+ * never a delete (ADR 0003). The catalogue tier has `retired_on` on a Product
+ * and a Space (#64); the versioned tier already has the same act built in, and
+ * a `retired_at` column here would be a second way to say what publishing an
+ * empty version says — with the two free to disagree about what a horse eats.
+ *
+ * It was reachable before this only by setting every line of *Change the feed*
+ * to None, which the form said in a sentence under the last row and nobody
+ * read. It confirms inline inside the card, on the Departure tab's own
+ * precedent: *stop feeding this horse in the morning* must not share a button
+ * with an amount being corrected.
+ */
+function RetireSchedule({
+  horse,
+  schedule,
+  reload,
+}: {
+  horse: Horse
+  schedule: HorseProfile['feedSchedules'][number]
+  reload: () => Promise<void>
+}) {
+  const [confirming, setConfirming] = useState(false)
+  const form = useForm<RetireValues>({ defaultValues: { validFrom: '' } })
+
+  const { pending, refusal, saved, onSubmit } = useRecordForm({
+    id: `feed-retire-${schedule.shiftType}`,
+    form,
+    // Confirmed inline in its own card (#62), so the modal's *Save them*
+    // must never perform it.
+    guarded: true,
+    write: async (values) => {
+      await client.post('/feed-schedules', {
+        horseId: horse.id,
+        shiftType: schedule.shiftType,
+        validFrom: dayString(values.validFrom),
+        lines: [],
+      })
+      await reload()
+      setConfirming(false)
+    },
+  })
+
+  if (!confirming) {
+    return (
+      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            setConfirming(true)
+          }}
+        >
+          Retire this feeding
+        </Button>
+        <StickySaved shown={saved} what="Retired" />
+      </div>
+    )
+  }
+
+  return (
+    <form onSubmit={onSubmit} className={`mt-3 ${DANGER_CARD}`}>
+      <h5 className="m-0 mb-1 text-sm font-semibold text-foreground">
+        Stop feeding at {SHIFT_TYPE_LABEL[schedule.shiftType]}
+      </h5>
+      <p className="m-0 text-sm text-muted-foreground">
+        A version with no lines, never a delete. What the horse ate before the date below stays
+        exactly as it was recorded — and a Shift on or after it materializes no Feed Item.
+      </p>
+      <Fields>
+        <Field
+          label="Stopping on"
+          htmlFor={`feed-retire-from-${schedule.shiftType}`}
+          hint="Backdate it to the day a wrong schedule was published, if that is what happened."
+        >
+          <Input
+            id={`feed-retire-from-${schedule.shiftType}`}
+            type="date"
+            required
+            aria-describedby={`feed-retire-from-${schedule.shiftType}-hint`}
+            {...form.register('validFrom')}
+          />
+        </Field>
+      </Fields>
+      {refusal !== null && <InlineRefusal>{refusal}</InlineRefusal>}
+      <Actions>
+        <Button type="submit" variant="destructive" disabled={pending}>
+          {pending ? 'Publishing…' : 'Yes — retire this feeding'}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => {
+            setConfirming(false)
+            form.reset()
+          }}
+        >
+          Keep it
+        </Button>
+      </Actions>
+    </form>
+  )
+}
+
+interface RetireValues extends FieldValues {
+  validFrom: string
 }
 
 interface FeedLineValues {
@@ -1336,7 +1285,7 @@ interface FeedValues extends FieldValues {
 const NO_PRODUCT = 'none'
 
 /**
- * Publishes a new Feed Schedule version — the screen says *Change her feed*;
+ * Publishes a new Feed Schedule version — the screen says *Change the feed*;
  * the model keeps publish a version (`CONTEXT.md`). Every change creates a
  * version rather than updating a row (ADR 0003), which is why the schedules
  * above offer no edit.
@@ -1344,14 +1293,12 @@ const NO_PRODUCT = 'none'
 function ChangeFeedForm({
   horse,
   products,
-  register,
   reload,
   onDone,
   onCancel,
 }: {
   horse: Horse
   products: ProductList['products']
-  register: RegisterForm
   reload: () => Promise<void>
   onDone: () => void
   onCancel: () => void
@@ -1368,7 +1315,6 @@ function ChangeFeedForm({
 
   const { pending, refusal, onSubmit } = useRecordForm({
     id: 'feed-change',
-    register,
     form,
     write: async (values) => {
       const chosen = values.lines.filter((line) => line.productId !== NO_PRODUCT)
@@ -1394,7 +1340,7 @@ function ChangeFeedForm({
 
   return (
     <form onSubmit={onSubmit} className="mt-4 rounded-md border border-border bg-card p-4">
-      <h3 className="m-0 mb-1 text-base font-semibold text-foreground">Change her feed</h3>
+      <h3 className="m-0 mb-1 text-base font-semibold text-foreground">Change the feed</h3>
 
       <Fields>
         <div className="min-w-0">
@@ -1550,8 +1496,8 @@ function ChangeFeedForm({
       </Button>
 
       <p className="mt-2 text-[13px] leading-snug text-muted-foreground">
-        Publishing with every line set to None retires this horse’s schedule for this Shift Type. A
-        version, not a deletion.
+        To stop feeding at a Shift Type altogether, use <strong>Retire this feeding</strong> on the
+        card above. Either way it is a version, not a deletion.
       </p>
 
       {lineProblem !== null && <InlineRefusal>{lineProblem}</InlineRefusal>}
@@ -1568,7 +1514,7 @@ function ChangeFeedForm({
   )
 }
 
-/* ---------------------------------------------------------- 5. She has left -- */
+/* ------------------------------------------------------------ 5. Departure -- */
 
 interface DepartureValues extends FieldValues {
   departedOn: string
@@ -1577,25 +1523,19 @@ interface DepartureValues extends FieldValues {
 
 /**
  * Departure confirms inline inside the card, never on a Save button and
- * never in a second modal (#62): *I changed her halter colour* must not
- * share a button with *she is gone*.
+ * never in a second modal (#62): *I changed the halter colour* must not
+ * share a button with *this horse is gone*.
  */
-function DepartedTab({
-  horse,
-  register,
-  reload,
-}: {
-  horse: Horse
-  register: RegisterForm
-  reload: () => Promise<void>
-}) {
+function DepartedTab({ horse, reload }: { horse: Horse; reload: () => Promise<void> }) {
   const [confirming, setConfirming] = useState(false)
   const form = useForm<DepartureValues>({ defaultValues: { departedOn: '', reason: '' } })
 
   const { pending, refusal, saved, onSubmit } = useRecordForm({
     id: 'departure',
-    register,
     form,
+    // Confirmed inline in its own card (#62), so the modal's *Save them*
+    // must never perform it.
+    guarded: true,
     write: async (values) => {
       await client.post('/horses/departure', {
         horseId: horse.id,
@@ -1610,7 +1550,6 @@ function DepartedTab({
   const correctionForm = useForm<FieldValues>({ defaultValues: {} })
   const correction = useRecordForm({
     id: 'departure-correction',
-    register,
     form: correctionForm,
     write: async () => {
       await client.post('/horses/departure', { horseId: horse.id, departedOn: null, reason: null })
@@ -1619,14 +1558,11 @@ function DepartedTab({
     },
   })
 
-  const dangerCard =
-    'rounded-md border border-destructive/30 border-l-3 border-l-destructive bg-destructive/4 p-4'
-
   if (horse.departedOn !== null) {
     return (
-      <div className={dangerCard}>
+      <div className={DANGER_CARD}>
         <h3 className="m-0 mb-1 text-base font-semibold text-foreground">
-          She left on {horse.departedOn}
+          Departed on {horse.departedOn}
         </h3>
         {/* A date is a correction, never a delete (ADR 0002) — the same as
             setting one below. */}
@@ -1638,7 +1574,7 @@ function DepartedTab({
           {confirming ? (
             <>
               <span className="mr-1 text-sm font-medium text-foreground">
-                Put her back among the horses at the rescue?
+                Put this horse back among the horses at the rescue?
               </span>
               <Button
                 type="button"
@@ -1647,7 +1583,7 @@ function DepartedTab({
                   void correction.submit()
                 }}
               >
-                {correction.pending ? 'Saving…' : 'Yes — she is still here'}
+                {correction.pending ? 'Saving…' : 'Yes — still at the rescue'}
               </Button>
               <Button
                 type="button"
@@ -1667,7 +1603,7 @@ function DepartedTab({
                 setConfirming(true)
               }}
             >
-              Correct: she has not left
+              Correct: has not departed
             </Button>
           )}
           <StickySaved shown={correction.saved} />
@@ -1677,8 +1613,8 @@ function DepartedTab({
   }
 
   return (
-    <form onSubmit={onSubmit} className={dangerCard}>
-      <h3 className="m-0 mb-1 text-base font-semibold text-foreground">She has left</h3>
+    <form onSubmit={onSubmit} className={DANGER_CARD}>
+      <h3 className="m-0 mb-1 text-base font-semibold text-foreground">Departure</h3>
       <p className="m-0 text-sm text-muted-foreground">
         A date, never a delete. The horse stays on this list and its history stays reachable.
       </p>
@@ -1695,10 +1631,10 @@ function DepartedTab({
         {confirming ? (
           <>
             <span className="mr-1 text-sm font-medium text-foreground">
-              Mark that she has left the rescue?
+              Mark that this horse has left the rescue?
             </span>
             <Button type="submit" variant="destructive" disabled={pending}>
-              {pending ? 'Saving…' : 'Yes — she has left'}
+              {pending ? 'Saving…' : 'Yes — has departed'}
             </Button>
             <Button
               type="button"
@@ -1707,7 +1643,7 @@ function DepartedTab({
                 setConfirming(false)
               }}
             >
-              Keep her
+              Keep the horse
             </Button>
           </>
         ) : (
@@ -1722,7 +1658,7 @@ function DepartedTab({
               })
             }}
           >
-            Mark her as departed
+            Mark as departed
           </Button>
         )}
         <StickySaved shown={saved} />

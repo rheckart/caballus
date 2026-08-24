@@ -11,7 +11,7 @@
  *
  * **An edit is a version.** There is no delete and nothing here updates a row:
  * publishing a new number supersedes the old one on its valid-from day, and
- * *what was her sheet number in January* stays answerable (ADR 0003).
+ * *what was its sheet number in January* stays answerable (ADR 0003).
  *
  * The metric is not on any form. Cold is air temperature and heat is real
  * feel, the kind already knows which, and a field asking a volunteer to
@@ -31,6 +31,7 @@ import {
   Saved,
   useSaving,
 } from '../../components/forms'
+import { Refusal } from '../../components/refusal'
 import { Alert, AlertTitle } from '../../components/ui/alert'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
@@ -122,7 +123,9 @@ function Thresholds() {
           <p>One moment…</p>
         ) : (
           <Alert variant="destructive">
-            <AlertTitle>{problem}</AlertTitle>
+            <AlertTitle>
+              <Refusal>{problem}</Refusal>
+            </AlertTitle>
           </Alert>
         )}
       </main>
@@ -142,7 +145,9 @@ function Thresholds() {
 
       {problem !== null && (
         <Alert variant="destructive" className="mb-4">
-          <AlertTitle>{problem}</AlertTitle>
+          <AlertTitle>
+            <Refusal>{problem}</Refusal>
+          </AlertTitle>
         </Alert>
       )}
 

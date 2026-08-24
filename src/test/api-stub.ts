@@ -25,6 +25,20 @@ export function refused(error: string, status = 409): Response {
 }
 
 /**
+ * What `noContent()` looks like on the wire, for a write whose contract says it
+ * answers nothing.
+ *
+ * A stub answering `{}` instead is a 200 that the real client parses against
+ * `z.void()` and **rejects** — so a screen under test takes a successful save
+ * for a refusal, and a test that only inspects the captured request body
+ * passes anyway while the screen behind it is showing an error. That is a real
+ * trap the seam had no way to avoid until #68 walked into it.
+ */
+export function answeredNothing(): Response {
+  return new Response(null, { status: 204 })
+}
+
+/**
  * Stubs `fetch` to answer each `/api/v1` path with a fixed body (200), a
  * `Response` of the handler's own making (for a refusal), or — for a write
  * whose answer depends on what was sent — a function of the request's

@@ -27,6 +27,7 @@ import {
   Sheet,
   useSaving,
 } from '../../components/forms'
+import { Refusal } from '../../components/refusal'
 import { Alert, AlertTitle } from '../../components/ui/alert'
 import { Checkbox } from '../../components/ui/checkbox'
 import { Input } from '../../components/ui/input'
@@ -106,7 +107,9 @@ function ReleaseVersions() {
 
       {problem !== null && (
         <Alert variant="destructive" className="mb-4">
-          <AlertTitle>{problem}</AlertTitle>
+          <AlertTitle>
+            <Refusal>{problem}</Refusal>
+          </AlertTitle>
         </Alert>
       )}
 

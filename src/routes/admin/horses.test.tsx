@@ -50,7 +50,22 @@ const spaces = [
 const profile = {
   ...maple,
   alerts: [],
-  feedSchedules: [],
+  feedSchedules: [
+    {
+      shiftType: 'feed_am',
+      validFrom: '2026-08-01',
+      isNew: false,
+      lines: [
+        {
+          productId: 'pr1',
+          productName: 'Senior',
+          productKind: 'feed',
+          amount: '1 scoop',
+          route: 'in_feed',
+        },
+      ],
+    },
+  ],
   measurements: { weights: [], bodyConditions: [] },
   endedAlerts: [],
 }
@@ -89,7 +104,7 @@ describe('the horse record', () => {
     expect(await within(dialog).findByRole('combobox', { name: 'Stall' })).toBeTruthy()
     expect(within(dialog).queryByText('You have changes you haven’t saved.')).toBeNull()
 
-    await user.click(within(dialog).getByRole('tab', { name: 'About her' }))
+    await user.click(within(dialog).getByRole('tab', { name: 'Core Details' }))
     expect((within(dialog).getByLabelText('Name') as HTMLInputElement).value).toBe('Maple')
   })
 
@@ -114,6 +129,39 @@ describe('the horse record', () => {
     })
     expect(posted[0]).toMatchObject({ horseId: 'h1', name: 'Maple Tree' })
     expect(await within(dialog).findByRole('combobox', { name: 'Stall' })).toBeTruthy()
+  })
+
+  it('refuses to depart a horse from Save them, because that is confirmed in its own card', async () => {
+    const user = userEvent.setup()
+    const posted: unknown[] = []
+    stubDesk({
+      '/horses/departure': (init: RequestInit) => {
+        posted.push(JSON.parse(String(init.body)))
+        return undefined
+      },
+    })
+    renderDesk()
+
+    const dialog = await openRecord(user)
+    await user.click(within(dialog).getByRole('tab', { name: 'Departure' }))
+    await user.type(within(dialog).getByLabelText(/^Reason/), 'thinking about it')
+
+    await user.click(within(dialog).getByRole('tab', { name: 'Core Details' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Save them' }))
+
+    // #62 keeps a destructive act's confirmation inside its own card — *I
+    // recorded her orientation* must not share a button with *she is gone* —
+    // and the unsaved-changes prompt is that shared button under another name.
+    // Somebody who typed a reason and thought better of it reads *Save them* as
+    // *keep my typing*, so it says where the real button is instead.
+    expect(posted).toEqual([])
+    expect(await within(dialog).findByText(/confirmed here, not from Save them/i)).toBeTruthy()
+    // And the switch did not happen either: the typing is still there to
+    // confirm or to throw away.
+    await user.click(within(dialog).getByRole('tab', { name: 'Departure' }))
+    expect((within(dialog).getByLabelText(/^Reason/) as HTMLInputElement).value).toBe(
+      'thinking about it',
+    )
   })
 
   it('renders a refusal inline, beside the button that was pressed', async () => {
@@ -165,5 +213,52 @@ describe('the horse record', () => {
       { kind: 'stall', spaceId: 's2' },
       { kind: 'pasture', spaceId: 'p1' },
     ])
+  })
+  it('says so inside the record when the profile read fails, and retries', async () => {
+    const user = userEvent.setup()
+    let answering = false
+    stubDesk({
+      '/horses/h1': () => (answering ? profile : refused('horse_not_found')),
+    })
+    renderDesk()
+
+    const dialog = await openRecord(user)
+    await user.click(within(dialog).getByRole('tab', { name: 'Feeding' }))
+
+    // Not *Loading the schedule…* forever behind a modal nothing can see past.
+    expect(await within(dialog).findByText('That horse is not here any more.')).toBeTruthy()
+
+    answering = true
+    await user.click(within(dialog).getByRole('button', { name: 'Try again' }))
+    expect(await within(dialog).findByText('Senior', { exact: false })).toBeTruthy()
+  })
+
+  it('retires one Shift Type by publishing a version with no lines', async () => {
+    const user = userEvent.setup()
+    const posted: unknown[] = []
+    stubDesk({
+      '/feed-schedules': (init: RequestInit) => {
+        posted.push(JSON.parse(String(init.body)))
+        return { id: 'fs2' }
+      },
+    })
+    renderDesk()
+
+    const dialog = await openRecord(user)
+    await user.click(within(dialog).getByRole('tab', { name: 'Feeding' }))
+    await user.click(await within(dialog).findByRole('button', { name: 'Retire this feeding' }))
+
+    await user.type(within(dialog).getByLabelText('Stopping on'), '2026-09-01')
+    await user.click(within(dialog).getByRole('button', { name: 'Yes — retire this feeding' }))
+
+    await waitFor(() => {
+      expect(posted).toHaveLength(1)
+    })
+    expect(posted[0]).toMatchObject({
+      horseId: 'h1',
+      shiftType: 'feed_am',
+      validFrom: '2026-09-01',
+      lines: [],
+    })
   })
 })

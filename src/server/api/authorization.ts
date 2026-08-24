@@ -91,6 +91,15 @@ export type FloorReason =
    * `escalateObservation`'s own precedent.
    */
   | 'record-a-supplies-reading'
+  /**
+   * A Volunteer editing their **own** name, mobile or sign-in address (ADR
+   * 0027). Not a third axis past ADR 0010's two — the floor is already the
+   * mechanism for an act that needs no Scope at all, and this is the same shape
+   * `record-your-own-presence` takes. That the subject is the actor is
+   * structural rather than checked: the handlers name one volunteer id and it
+   * is the actor's, so there is no shape in which these edit somebody else.
+   */
+  | 'edit-your-own-contact-details'
 
 /**
  * A position on **one Shift** — `lead`, `co_lead` or `acting_lead` — and,

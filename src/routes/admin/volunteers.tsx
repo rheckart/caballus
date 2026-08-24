@@ -16,9 +16,17 @@
  * Everything goes through the typed client, so the paths and the answer shapes
  * are the contract's and a wrong one is a compile error rather than a 404 at
  * 6am (ADR 0021).
+ *
+ * The record is a modal of four tabs — Core Details, Paperwork, Roles,
+ * Departure — and each tab is one form with one Save, the shape the horse
+ * record already has (#62, ADR 0025). `src/components/record-modal.tsx` is
+ * the modal both desks render, so the rule that **only one tab may ever be
+ * unsaved** is one implementation rather than two that drift.
  */
 import { createFileRoute } from '@tanstack/react-router'
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { Pencil } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { Controller, useForm, type FieldValues } from 'react-hook-form'
 
 import {
   Actions,
@@ -36,10 +44,19 @@ import {
   matches,
   useSaving,
 } from '../../components/forms'
+import {
+  DANGER_CARD,
+  InlineRefusal,
+  RecordModal,
+  StickySaved,
+  useRecordForm,
+} from '../../components/record-modal'
+import { Refusal } from '../../components/refusal'
 import { Alert, AlertTitle } from '../../components/ui/alert'
 import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import { Checkbox } from '../../components/ui/checkbox'
+import { DialogTitle } from '../../components/ui/dialog'
 import { Input } from '../../components/ui/input'
 import {
   Select,
@@ -85,7 +102,7 @@ const GAP_TEXT: Record<RosterGap, string> = {
 }
 
 /**
- * A sub-form inside the record panel, separated from what is above it — the
+ * A sub-form inside a record tab, separated from what is above it — the
  * hairline `.record form` used to draw.
  */
 const RECORD_FORM = 'mt-6 border-t border-border pt-4'
@@ -114,12 +131,13 @@ function Volunteers() {
   }, [load])
 
   /**
-   * Does the act, then re-reads the list.
+   * Adds the volunteer, then re-reads the list.
    *
    * Re-read rather than patched in place, because almost every act here changes
    * something derived — a signature recorded changes `rosterable`, a role
    * granted changes the scopes, and a screen that guessed at the derivation
-   * would be a second answer to the question the server already answered.
+   * would be a second answer to the question the server already answered. The
+   * record's own acts each render their own refusal and call `load` directly.
    */
   const act = useCallback(
     async (work: () => Promise<unknown>) => {
@@ -151,13 +169,17 @@ function Volunteers() {
           <Loading what="people" />
         ) : (
           <Alert variant="destructive">
-            <AlertTitle>{problem}</AlertTitle>
+            <AlertTitle>
+              <Refusal>{problem}</Refusal>
+            </AlertTitle>
           </Alert>
         )}
       </main>
     )
   }
 
+  const openPerson =
+    openFor === null ? null : (people.people.find((person) => person.id === openFor) ?? null)
   const candidates = people.people.filter((person) => person.state === 'candidate')
   const flagged = people.people.filter(
     (person) => person.state === 'volunteer' && !person.rosterable,
@@ -169,7 +191,9 @@ function Volunteers() {
 
       {problem !== null && (
         <Alert variant="destructive" className="mb-4">
-          <AlertTitle>{problem}</AlertTitle>
+          <AlertTitle>
+            <Refusal>{problem}</Refusal>
+          </AlertTitle>
         </Alert>
       )}
 
@@ -275,10 +299,11 @@ function Volunteers() {
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      setOpenFor(openFor === person.id ? null : person.id)
+                      setOpenFor(person.id)
                     }}
                   >
-                    {openFor === person.id ? 'Close' : 'Open'}
+                    <Pencil aria-hidden="true" />
+                    Edit
                   </Button>
                 </TableCell>
               </TableRow>
@@ -287,16 +312,16 @@ function Volunteers() {
         </Table>
       )}
 
-      {openFor !== null && (
+      {openPerson !== null && (
         <PersonRecord
-          person={people.people.find((person) => person.id === openFor) ?? null}
+          key={openPerson.id}
+          person={openPerson}
           today={people.today}
           versions={versions?.versions ?? []}
-          act={act}
+          reload={load}
           onClose={() => {
             setOpenFor(null)
           }}
-          problem={problem}
         />
       )}
 
@@ -382,152 +407,210 @@ function NewVolunteer({
   )
 }
 
-/** One person's record: the gates, the grants, and the paper behind them. */
+/* ------------------------------------------------------- the record modal -- */
+
+const TAB_IDS = ['details', 'paperwork', 'roles', 'departure'] as const
+type TabId = (typeof TAB_IDS)[number]
+
+const TAB_LABEL: Record<TabId, string> = {
+  details: 'Core Details',
+  paperwork: 'Paperwork',
+  roles: 'Roles',
+  departure: 'Departure',
+}
+
+/**
+ * One person's record: the gates, the grants, and the paper behind them —
+ * the same modal of tabs the horse record is (#62, ADR 0025), so a desk that
+ * has learned one has learned the other. `RecordModal` owns the rule that
+ * only one tab may ever be unsaved.
+ */
 function PersonRecord({
   person,
   today,
   versions,
-  act,
+  reload,
   onClose,
-  problem,
 }: {
-  person: Person | null
+  person: Person
   today: DayString
   versions: Versions['versions']
-  act: (work: () => Promise<unknown>) => Promise<void>
+  reload: () => Promise<void>
   onClose: () => void
-  problem: string | null
 }) {
-  if (person === null) return null
-  const behind = person.behindRoster
+  const content: Record<TabId, ReactNode> = {
+    details: <DetailsTab person={person} today={today} reload={reload} />,
+    paperwork: <PaperworkTab person={person} today={today} versions={versions} reload={reload} />,
+    roles: <RolesTab person={person} reload={reload} />,
+    departure: <DepartureTab person={person} reload={reload} />,
+  }
 
   return (
-    // The accent along the edge marks it as *this row, expanded* rather than
-    // as a second page that arrived from nowhere.
-    <section className="mb-4 rounded-lg border border-border border-l-3 border-l-primary bg-background p-4 sm:p-6">
-      <header className="mb-4 flex items-center gap-4 border-b border-border pb-4">
-        <h2 className="m-0 flex-1">{person.name}</h2>
-        <Button type="button" variant="outline" size="sm" onClick={onClose}>
-          Close
-        </Button>
-      </header>
-
-      {/* The same message as the one at the top of the page, repeated here
-          because this is where the Coordinator is looking when an act on this
-          person's row fails — a banner above a table scrolled out of view
-          reads as nothing having happened. */}
-      {problem !== null && (
-        <Alert variant="destructive" className="mb-4">
-          <AlertTitle>{problem}</AlertTitle>
-        </Alert>
-      )}
-
-      {behind === null ? (
-        // Absent rather than empty: the reader does not hold `roster`, and
-        // saying so beats showing blank fields that look like missing data.
-        <p>Contact details, the date of birth and the release history are behind `roster`.</p>
-      ) : (
-        <>
-          <h3>Record</h3>
-          <ul className="m-0 mb-4 list-none p-0">
-            <li className="border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0">
-              Email: {behind.email}
-            </li>
-            <li className="border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0">
-              Mobile: {behind.mobile ?? '—'}
-            </li>
-            <li className="border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0">
-              Date of birth: {behind.dateOfBirth ?? 'not established'}
-              {behind.dateOfBirthProvenance !== null &&
-                ` (${behind.dateOfBirthProvenance === 'photo_id' ? 'photo ID sighted' : 'provided by a parent'})`}
-              {behind.age !== null && `, aged ${String(behind.age)}`}
-            </li>
-            {person.isMinor && behind.turnsEighteenOn !== null && (
-              // The one gate failure that arrives on schedule. It obsoletes a
-              // parent's signature and retires the Consent, derived on the day
-              // and never by a job (ADR 0017).
-              <li className="border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0">
-                Turns 18 on {behind.turnsEighteenOn}, which obsoletes a parent&rsquo;s signature
-              </li>
-            )}
-            <li className="border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0">
-              Orientation: {behind.orientedOn ?? 'not recorded'}
-            </li>
-            <li className="border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0">
-              Consent: {behind.consentedOn ?? 'none'}
-              {behind.parentName !== null && ` (${behind.parentName})`}
-              {person.consentIsHistorical && ' — historical, and no longer gating'}
-            </li>
-            <li className="border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0">
-              Account: {person.hasAccount ? 'claimed' : 'never signed in'}
-            </li>
-          </ul>
-
-          <RecordDateOfBirth person={person} today={today} act={act} />
-          {behind.orientedOn === null && (
-            <RecordOrientation person={person} today={today} act={act} />
-          )}
-          {person.isMinor && <RecordConsent person={person} today={today} act={act} />}
-          <RecordRelease person={person} today={today} versions={versions} act={act} />
-          <Signatures person={person} act={act} />
-        </>
-      )}
-
-      <Grants person={person} act={act} />
-
-      <Removal person={person} act={act} />
-    </section>
+    <RecordModal
+      onClose={onClose}
+      tabs={TAB_IDS.map((id) => ({ id, label: TAB_LABEL[id], content: content[id] }))}
+      header={
+        <div>
+          <DialogTitle>{person.name}</DialogTitle>
+          <p className="m-0 mt-1 text-sm text-muted-foreground">
+            {person.state === 'candidate' ? 'Candidate' : 'Volunteer'}
+            {person.isMinor && ' · Under 18'}
+          </p>
+        </div>
+      }
+    />
   )
+}
+
+/**
+ * Absent rather than empty: the reader does not hold `roster`, and saying so
+ * beats showing blank fields that look like missing data.
+ */
+function BehindRoster() {
+  return (
+    <p className="m-0 text-sm text-muted-foreground">
+      Contact details, the date of birth and the release history are behind `roster`.
+    </p>
+  )
+}
+
+/**
+ * A button-only act — a grant, a revocation — with its refusal beside it
+ * rather than at the top of a page. The forms use `useRecordForm`; these have
+ * no form to be dirty, so they keep their own small state.
+ */
+function useButtonAct(reload: () => Promise<void>) {
+  const [refusal, setRefusal] = useState<string | null>(null)
+  const [pending, setPending] = useState(false)
+
+  const run = (work: () => Promise<unknown>) => {
+    setRefusal(null)
+    setPending(true)
+    void (async () => {
+      try {
+        await work()
+        await reload()
+      } catch (error: unknown) {
+        setRefusal(refusalText(error))
+      } finally {
+        setPending(false)
+      }
+    })()
+  }
+
+  return { refusal, pending, run }
+}
+
+const RECORD_ROW = 'border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0'
+
+/* --------------------------------------------------------- 1. Core Details -- */
+
+function DetailsTab({
+  person,
+  today,
+  reload,
+}: {
+  person: Person
+  today: DayString
+  reload: () => Promise<void>
+}) {
+  const behind = person.behindRoster
+  if (behind === null) return <BehindRoster />
+
+  return (
+    <>
+      <ul className="m-0 mb-4 list-none p-0">
+        <li className={RECORD_ROW}>Email: {behind.email}</li>
+        <li className={RECORD_ROW}>Mobile: {behind.mobile ?? '—'}</li>
+        <li className={RECORD_ROW}>
+          Date of birth: {behind.dateOfBirth ?? 'not established'}
+          {behind.dateOfBirthProvenance !== null &&
+            ` (${behind.dateOfBirthProvenance === 'photo_id' ? 'photo ID sighted' : 'provided by a parent'})`}
+          {behind.age !== null && `, aged ${String(behind.age)}`}
+        </li>
+        {person.isMinor && behind.turnsEighteenOn !== null && (
+          // The one gate failure that arrives on schedule. It obsoletes a
+          // parent's signature and retires the Consent, derived on the day
+          // and never by a job (ADR 0017).
+          <li className={RECORD_ROW}>
+            Turns 18 on {behind.turnsEighteenOn}, which obsoletes a parent&rsquo;s signature
+          </li>
+        )}
+        <li className={RECORD_ROW}>Account: {person.hasAccount ? 'claimed' : 'never signed in'}</li>
+      </ul>
+
+      <RecordDateOfBirth person={person} today={today} reload={reload} />
+    </>
+  )
+}
+
+interface DateOfBirthValues extends FieldValues {
+  dateOfBirth: string
+  provenance: 'photo_id' | 'parent_provided'
+  reason: string
 }
 
 function RecordDateOfBirth({
   person,
   today,
-  act,
+  reload,
 }: {
   person: Person
   today: DayString
-  act: (work: () => Promise<unknown>) => Promise<void>
+  reload: () => Promise<void>
 }) {
-  const { pending, saved, save } = useSaving()
+  const form = useForm<DateOfBirthValues>({
+    defaultValues: {
+      dateOfBirth: person.behindRoster?.dateOfBirth ?? '',
+      // The read carries it as a plain string (`/volunteers`), so the two the
+      // write accepts are the fence — anything else falls back to the default.
+      provenance:
+        person.behindRoster?.dateOfBirthProvenance === 'parent_provided'
+          ? 'parent_provided'
+          : 'photo_id',
+      reason: '',
+    },
+  })
+
+  const { pending, refusal, saved, onSubmit } = useRecordForm({
+    id: 'date-of-birth',
+    form,
+    write: async (values) => {
+      await client.post('/volunteers/date-of-birth', {
+        volunteerId: person.id,
+        dateOfBirth: dayString(values.dateOfBirth),
+        provenance: values.provenance,
+        reason: values.reason || null,
+      })
+      await reload()
+    },
+  })
 
   return (
-    <form
-      className={RECORD_FORM}
-      onSubmit={(event: FormEvent<HTMLFormElement>) => {
-        event.preventDefault()
-        const data = new FormData(event.currentTarget)
-        void save(() =>
-          act(() =>
-            client.post('/volunteers/date-of-birth', {
-              volunteerId: person.id,
-              dateOfBirth: dayString(String(data.get('dateOfBirth') ?? '')),
-              provenance:
-                data.get('provenance') === 'parent_provided' ? 'parent_provided' : 'photo_id',
-              reason: String(data.get('reason') ?? '') || null,
-            }),
-          ),
-        ).catch(() => {
-          // Already at the top of the screen, put there by `act`.
-        })
-      }}
-    >
+    <form className={RECORD_FORM} onSubmit={onSubmit}>
       <h3 className="mt-0">Date of birth</h3>
       {/* The app never holds the identity document — only how the date was
           established (ADR 0017). */}
       <Fields>
         <Field label="Date" htmlFor="dob">
-          <Input id="dob" name="dateOfBirth" type="date" max={today} required />
+          <Input id="dob" type="date" max={today} required {...form.register('dateOfBirth')} />
         </Field>
         <div className="min-w-0">
-          <Choice
-            legend="How it was established"
+          <Controller
+            control={form.control}
             name="provenance"
-            defaultValue="photo_id"
-            options={[
-              { value: 'photo_id', label: 'Photo ID sighted' },
-              { value: 'parent_provided', label: 'Provided by a parent' },
-            ]}
+            render={({ field }) => (
+              <Choice
+                legend="How it was established"
+                name="provenance"
+                value={field.value}
+                onChange={field.onChange}
+                options={[
+                  { value: 'photo_id', label: 'Photo ID sighted' },
+                  { value: 'parent_provided', label: 'Provided by a parent' },
+                ]}
+              />
+            )}
           />
         </div>
         <WideField
@@ -536,46 +619,93 @@ function RecordDateOfBirth({
           optional
           hint="Only needed for a correction."
         >
-          <Input id="dob-reason" name="reason" maxLength={500} aria-describedby="dob-reason-hint" />
+          <Input
+            id="dob-reason"
+            maxLength={500}
+            aria-describedby="dob-reason-hint"
+            {...form.register('reason')}
+          />
         </WideField>
       </Fields>
+      {refusal !== null && <InlineRefusal>{refusal}</InlineRefusal>}
       <Actions>
         <SaveButton pending={pending}>Record</SaveButton>
-        <Saved saved={saved} />
+        <StickySaved shown={saved} />
       </Actions>
     </form>
   )
 }
 
-function RecordOrientation({
+/* ------------------------------------------------------------ 2. Paperwork -- */
+
+/**
+ * The three gates and the paper behind them (#34, ADR 0017). One surface, so
+ * a gap is the Coordinator's to-do list rather than a disabled button.
+ */
+function PaperworkTab({
   person,
   today,
-  act,
+  versions,
+  reload,
 }: {
   person: Person
   today: DayString
-  act: (work: () => Promise<unknown>) => Promise<void>
+  versions: Versions['versions']
+  reload: () => Promise<void>
 }) {
-  const { pending, saved, save } = useSaving()
+  const behind = person.behindRoster
+  if (behind === null) return <BehindRoster />
 
   return (
-    <form
-      className={RECORD_FORM}
-      onSubmit={(event: FormEvent<HTMLFormElement>) => {
-        event.preventDefault()
-        const data = new FormData(event.currentTarget)
-        void save(() =>
-          act(() =>
-            client.post('/volunteers/orientation', {
-              volunteerId: person.id,
-              orientedOn: dayString(String(data.get('orientedOn') ?? '')),
-            }),
-          ),
-        ).catch(() => {
-          // Already at the top of the screen, put there by `act`.
-        })
-      }}
-    >
+    <>
+      <ul className="m-0 mb-4 list-none p-0">
+        <li className={RECORD_ROW}>Orientation: {behind.orientedOn ?? 'not recorded'}</li>
+        <li className={RECORD_ROW}>
+          Consent: {behind.consentedOn ?? 'none'}
+          {behind.parentName !== null && ` (${behind.parentName})`}
+          {person.consentIsHistorical && ' — historical, and no longer gating'}
+        </li>
+      </ul>
+
+      {behind.orientedOn === null && (
+        <RecordOrientation person={person} today={today} reload={reload} />
+      )}
+      {person.isMinor && <RecordConsent person={person} today={today} reload={reload} />}
+      <RecordRelease person={person} today={today} versions={versions} reload={reload} />
+      <Signatures person={person} reload={reload} />
+    </>
+  )
+}
+
+interface OrientationValues extends FieldValues {
+  orientedOn: string
+}
+
+function RecordOrientation({
+  person,
+  today,
+  reload,
+}: {
+  person: Person
+  today: DayString
+  reload: () => Promise<void>
+}) {
+  const form = useForm<OrientationValues>({ defaultValues: { orientedOn: today } })
+
+  const { pending, refusal, saved, onSubmit } = useRecordForm({
+    id: 'orientation',
+    form,
+    write: async (values) => {
+      await client.post('/volunteers/orientation', {
+        volunteerId: person.id,
+        orientedOn: dayString(values.orientedOn),
+      })
+      await reload()
+    },
+  })
+
+  return (
+    <form className={RECORD_FORM} onSubmit={onSubmit}>
       <h3 className="mt-0">Orientation</h3>
       {/* It never lapses and is never revoked, so this appears once. */}
       <Fields>
@@ -586,53 +716,56 @@ function RecordOrientation({
         >
           <Input
             id="oriented-on"
-            name="orientedOn"
             type="date"
-            defaultValue={today}
             max={today}
             required
             aria-describedby="oriented-on-hint"
+            {...form.register('orientedOn')}
           />
         </Field>
       </Fields>
+      {refusal !== null && <InlineRefusal>{refusal}</InlineRefusal>}
       <Actions>
         <SaveButton pending={pending}>Record the orientation</SaveButton>
-        <Saved saved={saved} />
+        <StickySaved shown={saved} />
       </Actions>
     </form>
   )
 }
 
+interface ConsentValues extends FieldValues {
+  consentedOn: string
+  parentName: string
+}
+
 function RecordConsent({
   person,
   today,
-  act,
+  reload,
 }: {
   person: Person
   today: DayString
-  act: (work: () => Promise<unknown>) => Promise<void>
+  reload: () => Promise<void>
 }) {
-  const { pending, saved, save } = useSaving()
+  const form = useForm<ConsentValues>({
+    defaultValues: { consentedOn: today, parentName: person.behindRoster?.parentName ?? '' },
+  })
+
+  const { pending, refusal, saved, onSubmit } = useRecordForm({
+    id: 'consent',
+    form,
+    write: async (values) => {
+      await client.post('/volunteers/consent', {
+        volunteerId: person.id,
+        consentedOn: dayString(values.consentedOn),
+        parentName: values.parentName,
+      })
+      await reload()
+    },
+  })
 
   return (
-    <form
-      className={RECORD_FORM}
-      onSubmit={(event: FormEvent<HTMLFormElement>) => {
-        event.preventDefault()
-        const data = new FormData(event.currentTarget)
-        void save(() =>
-          act(() =>
-            client.post('/volunteers/consent', {
-              volunteerId: person.id,
-              consentedOn: dayString(String(data.get('consentedOn') ?? '')),
-              parentName: String(data.get('parentName') ?? ''),
-            }),
-          ),
-        ).catch(() => {
-          // Already at the top of the screen, put there by `act`.
-        })
-      }}
-    >
+    <form className={RECORD_FORM} onSubmit={onSubmit}>
       <h3 className="mt-0">Consent</h3>
       {/* A parent's permission, and a different record from the Release: one
           row cannot expire on two clocks (ADR 0017). */}
@@ -640,44 +773,64 @@ function RecordConsent({
         <Field label="Date given" htmlFor="consented-on">
           <Input
             id="consented-on"
-            name="consentedOn"
             type="date"
-            defaultValue={today}
             max={today}
             required
+            {...form.register('consentedOn')}
           />
         </Field>
         <Field label="Parent or guardian" htmlFor="parent-name">
-          <Input id="parent-name" name="parentName" required maxLength={200} />
+          <Input id="parent-name" required maxLength={200} {...form.register('parentName')} />
         </Field>
       </Fields>
+      {refusal !== null && <InlineRefusal>{refusal}</InlineRefusal>}
       <Actions>
         <SaveButton pending={pending}>Record the consent</SaveButton>
-        <Saved saved={saved} />
+        <StickySaved shown={saved} />
       </Actions>
     </form>
   )
+}
+
+interface ReleaseValues extends FieldValues {
+  releaseVersionId: string
+  signedOn: string
+  byParent: boolean
 }
 
 function RecordRelease({
   person,
   today,
   versions,
-  act,
+  reload,
 }: {
   person: Person
   today: DayString
   versions: Versions['versions']
-  act: (work: () => Promise<unknown>) => Promise<void>
+  reload: () => Promise<void>
 }) {
   const current = versions[0]
-  const { pending, saved, save } = useSaving()
-  // The panel can mount before `/release-versions` answers, so the current
-  // version is the fallback rather than the initial state — the same default
-  // the native select carried.
-  const [versionId, setVersionId] = useState('')
-  const [byParent, setByParent] = useState(person.isMinor)
-  const chosenVersionId = versionId === '' ? (current?.id ?? '') : versionId
+  const form = useForm<ReleaseValues>({
+    defaultValues: {
+      releaseVersionId: current?.id ?? '',
+      signedOn: today,
+      byParent: person.isMinor,
+    },
+  })
+
+  const { pending, refusal, saved, onSubmit } = useRecordForm({
+    id: 'release',
+    form,
+    write: async (values) => {
+      await client.post('/volunteers/release', {
+        volunteerId: person.id,
+        releaseVersionId: values.releaseVersionId,
+        signedOn: dayString(values.signedOn),
+        byParent: values.byParent,
+      })
+      await reload()
+    },
+  })
 
   if (current === undefined) {
     return (
@@ -689,84 +842,67 @@ function RecordRelease({
   }
 
   return (
-    <form
-      className={RECORD_FORM}
-      onSubmit={(event: FormEvent<HTMLFormElement>) => {
-        event.preventDefault()
-        const data = new FormData(event.currentTarget)
-        void save(() =>
-          act(() =>
-            client.post('/volunteers/release', {
-              volunteerId: person.id,
-              releaseVersionId: chosenVersionId,
-              signedOn: dayString(String(data.get('signedOn') ?? '')),
-              byParent,
-            }),
-          ),
-        ).catch(() => {
-          // Already at the top of the screen, put there by `act`.
-        })
-      }}
-    >
+    <form className={RECORD_FORM} onSubmit={onSubmit}>
       <h3 className="mt-0">Release</h3>
       {/* The record that a piece of paper exists — who signed, when, which
           version. The paper itself stays in the cabinet (ADR 0017). */}
       <Fields>
         <Field label="Version signed" htmlFor="release-version">
-          <Select value={chosenVersionId} onValueChange={setVersionId}>
-            <SelectTrigger id="release-version" aria-label="Version signed">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {versions.map((version) => (
-                <SelectItem key={version.id} value={version.id}>
-                  {version.label} (from {version.validFrom})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Controller
+            control={form.control}
+            name="releaseVersionId"
+            render={({ field }) => (
+              <Select value={field.value} onValueChange={field.onChange}>
+                <SelectTrigger id="release-version" aria-label="Version signed">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {versions.map((version) => (
+                    <SelectItem key={version.id} value={version.id}>
+                      {version.label} (from {version.validFrom})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          />
         </Field>
         <Field label="Date on the paper" htmlFor="signed-on">
-          <Input
-            id="signed-on"
-            name="signedOn"
-            type="date"
-            defaultValue={today}
-            max={today}
-            required
-          />
+          <Input id="signed-on" type="date" max={today} required {...form.register('signedOn')} />
         </Field>
         <div className="sm:col-span-2">
           <label
             htmlFor="by-parent"
             className="m-0 flex min-h-11 items-center gap-2 text-sm font-medium text-foreground"
           >
-            <Checkbox
-              id="by-parent"
-              checked={byParent}
-              onCheckedChange={(checked) => {
-                setByParent(checked === true)
-              }}
+            <Controller
+              control={form.control}
+              name="byParent"
+              render={({ field }) => (
+                <Checkbox
+                  id="by-parent"
+                  checked={field.value}
+                  onCheckedChange={(checked) => {
+                    field.onChange(checked === true)
+                  }}
+                />
+              )}
             />
             Signed by a parent or guardian
           </label>
         </div>
       </Fields>
+      {refusal !== null && <InlineRefusal>{refusal}</InlineRefusal>}
       <Actions>
         <SaveButton pending={pending}>Record the release</SaveButton>
-        <Saved saved={saved} />
+        <StickySaved shown={saved} />
       </Actions>
     </form>
   )
 }
 
-function Signatures({
-  person,
-  act,
-}: {
-  person: Person
-  act: (work: () => Promise<unknown>) => Promise<void>
-}) {
+function Signatures({ person, reload }: { person: Person; reload: () => Promise<void> }) {
+  const { refusal, pending, run } = useButtonAct(reload)
   const signatures = person.behindRoster?.signatures ?? []
   if (signatures.length === 0) return null
 
@@ -791,8 +927,9 @@ function Signatures({
                 variant="outline"
                 size="sm"
                 className="flex-none"
+                disabled={pending}
                 onClick={() => {
-                  void act(() =>
+                  run(() =>
                     client.post('/volunteers/release-revocation', {
                       signatureId: signature.id,
                       reason: null,
@@ -806,9 +943,12 @@ function Signatures({
           </li>
         ))}
       </ul>
+      {refusal !== null && <InlineRefusal>{refusal}</InlineRefusal>}
     </>
   )
 }
+
+/* ---------------------------------------------------------------- 3. Roles -- */
 
 /**
  * Roles and Medication Authority.
@@ -818,18 +958,12 @@ function Signatures({
  * and a button that is not there is indistinguishable from a broken app
  * (ADR 0011's argument for the disabled-and-explained Cover action).
  */
-function Grants({
-  person,
-  act,
-}: {
-  person: Person
-  act: (work: () => Promise<unknown>) => Promise<void>
-}) {
+function RolesTab({ person, reload }: { person: Person; reload: () => Promise<void> }) {
+  const { refusal, pending, run } = useButtonAct(reload)
   const held = new Set<Role>(person.roles)
 
   return (
     <>
-      <h3>Roles</h3>
       {/* One row per Role, held or not, with the act on it. A bulleted list of
           fourteen names each trailing a button was a column of identical text
           the Coordinator had to read to find the one they came for. */}
@@ -853,8 +987,9 @@ function Grants({
               variant="outline"
               size="sm"
               className="flex-none"
+              disabled={pending}
               onClick={() => {
-                void act(() =>
+                run(() =>
                   held.has(role)
                     ? client.post('/volunteers/role-revocation', {
                         volunteerId: person.id,
@@ -866,9 +1001,7 @@ function Grants({
                         role,
                         reason: null,
                       }),
-                ).catch(() => {
-                  // Already at the top of the screen, put there by `act`.
-                })
+                )
               }}
             >
               {held.has(role) ? 'Revoke' : 'Grant'}
@@ -886,69 +1019,114 @@ function Grants({
       <Button
         type="button"
         variant="outline"
+        disabled={pending}
         onClick={() => {
-          void act(() =>
+          run(() =>
             client.post('/volunteers/medication-authority', {
               volunteerId: person.id,
               granted: !person.medicationAuthority,
               reason: null,
             }),
-          ).catch(() => {
-            // Already at the top of the screen, put there by `act`.
-          })
+          )
         }}
       >
         {person.medicationAuthority ? 'Revoke medication authority' : 'Grant medication authority'}
       </Button>
+      {refusal !== null && <InlineRefusal>{refusal}</InlineRefusal>}
     </>
   )
+}
+
+/* ------------------------------------------------------------ 4. Departure -- */
+
+interface RemovalValues extends FieldValues {
+  reason: string
 }
 
 /**
  * Leaving the rescue: a date rather than a delete, because the work they did
  * still happened and it still has to have a subject. Their grants go with them
  * (ADR 0010).
+ *
+ * It confirms inline inside the card, never on a Save button and never in a
+ * second modal (#62): *I recorded her orientation* must not share a button
+ * with *she is gone*.
  */
-function Removal({
-  person,
-  act,
-}: {
-  person: Person
-  act: (work: () => Promise<unknown>) => Promise<void>
-}) {
-  const { pending, saved, save } = useSaving()
+function DepartureTab({ person, reload }: { person: Person; reload: () => Promise<void> }) {
+  const [confirming, setConfirming] = useState(false)
+  const form = useForm<RemovalValues>({ defaultValues: { reason: '' } })
+
+  const { pending, refusal, saved, submit } = useRecordForm({
+    id: 'removal',
+    form,
+    // Confirmed inline in its own card (#62), so the modal's *Save them*
+    // must never perform it.
+    guarded: true,
+    write: async (values) => {
+      await client.post('/volunteers/removal', {
+        volunteerId: person.id,
+        reason: values.reason || null,
+      })
+      await reload()
+      setConfirming(false)
+    },
+  })
 
   return (
     <form
-      className="mt-5 rounded-md border border-destructive/30 border-l-3 border-l-destructive bg-destructive/4 p-4"
+      className={DANGER_CARD}
       onSubmit={(event: FormEvent<HTMLFormElement>) => {
         event.preventDefault()
-        const data = new FormData(event.currentTarget)
-        void save(() =>
-          act(() =>
-            client.post('/volunteers/removal', {
-              volunteerId: person.id,
-              reason: String(data.get('reason') ?? '') || null,
-            }),
-          ),
-        ).catch(() => {
-          // Already at the top of the screen, put there by `act`.
-        })
+        // Only once the confirmation is on screen. Before that this card has
+        // exactly one text field and renders no submit button, which is the
+        // shape HTML submits on Enter — so the reflex that commits a field
+        // would otherwise remove somebody from the rescue with nothing asked.
+        if (!confirming) return
+        void submit()
       }}
     >
-      <h3 className="m-0 mb-1 text-base font-semibold">Leaving the rescue</h3>
-      <p className="m-0 mb-2 text-sm text-muted-foreground">
+      <h3 className="m-0 mb-1 text-base font-semibold text-foreground">Leaving the rescue</h3>
+      <p className="m-0 text-sm text-muted-foreground">
         Their record stays and so does everything they did. What they hold goes with them, and the
         next request they make is refused.
       </p>
       <Fields>
         <WideField label="Reason" htmlFor="removal-reason" optional>
-          <Input id="removal-reason" name="reason" maxLength={500} />
+          <Input id="removal-reason" maxLength={500} {...form.register('reason')} />
         </WideField>
       </Fields>
+      {refusal !== null && <InlineRefusal>{refusal}</InlineRefusal>}
       <Actions>
-        <SaveButton pending={pending}>Remove from the rescue</SaveButton>
-        <Saved saved={saved} what="Removed" />
+        {confirming ? (
+          <>
+            <span className="mr-1 text-sm font-medium text-foreground">
+              Remove {person.name} from the rescue?
+            </span>
+            <Button type="submit" variant="destructive" disabled={pending}>
+              {pending ? 'Saving…' : 'Yes — they have left'}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setConfirming(false)
+              }}
+            >
+              Keep them
+            </Button>
+          </>
+        ) : (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setConfirming(true)
+            }}
+          >
+            Remove from the rescue
+          </Button>
+        )}
+        <StickySaved shown={saved} what="Removed" />
       </Actions>
     </form>
   )

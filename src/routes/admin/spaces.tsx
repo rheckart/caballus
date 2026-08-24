@@ -49,6 +49,7 @@ import {
   matches,
   useSaving,
 } from '../../components/forms'
+import { Refusal } from '../../components/refusal'
 import { Alert, AlertTitle } from '../../components/ui/alert'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
@@ -148,7 +149,9 @@ function Spaces() {
 
       {problem !== null && (
         <Alert variant="destructive" className="mb-4">
-          <AlertTitle>{problem}</AlertTitle>
+          <AlertTitle>
+            <Refusal>{problem}</Refusal>
+          </AlertTitle>
         </Alert>
       )}
 

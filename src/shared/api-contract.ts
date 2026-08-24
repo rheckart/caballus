@@ -194,6 +194,14 @@ export const day = z.object({
 export const me = z.object({
   volunteerId: z.string(),
   name: z.string(),
+  /**
+   * Your own contact details, which is **not** a hole in ADR 0017's redaction
+   * (#68, ADR 0027). `behindRoster` on the people list protects *other
+   * people's* details from a reader without `roster`; it was never about your
+   * own, which you read on your own screen and now edit there.
+   */
+  email: z.string(),
+  mobile: z.string().nullable(),
   domainScopes: z.array(z.enum(DOMAIN_SCOPES)),
 })
 
@@ -1287,12 +1295,108 @@ const standingRuleId = z.uuid()
 const alertId = z.uuid()
 const observationId = z.uuid()
 const escalationId = z.uuid()
+/**
+ * Home, composed by the server (#67, ADR 0018).
+ *
+ * **One read rather than four**, which is `/board`'s own precedent rather than
+ * a preference. Every section below is derivable from floor reads that already
+ * exist — `/shifts` carries the rosters and the staffing, `/announcements` and
+ * `/escalations` are floor reads too — so the phone could compose this itself
+ * and the server would need no new endpoint at all. That is rejected: four
+ * requests is four ways to be half-loaded, and #60 already refused a second
+ * call on the Board because *a horse looking alert-free whenever it is slow*.
+ * This is the first screen opened, cold, on barn signal.
+ *
+ * `me` rides along for the same reason. The hero line has always said who is
+ * reading, and the Announcement controls need the Scopes; a second `/me` call
+ * to draw one sentence is the half-loaded state again, smaller.
+ *
+ * There is no signed-out shape, exactly as `/me` has none: a signed-out request
+ * gets `401 not_authorized` and the screen reads that back.
+ */
+export const homePage = z.object({
+  today: dayOfTheOrganisation,
+  /**
+   * Who is reading — the hero line's own three fields and not `/me` whole.
+   * Your email and your mobile are yours to read and edit on `/me`'s own
+   * screen (#68); a dashboard has no use for them, and a field a screen does
+   * not render is a field that goes stale unwitnessed.
+   */
+  me: me.pick({ volunteerId: true, name: true, domainScopes: true }),
+  /**
+   * The next Shift you are **standing on** — a roster row naming you that has
+   * not ended — or null. `more` is how many of your own follow it, so the card
+   * can offer the rest without a second list.
+   *
+   * A Shift that has closed is not here: it is over, and offering its checklist
+   * would be offering a door the server has already shut (#45).
+   */
+  nextShift: z
+    .object({
+      id: z.string(),
+      day: dayOfTheOrganisation,
+      shiftType: anyShiftType,
+      startTime: timeOfDay,
+      purpose: z.string().nullable(),
+      state: z.enum(SHIFT_STATES),
+      more: z.number(),
+    })
+    .nullable(),
+  /** Unexpired, newest posted first — the same list `/announcements` answers. */
+  announcements: z.array(announcement),
+  /**
+   * Shifts short of people that **you** could Cover — you are not on them, they
+   * are missing something, and a Cover from you would not be refused (ADR 0011:
+   * a Cover is refused only for a missing Orientation).
+   *
+   * The gaps travel rather than the sentences, so `staffingFact` stays the one
+   * place those words are written and this screen cannot describe Thursday
+   * differently from the Shifts screen or the evening digest.
+   */
+  cover: z.array(
+    z.object({
+      id: z.string(),
+      day: dayOfTheOrganisation,
+      shiftType: anyShiftType,
+      startTime: timeOfDay,
+      targetHeadcount: z.number(),
+      /** How many are still standing on it, for `below_target_headcount`'s sentence. */
+      standing: z.number(),
+      gaps: z.array(z.enum(STAFFING_GAPS)),
+    }),
+  ),
+  /**
+   * Your open Escalations: addressed to a Domain Scope **you hold**, and not
+   * yet closed. That is what `/escalations`' own screen already means by
+   * *mine*, and what `closeEscalation` admits — so a volunteer holding no Scope
+   * has none of these, and the section is absent rather than empty.
+   *
+   * The thread does not travel. It is on `/escalations`, one tap away, and
+   * carrying every comment on every open Escalation onto the first screen of
+   * the morning is the cost this composed read exists to avoid.
+   */
+  escalations: z.array(
+    z.object({
+      id: z.string(),
+      scope: z.enum(DOMAIN_SCOPES),
+      framing: z.string(),
+      observationText: z.string(),
+      observationSubjectLabel: z.string().nullable(),
+      /** Epoch milliseconds. */
+      escalatedAt: z.number(),
+      comments: z.number(),
+    }),
+  ),
+})
+
 const reorderId = z.uuid()
 
 export const contract = {
   reads: {
     '/day': { answers: day },
     '/me': { answers: me },
+    /** The barn's dashboard: what is happening today, composed by the server (#67). */
+    '/home': { answers: homePage },
     '/volunteers': { answers: people },
     '/release-versions': { answers: releaseVersionList },
     '/audit': { answers: auditLog },
@@ -1337,6 +1441,63 @@ export const contract = {
     '/reorders': { answers: reorderList },
   },
   writes: {
+    /**
+     * Your own name and mobile, changed by you (#68, ADR 0027).
+     *
+     * **No `volunteerId` and no `reason`.** The subject is the actor and there
+     * is no shape in which this edits somebody else; and a reason exists
+     * because somebody is explaining a decision about another person, which
+     * this is not.
+     */
+    '/me/contact-details': {
+      accepts: z.object({
+        // Trimmed before it is measured: `min(1)` counts characters, so a name
+        // of three spaces would pass it and reach the column as the empty
+        // string — blanking the person across the roster, the Board and every
+        // Shift screen, with no `roster` door to put it back through.
+        name: z.string().trim().min(1).max(200),
+        mobile: z.string().max(60).nullable(),
+      }),
+      answers: z.void(),
+    },
+    /**
+     * Asks for a code at a **new** sign-in address (#68, ADR 0027).
+     *
+     * `neverQueued`, and not on ADR 0018's *medium rather than ledger*
+     * grounds — on the older one `src/server/auth/sign-in.ts` states: a code is
+     * a credential exchange, and the whole of ADR 0005 is that a queued write
+     * is safe to send twice. Nothing is changed by this call; the address moves
+     * only when the code comes back.
+     *
+     * The email is loose rather than `z.email()` for the reason the sign-in
+     * screen's is: a rescue's address book has addresses in it that a validator
+     * would refuse and a volunteer still receives mail at.
+     */
+    '/me/email/code': {
+      accepts: z.object({ email: z.string().min(3).max(320) }),
+      answers: z.void(),
+      neverQueued: true,
+    },
+    /**
+     * Moves your sign-in address, once the code proves the inbox (#68, ADR
+     * 0027).
+     *
+     * `neverQueued` for the same reason: a code held in a retry queue is a
+     * credential waiting to be replayed, and a second attempt under the same
+     * key could only ever find a code already spent.
+     *
+     * It answers how many other sessions it ended, because a person who has
+     * just changed their credential should be told that the tablet in the barn
+     * is now signed out.
+     */
+    '/me/email': {
+      accepts: z.object({
+        email: z.string().min(3).max(320),
+        code: z.string().min(1).max(20),
+      }),
+      answers: z.object({ sessionsEnded: z.number() }),
+      neverQueued: true,
+    },
     /**
      * The Coordinator creating a Volunteer — no Account, no code, no login
      * (ADR 0008). The email is loose rather than `z.email()` for the reason the

@@ -33,11 +33,7 @@ function show(me: { name: string; domainScopes: readonly DomainScope[] } | null)
         component: () => (
           <SidebarProvider>
             <Navigation
-              me={
-                me === null
-                  ? null
-                  : { volunteerId: 'v1', name: me.name, domainScopes: [...me.domainScopes] }
-              }
+              me={me === null ? null : { name: me.name, domainScopes: [...me.domainScopes] }}
               path="/"
             />
           </SidebarProvider>

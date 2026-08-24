@@ -32,14 +32,33 @@ import { auth } from './auth'
  * with an explicit denial rather than an empty barn (ADR 0010).
  */
 export async function actorFrom(orgId: OrgId, request: Request): Promise<Actor | null> {
+  return (await sessionFrom(orgId, request)).actor
+}
+
+/**
+ * The same read, with the session's own token carried out beside the actor.
+ *
+ * One question, two answers, because the session is already being read and a
+ * second `getSession` later in the same request is a second connection out of
+ * a pool of ten — taken while `mutation`'s transaction still holds the first.
+ * `/me/email` (#68) needs to know which session made the change so it can be
+ * the one that survives, and this is where that fact already is.
+ *
+ * The token authorizes nothing. It is a row's identity, and `actor` stays the
+ * only answer to *who is asking*.
+ */
+export async function sessionFrom(
+  orgId: OrgId,
+  request: Request,
+): Promise<{ readonly actor: Actor | null; readonly token: string | null }> {
   // Straight to the database, deliberately. The session cookie carries a
   // token and nothing else — there is no cached copy of the session in a
   // signed cookie to read instead, because that cache would be a staleness
   // window and revocation cannot have one.
   const session = await auth().api.getSession({ headers: request.headers })
-  if (session === null) return null
+  if (session === null) return { actor: null, token: null }
 
-  return actorForUser(orgId, session.user.id)
+  return { actor: await actorForUser(orgId, session.user.id), token: session.session.token }
 }
 
 /**

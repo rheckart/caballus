@@ -26,6 +26,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 
 import { Actions, Field, Fields, Loading, WideField } from '../components/forms'
+import { Refusal } from '../components/refusal'
 import { Alert, AlertTitle } from '../components/ui/alert'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
@@ -127,7 +128,9 @@ function ObservationRowView({
       </p>
       {problem !== null && (
         <Alert variant="destructive" className="mb-2">
-          <AlertTitle>{problem}</AlertTitle>
+          <AlertTitle>
+            <Refusal>{problem}</Refusal>
+          </AlertTitle>
         </Alert>
       )}
 
@@ -245,7 +248,9 @@ function VisitAttendance() {
           <Loading what="the sheet" />
         ) : (
           <Alert variant="destructive" className="mb-4">
-            <AlertTitle>{problem}</AlertTitle>
+            <AlertTitle>
+              <Refusal>{problem}</Refusal>
+            </AlertTitle>
           </Alert>
         )}
       </main>
@@ -263,7 +268,9 @@ function VisitAttendance() {
       <h1>Visit</h1>
       {problem !== null && (
         <Alert variant="destructive" className="mb-4">
-          <AlertTitle>{problem}</AlertTitle>
+          <AlertTitle>
+            <Refusal>{problem}</Refusal>
+          </AlertTitle>
         </Alert>
       )}
       {confirmed !== null && (

@@ -17,6 +17,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 
 import { Loading } from '../../components/forms'
+import { Refusal } from '../../components/refusal'
 import { Alert, AlertTitle } from '../../components/ui/alert'
 import {
   Table,
@@ -64,7 +65,9 @@ function Audit() {
       <h1 className="text-foreground">Audit log</h1>
       {problem !== null && (
         <Alert variant="destructive" className="mb-4">
-          <AlertTitle>{problem}</AlertTitle>
+          <AlertTitle>
+            <Refusal>{problem}</Refusal>
+          </AlertTitle>
         </Alert>
       )}
       {log === null && problem === null && <Loading what="the log" />}

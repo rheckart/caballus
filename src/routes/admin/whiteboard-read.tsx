@@ -21,6 +21,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useState, type ChangeEvent, type FormEvent } from 'react'
 
 import { Actions, Empty, Field, Fields, SaveButton, useSaving } from '../../components/forms'
+import { Refusal } from '../../components/refusal'
 import { Alert, AlertTitle } from '../../components/ui/alert'
 import { Badge } from '../../components/ui/badge'
 import { Input } from '../../components/ui/input'
@@ -140,7 +141,9 @@ function WhiteboardRead() {
 
       {problem !== null && (
         <Alert variant="destructive" className="mb-4">
-          <AlertTitle>{problem}</AlertTitle>
+          <AlertTitle>
+            <Refusal>{problem}</Refusal>
+          </AlertTitle>
         </Alert>
       )}
 

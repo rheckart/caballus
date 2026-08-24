@@ -38,12 +38,18 @@ import {
 } from './authorization'
 import { createApi, json, noContent, type Api, type ApiOptions } from './route'
 import type { Actor, RequestContext } from '../request-context'
+import { emailChangeCodeEmail, emailChangedNotice } from '../auth/auth'
+import { askedTooOften } from '../auth/code-budget'
+import { applyEmailChange, mintEmailChangeCode, type ChangeRefusal } from '../auth/email-change'
+import { sendEmail } from '../email'
+import { homePage } from '../home/page'
 import { auditLog, peopleList, unstaffedScopes } from '../roster/people'
 import {
   createVolunteerIn,
   recordConsent,
   recordDateOfBirth,
   recordOrientation,
+  recordOwnContactDetails,
   removeVolunteerIn,
   type Refusal,
 } from '../roster/records'
@@ -59,7 +65,7 @@ import {
   releaseVersionList,
   revokeReleaseSignature,
 } from '../roster/releases'
-import { startObservability } from '../observability'
+import { log, startObservability } from '../observability'
 import { today } from '../time'
 import {
   endAlert,
@@ -250,6 +256,27 @@ export function buildApi(
     return json({ error: because }, missing ? 404 : 409)
   }
 
+  /**
+   * The same shape again, for a self-edit of your own contact details (#68).
+   *
+   * `email_not_sent` is the one that is **not** a 409, on `weatherRefusal`'s
+   * own reasoning: SMTP being down for a minute is the most retryable outcome
+   * in this domain, and a 409 tells a queue to give up on it. Both of these
+   * writes are `neverQueued` — a code is a credential and never goes in a
+   * retry queue — but the status still has to mean what it says, because the
+   * screen reads it too.
+   */
+  function contactDetailsRefusal(because: ChangeRefusal) {
+    if (because === 'volunteer_not_found') return json({ error: because }, 404)
+    if (because === 'email_not_sent') return json({ error: because }, 503)
+    // Both of these become true again by waiting, so neither is a 409 — which
+    // means *this will not become true by retrying* and is what a queue drops
+    // on. Neither of these writes is ever queued, but the status still has to
+    // mean what it says, because the screen reads it too.
+    if (because === 'too_many_codes') return json({ error: because }, 429)
+    return json({ error: because }, 409)
+  }
+
   /** The same shape as `refusal`, for the horses-and-Spaces domain's own outcome union. */
   function horseRefusal(because: HorseRefusal) {
     const missing =
@@ -389,7 +416,7 @@ export function buildApi(
 
     const [volunteer] = await forOrg(context.orgId).run((db) =>
       db
-        .select({ name: volunteers.name })
+        .select({ name: volunteers.name, email: volunteers.email, mobile: volunteers.mobile })
         .from(volunteers)
         .where(eq(volunteers.id, actor.volunteerId))
         .limit(1),
@@ -405,7 +432,60 @@ export function buildApi(
     return json({
       volunteerId: actor.volunteerId,
       name: volunteer.name,
+      email: volunteer.email,
+      mobile: volunteer.mobile,
       domainScopes: [...actor.domainScopes],
+    })
+  })
+
+  /**
+   * Home, composed by the server (#67).
+   *
+   * `readEverything()`, like `/me`: every section is a floor read filtered to
+   * the person asking, and a signed-out request gets the same explicit
+   * `401 not_authorized` rather than a body announcing that nobody is signed in.
+   *
+   * One read rather than four, on `/board`'s own precedent — the phone could
+   * compose this from `/shifts`, `/announcements` and `/escalations` and needs
+   * no server work to do it, and that is exactly the half-loaded screen #60
+   * refused on the Board.
+   */
+  api.route('GET', '/home', readEverything(), async ({ context }) => {
+    const actor = actorOf(context)
+
+    return forOrg(context.orgId).run(async (db) => {
+      const clock = await clockHere(db)
+      const [volunteer] = await db
+        .select({ name: volunteers.name })
+        .from(volunteers)
+        .where(eq(volunteers.id, actor.volunteerId))
+        .limit(1)
+
+      if (volunteer === undefined) {
+        // The same 503 `/me` answers, and for the same reason: the session
+        // resolved to a Volunteer the policies cannot see.
+        return json({ error: 'volunteer_not_found' }, 503)
+      }
+
+      const page = await homePage(
+        db,
+        { volunteerId: actor.volunteerId, domainScopes: actor.domainScopes },
+        clock.today,
+        clock.timeZone,
+      )
+
+      return json({
+        today: clock.today,
+        me: {
+          volunteerId: actor.volunteerId,
+          name: volunteer.name,
+          domainScopes: [...actor.domainScopes],
+        },
+        nextShift: page.nextShift === null ? null : { ...page.nextShift },
+        announcements: page.announcements.map((posted) => ({ ...posted })),
+        cover: page.cover.map((shift) => ({ ...shift, gaps: [...shift.gaps] })),
+        escalations: page.escalations.map((escalation) => ({ ...escalation })),
+      })
     })
   })
 
@@ -464,6 +544,105 @@ export function buildApi(
     const entries = await forOrg(context.orgId).run((db) => auditLog(db, 200))
     return json({ entries: entries.map((entry) => ({ ...entry })) })
   })
+
+  /**
+   * Your own name and mobile (#68, ADR 0027).
+   *
+   * `floor('edit-your-own-contact-details')` and no `volunteerId` in the
+   * payload: the subject is the actor, structurally, so there is no shape in
+   * which this reaches somebody else's record.
+   */
+  api.mutation(
+    '/me/contact-details',
+    floor('edit-your-own-contact-details'),
+    async (input, { context, db }) => {
+      const actor = actorOf(context)
+      const outcome = await recordOwnContactDetails(db, context.orgId, actor.volunteerId, {
+        name: input.name,
+        mobile: input.mobile,
+      })
+      // `refusal` rather than `contactDetailsRefusal`: the only thing this can
+      // refuse is a Volunteer the policies cannot see, which is the roster
+      // domain's own 404 and not one of the email flow's conflicts.
+      return outcome.ok ? noContent() : refusal(outcome.because)
+    },
+  )
+
+  /**
+   * A code to a **new** sign-in address (#68, ADR 0027).
+   *
+   * Nothing changes here. The address moves only when the code comes back to
+   * `/me/email` below, and until then the volunteer still signs in with the old
+   * one — which is what the message says.
+   *
+   * The send is ours rather than Better Auth's, for the reason `requestCode`
+   * gives: that sender's rejection is swallowed, and *we sent you a code* has
+   * to be true when it is said (ADR 0009).
+   */
+  api.mutation(
+    '/me/email/code',
+    floor('edit-your-own-contact-details'),
+    async (input, { context, db }) => {
+      const actor = actorOf(context)
+      const minted = await mintEmailChangeCode(db, actor.volunteerId, input.email)
+      if (!minted.ok) return contactDetailsRefusal(minted.because)
+
+      // The same per-address budget the login screen honours, counted after
+      // the refusals so that *that address is already somebody's* keeps being
+      // said rather than turning into *slow down* on the fourth attempt. This
+      // endpoint takes an arbitrary address from any signed-in volunteer, and
+      // without it a loop spends the whole rescue's `DAILY_CAP` and sign-in
+      // stops working for everybody (ADR 0008, ADR 0009).
+      if (askedTooOften(minted.email)) return contactDetailsRefusal('too_many_codes')
+
+      try {
+        await sendEmail(emailChangeCodeEmail(minted.email, minted.otp))
+      } catch {
+        log('error', 'email_change_code_not_sent', { volunteerId: actor.volunteerId })
+        return contactDetailsRefusal('email_not_sent')
+      }
+      return noContent()
+    },
+  )
+
+  /**
+   * Moves your sign-in address, once the code proves the inbox (#68, ADR 0027).
+   *
+   * Three things happen after the two columns move, and none of them may fail
+   * the change. **Every other session is deleted** — changing the credential
+   * ends the sessions opened under the old one, and the one that made the
+   * change survives. **The old address is told**, which is the only way a
+   * person losing their account finds out; a bounce there is logged rather
+   * than thrown, on `notifyEscalated`'s own precedent, because refusing a
+   * completed credential change over an undeliverable notice would leave the
+   * volunteer with an address they cannot sign in at.
+   */
+  api.mutation(
+    '/me/email',
+    floor('edit-your-own-contact-details'),
+    async (input, { context, db }) => {
+      const actor = actorOf(context)
+      const changed = await applyEmailChange(
+        db,
+        actor.volunteerId,
+        // Resolved when the request's own actor was, rather than asked for
+        // again here: a second `getSession` inside this transaction is a
+        // second connection out of a pool of ten while the first is held.
+        context.sessionToken,
+        input.email,
+        input.code,
+      )
+      if (!changed.ok) return contactDetailsRefusal(changed.because)
+
+      try {
+        await sendEmail(emailChangedNotice(changed.value.from, changed.value.to))
+      } catch {
+        log('warn', 'email_change_notice_not_sent', { volunteerId: actor.volunteerId })
+      }
+
+      return json({ sessionsEnded: changed.value.sessionsEnded })
+    },
+  )
 
   api.mutation('/volunteers', domainScope('roster'), async (input, { context, db }) => {
     const actor = actorOf(context)

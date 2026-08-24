@@ -26,7 +26,13 @@ function renderVisit() {
   return renderRoutes([{ path: '/attendance', component }], '/attendance')
 }
 
-const ME = { volunteerId: 'beth', name: 'Beth Ann', domainScopes: [] }
+const ME = {
+  volunteerId: 'beth',
+  name: 'Beth Ann',
+  email: 'someone@barn.test',
+  mobile: null,
+  domainScopes: [],
+}
 
 const PEOPLE = {
   today: '2026-08-18',

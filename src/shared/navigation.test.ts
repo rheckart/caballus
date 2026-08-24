@@ -15,7 +15,7 @@ import { join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { DESTINATIONS, navigationFor } from './navigation'
+import { ACCOUNT_DESTINATION, DESTINATIONS, navigationFor } from './navigation'
 import { DOMAIN_SCOPES } from './domain-scopes'
 
 const ROUTES = 'src/routes'
@@ -50,9 +50,14 @@ function screensOnDisk(directory = ROUTES, prefix = ''): readonly string[] {
 }
 
 it('offers every screen the shell can render, and invents none', () => {
-  expect([...DESTINATIONS.map((destination) => destination.to)].sort()).toEqual(
-    [...screensOnDisk()].sort(),
-  )
+  const declared = [
+    ...DESTINATIONS.map((destination) => destination.to),
+    // In neither group — the account footer's own — and still declared, which
+    // is what keeps this claim about *every* screen rather than most of them.
+    ACCOUNT_DESTINATION.to,
+  ]
+
+  expect([...declared].sort()).toEqual([...screensOnDisk()].sort())
 })
 
 it('names a Domain Scope this build knows, or none at all', () => {

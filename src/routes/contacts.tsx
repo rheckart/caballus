@@ -16,6 +16,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 
 import { Empty, Loading } from '../components/forms'
+import { Refusal } from '../components/refusal'
 import { Alert, AlertTitle } from '../components/ui/alert'
 import { client } from '../shared/api-client'
 import { refusalText } from '../shared/refusals'
@@ -51,7 +52,9 @@ export function Contacts() {
       <main>
         <h1 className="text-foreground">Contacts</h1>
         <Alert variant="destructive" className="mb-4">
-          <AlertTitle>{problem}</AlertTitle>
+          <AlertTitle>
+            <Refusal>{problem}</Refusal>
+          </AlertTitle>
         </Alert>
       </main>
     )

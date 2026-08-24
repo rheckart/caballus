@@ -20,6 +20,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 
 import { Actions, Empty, Field, Fields, Loading } from '../components/forms'
+import { Refusal } from '../components/refusal'
 import { Alert, AlertTitle } from '../components/ui/alert'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
@@ -149,7 +150,9 @@ function ReorderCard({
 
       {problem !== null && (
         <Alert variant="destructive" className="mt-3">
-          <AlertTitle>{problem}</AlertTitle>
+          <AlertTitle>
+            <Refusal>{problem}</Refusal>
+          </AlertTitle>
         </Alert>
       )}
 
@@ -349,7 +352,9 @@ export function Supplies() {
       <main>
         <h1 className="text-foreground">Supplies</h1>
         <Alert variant="destructive" className="mb-4">
-          <AlertTitle>{problem}</AlertTitle>
+          <AlertTitle>
+            <Refusal>{problem}</Refusal>
+          </AlertTitle>
         </Alert>
       </main>
     )
@@ -373,7 +378,9 @@ export function Supplies() {
       <h1 className="text-foreground">Supplies</h1>
       {problem !== null && (
         <Alert variant="destructive" className="mb-4">
-          <AlertTitle>{problem}</AlertTitle>
+          <AlertTitle>
+            <Refusal>{problem}</Refusal>
+          </AlertTitle>
         </Alert>
       )}
 

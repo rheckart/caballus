@@ -8,6 +8,7 @@ import { Link, createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 
 import { Empty, Loading } from '../../components/forms'
+import { Refusal } from '../../components/refusal'
 import { Alert, AlertTitle } from '../../components/ui/alert'
 import { client } from '../../shared/api-client'
 import { refusalText } from '../../shared/refusals'
@@ -43,7 +44,9 @@ function HorseList() {
       <main>
         <h1>Horses</h1>
         <Alert variant="destructive" className="mb-4">
-          <AlertTitle>{problem}</AlertTitle>
+          <AlertTitle>
+            <Refusal>{problem}</Refusal>
+          </AlertTitle>
         </Alert>
       </main>
     )

@@ -17,6 +17,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react'
 
 import type { DomainScope } from '../shared/domain-scopes'
 import { Empty, Field, Loading } from '../components/forms'
+import { Refusal } from '../components/refusal'
 import { Alert, AlertTitle } from '../components/ui/alert'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
@@ -131,7 +132,9 @@ function EscalationCard({
 
       {problem !== null && (
         <Alert variant="destructive" className="mb-3">
-          <AlertTitle>{problem}</AlertTitle>
+          <AlertTitle>
+            <Refusal>{problem}</Refusal>
+          </AlertTitle>
         </Alert>
       )}
 
@@ -192,7 +195,9 @@ export function Escalations() {
       <main>
         <h1>Escalations</h1>
         <Alert variant="destructive" className="mb-4">
-          <AlertTitle>{problem}</AlertTitle>
+          <AlertTitle>
+            <Refusal>{problem}</Refusal>
+          </AlertTitle>
         </Alert>
       </main>
     )
@@ -217,7 +222,9 @@ export function Escalations() {
       <h1>Escalations</h1>
       {problem !== null && (
         <Alert variant="destructive" className="mb-4">
-          <AlertTitle>{problem}</AlertTitle>
+          <AlertTitle>
+            <Refusal>{problem}</Refusal>
+          </AlertTitle>
         </Alert>
       )}
 

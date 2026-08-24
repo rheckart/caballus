@@ -35,6 +35,7 @@ import {
   Sun,
   SunMoon,
   Thermometer,
+  UserPen,
   Users,
 } from 'lucide-react'
 import { useEffect, useState, type ComponentType } from 'react'
@@ -61,7 +62,12 @@ import {
   useSidebar,
 } from './ui/sidebar'
 import { signOutHere } from '../server/auth/login'
-import { navigationFor, type DestinationPath, type ListedDestination } from '../shared/navigation'
+import {
+  ACCOUNT_DESTINATION,
+  navigationFor,
+  type DestinationPath,
+  type ListedDestination,
+} from '../shared/navigation'
 import {
   getThemeChoice,
   isThemeChoice,
@@ -71,7 +77,13 @@ import {
 } from '../shared/theme'
 import type { Answers, contract } from '../shared/api-contract'
 
-type Me = Answers<typeof contract, '/me'>
+/**
+ * What the navigation needs of `/me`, and no more: your name for the footer,
+ * and the Scopes that decide what is offered. Narrowed rather than the whole
+ * answer, so that widening `/me` — as #68 does, with your email and mobile —
+ * does not silently hand the sidebar a credential it has no use for.
+ */
+type Me = Pick<Answers<typeof contract, '/me'>, 'name' | 'domainScopes'>
 
 /**
  * A glyph for every Destination, keyed by its path.
@@ -279,6 +291,19 @@ export function Navigation({ me, path }: { me: Me | null; path: string }) {
           <SidebarMenuItem>
             <ThemeMenu />
           </SidebarMenuItem>
+          {me !== null && (
+            <SidebarMenuItem>
+              {/* Your own name, mobile and sign-in address (#68, ADR 0027) —
+                  in the footer rather than in a group, because it is a fact
+                  about you rather than a place in the barn. */}
+              <SidebarMenuButton asChild tooltip={ACCOUNT_DESTINATION.label}>
+                <Link to={ACCOUNT_DESTINATION.to} onClick={close}>
+                  <UserPen aria-hidden="true" />
+                  <span>{ACCOUNT_DESTINATION.label}</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          )}
           {me !== null && (
             <SidebarMenuItem>
               {/* This session only. Revoking every session an Account holds is

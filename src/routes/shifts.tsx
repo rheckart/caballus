@@ -32,6 +32,7 @@ import { Link, createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useState } from 'react'
 
 import { Empty, Loading } from '../components/forms'
+import { Refusal } from '../components/refusal'
 import { Alert, AlertTitle } from '../components/ui/alert'
 import { Button } from '../components/ui/button'
 import { client } from '../shared/api-client'
@@ -39,7 +40,7 @@ import { rosteredAbsent } from '../shared/attendance'
 import { refusalText } from '../shared/refusals'
 import type { AssignablePosition } from '../shared/shifts'
 import { carriesShiftAuthority } from '../shared/shifts'
-import { staffingFacts } from '../shared/staffing'
+import { PROMINENT_DAYS, staffingFacts } from '../shared/staffing'
 import { daysBetween } from '../shared/time'
 import type { Answers, contract } from '../shared/api-contract'
 
@@ -64,20 +65,6 @@ const POSITION_LABEL: Record<AssignablePosition | 'acting_lead', string> = {
   acting_lead: 'Acting Lead',
   volunteer: 'Volunteer',
 }
-
-/**
- * How far out a volunteer sees what a Shift is missing.
- *
- * ADR 0011: the gaps are computed across the whole horizon **for holders of
- * `roster`**, and are "prominent to everyone else only inside roughly the next
- * 48 hours". A fortnight of *no Lead* on a phone is a wall of red about Shifts
- * nobody can do anything about yet, and a screen that shouts every day is a
- * screen people stop reading — the same argument the four-gap list is shaped
- * by, pointed at distance instead of at count. Beyond the window the Shift is
- * still listed and still coverable; the headcount beside it still says how
- * thin it is.
- */
-const PROMINENT_DAYS = 2
 
 /**
  * What this Shift is missing, in words. `staffingFacts` is the one place those
@@ -228,7 +215,9 @@ function MyShifts() {
           <Loading what="shifts" />
         ) : (
           <Alert variant="destructive" className="mb-4">
-            <AlertTitle>{problem}</AlertTitle>
+            <AlertTitle>
+              <Refusal>{problem}</Refusal>
+            </AlertTitle>
           </Alert>
         )}
       </main>
@@ -254,7 +243,9 @@ function MyShifts() {
       <h1>My shifts</h1>
       {problem !== null && (
         <Alert variant="destructive" className="mb-4">
-          <AlertTitle>{problem}</AlertTitle>
+          <AlertTitle>
+            <Refusal>{problem}</Refusal>
+          </AlertTitle>
         </Alert>
       )}
 

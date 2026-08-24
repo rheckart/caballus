@@ -41,9 +41,9 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { ALERT_KIND_LABEL } from '../shared/alerts'
 import type { ProductKind } from '../shared/products'
-import { client } from '../shared/api-client'
+import { ApiError, client } from '../shared/api-client'
 import { BOARD_TOKEN_HEADER } from '../shared/board'
-import { refusalText } from '../shared/refusals'
+import { BOARD_NOT_LINKED, refusalText } from '../shared/refusals'
 import type { Answers, contract } from '../shared/api-contract'
 import { elapsed, now, type Instant } from '../shared/time'
 
@@ -225,7 +225,13 @@ function Board() {
         // The last grid stays on the wall. A screen that empties itself
         // because one request failed is worse than a screen that is ten
         // minutes old and says so.
-        if (current) setProblem(refusalText(error))
+        // A 401 here is the kiosk token, not a session: the Board resolves to
+        // no `Actor` at all (ADR 0022), so the ordinary *sign in again* would
+        // be an instruction nobody standing at the wall can follow.
+        if (!current) return
+        setProblem(
+          error instanceof ApiError && error.status === 401 ? BOARD_NOT_LINKED : refusalText(error),
+        )
       })
       if (current) setPolls((count) => count + 1)
     }

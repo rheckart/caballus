@@ -138,6 +138,25 @@ export type DestinationPath = (typeof DESTINATIONS)[number]['to']
 export type ListedDestination = (typeof DESTINATIONS)[number]
 
 /**
+ * Your own details, which is a Destination and is in neither group.
+ *
+ * It is reached from the sidebar's **account footer** rather than from General
+ * or Admin, because it is a fact about you rather than a place in the barn or a
+ * place at the desk — and a fourteenth entry under General for a screen a
+ * volunteer opens twice a year is the menu-nobody-reads failure ADR 0026 is
+ * shaped against.
+ *
+ * It is declared here all the same, so that `navigation.test.ts`'s claim stays
+ * whole: **every screen the shell can render has an entry somewhere in this
+ * module**, and a screen added without one still fails the build.
+ */
+export const ACCOUNT_DESTINATION = {
+  to: '/me',
+  label: 'Edit your details',
+  scopes: [],
+} as const satisfies Omit<Destination, 'group'>
+
+/**
  * A group and the Destinations in it that this person is offered, or nothing.
  *
  * A group with no Destinations left is **absent from the answer entirely**

@@ -4,7 +4,7 @@ Operations for a horse rescue: the daily care of horses and the coordination of 
 
 Terms are added only once settled with the rescue. The barn's own words win over ours.
 
-A term here is what the **model** calls a thing, not what a **screen** calls it. A screen may say _About her_ where the model says Attributes, or _Change her feed_ where the model says publish a Feed Schedule version, because the reader is a volunteer and not a reader of this file. The glossary does not follow the label; the label may not contradict the glossary.
+A term here is what the **model** calls a thing, not what a **screen** calls it. A screen may say _Core Details_ where the model says Attributes, or _Change her feed_ where the model says publish a Feed Schedule version, because the reader is a volunteer and not a reader of this file. The glossary does not follow the label; the label may not contradict the glossary.
 
 ## Language
 
@@ -13,6 +13,10 @@ A term here is what the **model** calls a thing, not what a **screen** calls it.
 **Volunteer**:
 A person who works at the rescue. Created by the Volunteer Coordinator from a name and an email address, and rosterable once they hold an Orientation, a Release and — if under 18 — a Consent, before they have logged in and possibly without ever doing so. Carries the date they enrolled, because that is when the insurer's cover begins, and a date of birth, because the rescue checks photo ID and celebrates birthdays. Shifts, ticks, observations and Attendance reference the Volunteer. The record outlives their leaving, because the work they did still happened.
 _Avoid_: user, member, helper, staff
+
+**Contact Details**:
+A Volunteer's name, mobile number and email address — the three facts a person is the best authority on, and the only three they may change about themselves. Everything else on the record is a statement somebody _else_ has to make: an Orientation is a Coordinator saying they oriented you, a Release records a piece of paper, a date of birth is checked against photo ID, a Role is a grant. The email is also the credential, so moving it takes a code at the new address first; the name and the mobile take effect at once. All three are audited and none carries a reason, because nobody asks why you changed your own phone number.
+_Avoid_: profile, my details, personal info, account settings
 
 **Candidate**:
 A Volunteer who has not yet been oriented — someone the rescue is still deciding about. It is the Coordinator's to-do list, and it is a state and not a separate kind of person: a Candidate holds a Volunteer record, may hold an Account and Roles, and reads everything. The word stops at Orientation. A volunteer of ten years whose Release has been obsoleted is not a Candidate; they are a Volunteer with a gap.
@@ -59,6 +63,12 @@ _Avoid_: lead permission, shift admin, supervisor rights
 **Acting Lead**:
 A rostered volunteer who has claimed Shift Authority on a Shift that has no Lead or Co-Lead. Claimed explicitly, never derived — the app suggests who (Medication Authority first, then tenure) and any rostered volunteer may take it. Carries the full authority set, stays distinct from Lead in the record, and confers no Medication Authority.
 _Avoid_: deputy, stand-in, temporary lead
+
+### Getting around
+
+**Destination**:
+A place in the app a person can be sent to, and the Domain Scopes that make it worth sending them there. Every screen is one. A Destination is offered when the person may **act** there, which is not the same question as whether they may read it — most of the rescue's records are readable by everyone. It is never a security boundary: the server refuses on its own, and hiding a Destination only answers _is there anything here for me_.
+_Avoid_: link, page, route, menu item, nav item
 
 ### Reports
 

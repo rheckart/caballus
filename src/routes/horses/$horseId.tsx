@@ -6,8 +6,8 @@
  *
  * Alerts come first and in full text (ADR 0024, #60) — standing ones above
  * everything, and the ended ones at the foot as history, because the record
- * must not lose *she used to bite and we stopped saying so*. A Departed horse
- * keeps hers standing: she is gone rather than cured.
+ * must not lose *it used to bite and we stopped saying so*. A Departed horse
+ * keeps its own standing: it is gone rather than cured.
  *
  * This screen reads them and never writes one. Raising, editing and ending are
  * `horse_care`'s own acts, at the desk (`src/routes/admin/horses.tsx`).
@@ -18,6 +18,7 @@ import { Link, createFileRoute, useParams } from '@tanstack/react-router'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 
 import { Actions, Field, Fields, Loading } from '../../components/forms'
+import { Refusal } from '../../components/refusal'
 import { Alert, AlertTitle } from '../../components/ui/alert'
 import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
@@ -118,7 +119,9 @@ function HorseProfile() {
     return (
       <main>
         <Alert variant="destructive" className="mb-4">
-          <AlertTitle>{problem}</AlertTitle>
+          <AlertTitle>
+            <Refusal>{problem}</Refusal>
+          </AlertTitle>
         </Alert>
         <Link to="/horses">Back to horses</Link>
       </main>

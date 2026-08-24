@@ -29,6 +29,7 @@ import { Link, createFileRoute, useParams } from '@tanstack/react-router'
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 
 import { Empty, Loading } from '../components/forms'
+import { Refusal } from '../components/refusal'
 import { Alert as AlertBox, AlertDescription, AlertTitle } from '../components/ui/alert'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
@@ -341,7 +342,7 @@ function ItemLine({
 }
 
 /**
- * A horse's standing Alerts, above her work and in full text (ADR 0024).
+ * A horse's standing Alerts, above its work and in full text (ADR 0024).
  *
  * Nothing is shown when there are none — a card that says *no alerts* on
  * every horse teaches a volunteer to skip the place the words appear, which is
@@ -475,7 +476,9 @@ function ShiftNotes({
       </form>
       {problem !== null && (
         <AlertBox variant="destructive" className="mt-3">
-          <AlertTitle>{problem}</AlertTitle>
+          <AlertTitle>
+            <Refusal>{problem}</Refusal>
+          </AlertTitle>
         </AlertBox>
       )}
     </section>
@@ -549,7 +552,9 @@ function CloseSection({
       )}
       {problem !== null && (
         <AlertBox variant="destructive" className="mt-3">
-          <AlertTitle>{problem}</AlertTitle>
+          <AlertTitle>
+            <Refusal>{problem}</Refusal>
+          </AlertTitle>
         </AlertBox>
       )}
     </section>
@@ -628,7 +633,9 @@ export function ShiftChecklist() {
     return (
       <main>
         <AlertBox variant="destructive" className="mb-4">
-          <AlertTitle>{problem}</AlertTitle>
+          <AlertTitle>
+            <Refusal>{problem}</Refusal>
+          </AlertTitle>
         </AlertBox>
         <Link to="/shifts">Back to my shifts</Link>
       </main>

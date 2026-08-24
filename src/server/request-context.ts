@@ -12,7 +12,7 @@
  * is the impersonation vector ADR 0008's whole arrangement exists to close.
  */
 import type { OrgId } from '../db/for-org'
-import { actorFrom } from './auth/actor'
+import { sessionFrom } from './auth/actor'
 import { isKiosk } from './auth/kiosk'
 import type { DomainScope } from './api/authorization'
 
@@ -34,6 +34,20 @@ export interface RequestContext {
    */
   readonly actor: Actor | null
   /**
+   * The token of the session this request carries, or `null` for nobody.
+   *
+   * Resolved beside the actor because it is resolved anyway — `actorFrom`
+   * already reads the session on every request — and carrying it is what keeps
+   * `/me/email` (#68) from asking Better Auth a second time from **inside** the
+   * transaction `mutation` opened. That second question takes a second
+   * connection from a pool of ten while the first is still held, which is a
+   * deadlock at ten concurrent writes rather than a slow path.
+   *
+   * It is a session's own identity and never a person's: nothing authorizes on
+   * it, and `actor` above stays the only answer to *who is asking*.
+   */
+  readonly sessionToken: string | null
+  /**
    * Whether this request is the barn's tablet rather than a person (ADR 0022).
    *
    * Deliberately not an `Actor`: the Board credits nobody, so the kiosk resolves
@@ -53,7 +67,8 @@ export interface RequestContext {
  */
 export async function requestContext(request: Request): Promise<RequestContext> {
   const base = anonymousContext(request)
-  return { ...base, actor: await actorFrom(base.orgId, request) }
+  const session = await sessionFrom(base.orgId, request)
+  return { ...base, actor: session.actor, sessionToken: session.token }
 }
 
 /**
@@ -68,6 +83,7 @@ export function anonymousContext(request: Request): RequestContext {
     orgId: currentOrgId(),
     requestId: request.headers.get('x-request-id') ?? crypto.randomUUID(),
     actor: null,
+    sessionToken: null,
     // Resolved here rather than beside the actor, because it needs no database
     // and the log line for a request rejected before any handler ran is
     // entitled to know whether it came from the tablet (ADR 0022).
