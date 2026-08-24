@@ -32,11 +32,11 @@ import { ChevronDown, Pencil } from 'lucide-react'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 
 import { Actions, Field, Fields, WideField } from '../components/forms'
+import { Refusal } from '../components/refusal'
 import { Alert, AlertTitle } from '../components/ui/alert'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Textarea } from '../components/ui/textarea'
-import { signOutHere } from '../server/auth/login'
 import { ApiError, client } from '../shared/api-client'
 import { refusalText } from '../shared/refusals'
 import { dayString, daysBetween } from '../shared/time'
@@ -501,7 +501,9 @@ function Home() {
         <>
           {problem !== null && (
             <Alert variant="destructive" className="mb-4">
-              <AlertTitle>{problem}</AlertTitle>
+              <AlertTitle>
+                <Refusal>{problem}</Refusal>
+              </AlertTitle>
             </Alert>
           )}
 
@@ -628,23 +630,6 @@ function Home() {
               </form>
             </section>
           )}
-
-          {/* Reachable, because a session lasts until somebody ends it and the
-              barn has a shared tablet on it. This ends *this* session only —
-              revoking every session an Account holds is an officer's act. */}
-          <div className="mt-6 border-t border-border pt-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                void signOutHere().then(() => {
-                  window.location.assign('/login')
-                })
-              }}
-            >
-              Sign out
-            </Button>
-          </div>
         </>
       )}
     </main>

@@ -1,18 +1,30 @@
 /**
  * The document, and the shell every screen is drawn inside.
  *
- * Two things live here that used to live nowhere. The **app bar** carries the
- * wordmark as a link to `/`, on every screen, which is the way back that this
- * application did not have: a volunteer four screens into the desk had only the
- * browser's own chrome, and a standalone install (#48) does not have that. The
- * **tab bar** is the phone's navigation — five destinations at thumb height,
- * fixed to the bottom, replaced by a row in the app bar once the screen is wide
- * enough to hold one.
+ * **Navigation is a Sidebar, and it offers what you may act on** (#66, ADR
+ * 0026). Above 900px it is the whole of the navigation and there is no desktop
+ * top bar at all; below it, it is a drawer behind a trigger in a thin bar
+ * carrying the wordmark. What it offers is decided by `src/shared/navigation.ts`
+ * against the Domain Scopes `/me` answers with: a plain Volunteer is offered
+ * **General** and no **Admin** heading, rather than an Admin heading with two
+ * dead entries under it. That is a change of rule for Destinations and not for
+ * controls — ADR 0011's disabled-and-explained action still governs a button on
+ * a screen you are already on — and it is **cosmetic**: every screen is still
+ * reachable by typing its path, and the server still refuses.
  *
- * Both are hidden on exactly two paths. `/login` has nowhere to navigate to,
+ * **The bottom tab bar stays on the phone.** It is not replaced by the drawer.
+ * A drawer is two taps and hides everything; the tabs are one tap, always
+ * visible, at thumb height, and this application is built for gloves and
+ * sunlight (ADR 0007). All five are on the floor, so the bar never changes
+ * shape — a volunteer finds Shifts in the same place every time.
+ *
+ * **The footer carries the account**: who you are, the Theme menu (moved out of
+ * the app bar) and Sign out. Sign out lived on Home, and Home is becoming the
+ * barn's dashboard (#67), so it had to move somewhere that is on every screen.
+ *
+ * Both bars stay off exactly two paths. `/login` has nowhere to navigate to,
  * and `/board` is a wall a barn reads across a room, authenticated as the barn
- * and with no `Actor` to navigate as (ADR 0022) — chrome on it is chrome
- * somebody has to walk over and look past.
+ * and with no `Actor` to navigate as (ADR 0022).
  *
  * `src/styles/tailwind.css` is the whole styling system (ADR 0025, #61–#63):
  * Tailwind's theme carrying DESIGN.md's tokens, the shadcn semantic tokens
@@ -29,37 +41,17 @@ import {
   createRootRoute,
   useRouterState,
 } from '@tanstack/react-router'
-import {
-  CalendarDays,
-  House,
-  Monitor,
-  Moon,
-  Package,
-  PawPrint,
-  Phone,
-  Sun,
-  SunMoon,
-} from 'lucide-react'
+import { CalendarDays, House, Package, PawPrint, Phone } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 
-import { Button } from '../components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from '../components/ui/dropdown-menu'
-import {
-  THEME_HEAD_SCRIPT,
-  applyTheme,
-  getThemeChoice,
-  isThemeChoice,
-  setThemeChoice,
-  watchSystemTheme,
-  type ThemeChoice,
-} from '../shared/theme'
+import { Navigation } from '../components/navigation'
+import { SidebarInset, SidebarProvider, SidebarTrigger } from '../components/ui/sidebar'
+import { ApiError, client } from '../shared/api-client'
+import { THEME_HEAD_SCRIPT, applyTheme } from '../shared/theme'
 import appCss from '../styles/tailwind.css?url'
+import type { Answers, contract } from '../shared/api-contract'
+
+type Me = Answers<typeof contract, '/me'>
 
 /** Where the phone's tab bar goes, in the order a thumb meets them. */
 const tabs = [
@@ -68,15 +60,6 @@ const tabs = [
   { to: '/horses', Icon: PawPrint, label: 'Horses' },
   { to: '/supplies', Icon: Package, label: 'Supplies' },
   { to: '/contacts', Icon: Phone, label: 'Contacts' },
-] as const
-
-/** The same destinations plus the Board, for a screen with a top bar's room. */
-const barLinks = [
-  { to: '/shifts', label: 'Shifts' },
-  { to: '/horses', label: 'Horses' },
-  { to: '/board', label: 'Board' },
-  { to: '/supplies', label: 'Supplies' },
-  { to: '/contacts', label: 'Contacts' },
 ] as const
 
 /** The two paths the shell stays off: nowhere to go, and nobody to go as. */
@@ -119,61 +102,13 @@ function RootComponent() {
   )
 }
 
-/** The three choices, spelled with an icon beside the word and never alone. */
-const themeOptions = [
-  { value: 'system', label: 'System', Icon: Monitor },
-  { value: 'light', label: 'Light', Icon: Sun },
-  { value: 'dark', label: 'Dark', Icon: Moon },
-] as const
-
-/**
- * System / Light / Dark, in the app bar beside the wordmark. The state
- * initialises to System and syncs from storage in an effect, so the server
- * render and the first client render agree.
- */
-function ThemeMenu() {
-  const [choice, setChoice] = useState<ThemeChoice>('system')
-
-  useEffect(() => {
-    setChoice(getThemeChoice())
-    return watchSystemTheme()
-  }, [])
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="sm" className="text-muted-foreground">
-          <SunMoon aria-hidden="true" />
-          Theme
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuRadioGroup
-          value={choice}
-          onValueChange={(value) => {
-            if (!isThemeChoice(value)) return
-            setChoice(value)
-            setThemeChoice(value)
-          }}
-        >
-          {themeOptions.map(({ value, label, Icon }) => (
-            <DropdownMenuRadioItem key={value} value={value}>
-              <Icon aria-hidden="true" />
-              {label}
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  )
-}
-
 /**
  * The shell, or nothing. `useRouterState` rather than a prop, because the
  * decision is about the path and the path is the router's fact.
  */
 function Shell() {
   const path = useRouterState({ select: (state) => state.location.pathname })
+  const [me, setMe] = useState<Me | null>(null)
 
   // Client-side navigation onto or off `/board` re-answers the theme, because
   // the head script only runs on a full load and the Board is pinned light.
@@ -181,62 +116,77 @@ function Shell() {
     applyTheme()
   }, [path])
 
+  // Who is reading, which is what decides what the sidebar offers. A 401 is
+  // the signed-out answer and not a failure — it is the explicit refusal ADR
+  // 0010 makes a status rather than an empty body — and anything else leaves
+  // the navigation at its floor, which is the direction that fails safe: the
+  // barn is offered and the desk is not.
+  useEffect(() => {
+    let current = true
+    client
+      .get('/me')
+      .then((answered) => {
+        if (current) setMe(answered)
+      })
+      .catch((error: unknown) => {
+        if (!current) return
+        if (!(error instanceof ApiError)) return
+        setMe(null)
+      })
+    return () => {
+      current = false
+    }
+  }, [])
+
   if (bare.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))) {
     return <Outlet />
   }
 
   return (
-    <>
-      <header className="sticky top-0 z-20 flex h-(--shell-top) items-center gap-2 border-b border-border bg-background px-4">
-        {/* The way home, on every screen, from the mark itself. */}
-        <Link
-          to="/"
-          className="flex min-h-11 items-center gap-2 pr-2 text-base font-semibold tracking-[-0.2px] text-foreground hover:text-primary hover:no-underline"
-          aria-label="Caballus home"
-        >
-          <span
-            className="grid size-7 flex-none place-items-center rounded-md bg-brand-navy text-[15px] font-semibold text-on-dark"
-            aria-hidden="true"
+    <SidebarProvider>
+      <Navigation me={me} path={path} />
+
+      <SidebarInset>
+        {/* The thin bar the drawer opens from. Gone above 900px, where the
+            sidebar is the navigation and a second copy of the wordmark over
+            it is chrome for nothing. */}
+        <header className="sticky top-0 z-20 flex h-(--shell-top) items-center gap-1 border-b border-border bg-background px-2 min-[900px]:hidden">
+          <SidebarTrigger />
+          <Link
+            to="/"
+            className="flex min-h-11 items-center gap-2 px-1 text-base font-semibold tracking-[-0.2px] text-foreground hover:text-primary hover:no-underline"
+            aria-label="Caballus home"
           >
-            C
-          </span>
-          Caballus
-        </Link>
-        <ThemeMenu />
-        <span className="flex-1" />
-        <nav className="hidden items-center gap-1 min-[900px]:flex" aria-label="Sections">
-          {barLinks.map((link) => (
-            <Link
-              key={link.to}
-              to={link.to}
-              className="rounded-sm px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-secondary hover:text-foreground hover:no-underline data-[current=true]:bg-secondary data-[current=true]:text-foreground"
-              data-current={path === link.to}
+            <span
+              className="grid size-7 flex-none place-items-center rounded-md bg-brand-navy text-[15px] font-semibold text-on-dark"
+              aria-hidden="true"
             >
-              {link.label}
+              C
+            </span>
+            Caballus
+          </Link>
+        </header>
+
+        <Outlet />
+
+        <nav
+          className="fixed inset-x-0 bottom-0 z-20 grid auto-cols-fr grid-flow-col border-t border-border bg-background pb-[env(safe-area-inset-bottom,0px)] min-[900px]:hidden"
+          aria-label="Main"
+        >
+          {tabs.map((tab) => (
+            <Link
+              key={tab.to}
+              to={tab.to}
+              className="flex min-h-[60px] flex-col items-center justify-center gap-0.5 px-0.5 py-1 text-center text-[11px] font-medium leading-tight text-muted-foreground hover:no-underline data-[current=true]:text-primary"
+              data-current={path === tab.to}
+            >
+              <tab.Icon aria-hidden="true" className="size-5" />
+              {tab.label}
             </Link>
           ))}
         </nav>
-      </header>
-
-      <Outlet />
-
-      <nav
-        className="fixed inset-x-0 bottom-0 z-20 grid auto-cols-fr grid-flow-col border-t border-border bg-background pb-[env(safe-area-inset-bottom,0px)] min-[900px]:hidden"
-        aria-label="Main"
-      >
-        {tabs.map((tab) => (
-          <Link
-            key={tab.to}
-            to={tab.to}
-            className="flex min-h-[60px] flex-col items-center justify-center gap-0.5 px-0.5 py-1 text-center text-[11px] font-medium leading-tight text-muted-foreground hover:no-underline data-[current=true]:text-primary"
-            data-current={path === tab.to}
-          >
-            <tab.Icon aria-hidden="true" className="size-5" />
-            {tab.label}
-          </Link>
-        ))}
-      </nav>
-    </>
+      </SidebarInset>
+    </SidebarProvider>
   )
 }
 
