@@ -224,11 +224,16 @@ function Entries({
 /**
  * The navigation, and the account under it.
  *
- * `me` is `null` until `/me` answers and stays `null` for a visitor who is not
- * signed in. Both draw the General group — its Destinations need no Scope, and
- * the server refuses a signed-out request to any of them exactly as it always
- * has — and neither draws an account footer, because there is no account to
- * name yet.
+ * `me` is `null` only when the `/me` read **did not arrive** — a dropped
+ * connection rather than a refusal. A volunteer whose signal went in a barn
+ * keeps the way back to Shifts, at the floor and with no account footer, which
+ * is the direction that fails useful rather than safe and is allowed to be:
+ * ADR 0026 is explicit that none of this is a boundary, and the server refuses
+ * on its own whatever this draws.
+ *
+ * A visitor who is **not signed in** never gets here at all. The shell reads
+ * the 401 and renders no chrome, because a menu of fourteen Destinations in
+ * front of somebody with no session is fourteen ways to be refused.
  */
 export function Navigation({ me, path }: { me: Me | null; path: string }) {
   const { isMobile, setOpenMobile } = useSidebar()

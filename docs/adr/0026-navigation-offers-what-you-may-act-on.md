@@ -31,6 +31,14 @@ The line is: **a control is shown and refused; a Destination is offered or not o
 
 It is not derived. `src/shared/api-contract.ts` records paths and shapes and deliberately records no authorization (ADR 0021); the authorization lives in `src/server/api/app.ts`, and a screen's _defining_ write is a judgement — `/admin/products` calls several — that nothing can pick out mechanically. Hand-declared and asserted is the same shape `src/shared/roles.ts` already holds for the Role-to-Scope mapping, and for the same reason: the mapping is small, it is a decision, and a wrong entry should be visible in a diff.
 
+## Nobody signed in is offered nothing
+
+The rule above answers _which_ Destinations somebody is offered. It leaves a case it does not cover: a visitor with no session at all.
+
+The floor answer would be _the General group_, since none of its Destinations names a Domain Scope. That is wrong for the same reason the whole decision is: a menu of fourteen entries in front of somebody who cannot open any of them is fourteen ways to be refused, and it is the emptiest version of the dead menu this ADR is written against. So **the shell does not render at all** without a session — no sidebar, no drawer, no bottom tab bar — joining `/login` and `/board` as the third case where there is no chrome. The two screens that mean anything signed out say _sign in_ on their own.
+
+The distinction that makes this safe is one ADR 0010 already draws. A **401** is the explicit refusal _nobody is signed in_, which is a fact and is acted on. A request that **did not arrive** is not that, and the chrome stays at its floor: a volunteer whose signal dropped in a barn must not also lose the way back to Shifts, and since none of this is a boundary the cost of being wrong in that direction is a tap that gets refused. `src/routes/__root.test.tsx` asserts all three.
+
 ## Consequences
 
 **This is cosmetic and never a security boundary.** Every one of these screens is still reachable by typing its path, and must be: the server refuses, exactly as it does today, and nothing in `src/server/` reads `navigation.ts`. A future reader must not mistake a hidden Destination for an authorization check.

@@ -103,12 +103,45 @@ function RootComponent() {
 }
 
 /**
+ * Who `/me` says is reading, and what the shell does about each answer.
+ *
+ * Four, not two, because the two failures are not the same fact and the shell
+ * has to treat them differently.
+ *
+ * - `asking` — nothing has answered yet. **No chrome**, because a navigation
+ *   that appears and then vanishes is worse than one that arrives a beat late,
+ *   and the answer this is waiting on decides whether it should be there at
+ *   all. It lasts one round trip and only on a full load; a client-side
+ *   navigation already has the answer.
+ * - `signed-in` — the shell, offering what `src/shared/navigation.ts` says.
+ * - `signed-out` — an explicit 401, which ADR 0010 makes a status rather than
+ *   an empty body. **No chrome**: a menu of fourteen Destinations in front of
+ *   somebody with no session is fourteen ways to be refused, and the only two
+ *   screens that mean anything signed out — the hero on `/` and `/login` — both
+ *   say *sign in* on their own.
+ * - `unknown` — the request did not arrive at all. **The chrome stays**, at its
+ *   floor. A volunteer whose signal dropped in a barn must not also lose the
+ *   way back to Shifts, and none of this is a boundary anyway (ADR 0026): the
+ *   server refuses on its own, and it is the thing that decides.
+ */
+type Reader =
+  | { readonly state: 'asking' }
+  | { readonly state: 'signed-in'; readonly me: Me }
+  | { readonly state: 'signed-out' }
+  | { readonly state: 'unknown' }
+
+/**
  * The shell, or nothing. `useRouterState` rather than a prop, because the
  * decision is about the path and the path is the router's fact.
+ *
+ * Exported for `__root.test.tsx`, which renders it inside a router of its own:
+ * `RootComponent` above wraps it in the `<html>` document, which is not a thing
+ * a component test can mount, and *is there a sidebar* is exactly the decision
+ * worth a test.
  */
-function Shell() {
+export function Shell() {
   const path = useRouterState({ select: (state) => state.location.pathname })
-  const [me, setMe] = useState<Me | null>(null)
+  const [reader, setReader] = useState<Reader>({ state: 'asking' })
 
   // Client-side navigation onto or off `/board` re-answers the theme, because
   // the head script only runs on a full load and the Board is pinned light.
@@ -116,31 +149,35 @@ function Shell() {
     applyTheme()
   }, [path])
 
-  // Who is reading, which is what decides what the sidebar offers. A 401 is
-  // the signed-out answer and not a failure — it is the explicit refusal ADR
-  // 0010 makes a status rather than an empty body — and anything else leaves
-  // the navigation at its floor, which is the direction that fails safe: the
-  // barn is offered and the desk is not.
+  // Who is reading: what the sidebar offers, and whether there is a sidebar.
   useEffect(() => {
     let current = true
     client
       .get('/me')
       .then((answered) => {
-        if (current) setMe(answered)
+        if (current) setReader({ state: 'signed-in', me: answered })
       })
       .catch((error: unknown) => {
         if (!current) return
-        if (!(error instanceof ApiError)) return
-        setMe(null)
+        setReader(
+          error instanceof ApiError && error.status === 401
+            ? { state: 'signed-out' }
+            : { state: 'unknown' },
+        )
       })
     return () => {
       current = false
     }
   }, [])
 
-  if (bare.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))) {
+  const bareHere = bare.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))
+  // `/login` and `/board` have nowhere to navigate to and nobody to navigate
+  // as (ADR 0022); the other two are the answers above.
+  if (bareHere || reader.state === 'asking' || reader.state === 'signed-out') {
     return <Outlet />
   }
+
+  const me = reader.state === 'signed-in' ? reader.me : null
 
   return (
     <SidebarProvider>
