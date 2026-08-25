@@ -125,6 +125,25 @@ warning that is not a misconfiguration. `acme.json` also carried four failed
 challenges for `caballus.tech` from 2026-08-18, before any of this existed;
 they are old and did not block the issue.
 
+## The build's browser half is served by `serve.mjs`, and was by nothing
+
+The first deploy answered every page with 200 and every asset with **404**: the
+site rendered as unstyled text, `manifest.webmanifest` and `sw.js` were missing,
+and the installable shell (#48) installed nothing. `vite build` emits the
+browser's half into `dist/client` and the server bundle does not read it, so
+until `scripts/serve.mjs` looked there, nothing served it.
+
+It went unnoticed because `npm run dev` has Vite serving those files and no test
+had ever asked the built server for one. `npm run build && npm start` is
+described in `CLAUDE.md` as the production build, and it had never actually
+worked.
+
+`serve.mjs` now serves `dist/client` ahead of the handler, on `GET` and `HEAD`
+alone, resolving each path and checking it against the root rather than scanning
+for `..`. `/assets/` — Vite's content-hashed output, whose bytes at a given hash
+never change — is `immutable, max-age=31536000`; everything else is `no-cache`,
+`sw.js` above all, where a cached copy is a shell that cannot be updated.
+
 ## A routine deploy
 
 Push to `main`. `ci.yml` runs `verify` and, if it passes, publishes
