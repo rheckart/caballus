@@ -97,13 +97,25 @@ type Open =
   | { readonly kind: 'add' }
   | { readonly kind: 'several' }
   | { readonly kind: 'edit'; readonly space: Space }
+  | { readonly kind: 'retire'; readonly space: Space }
   | null
+
+const STATUS_OPTIONS = [
+  { value: 'active', label: 'Active' },
+  { value: 'retired', label: 'Retired' },
+  { value: 'all', label: 'All' },
+] as const
+
+type StatusFilter = (typeof STATUS_OPTIONS)[number]['value']
 
 function Spaces() {
   const [spaces, setSpaces] = useState<SpaceList | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
   const [open, setOpen] = useState<Open>(null)
   const [filter, setFilter] = useState('')
+  // Active is what everybody wants on the way in: a Retired Space is history,
+  // not something to scroll past every time this screen opens.
+  const [status, setStatus] = useState<StatusFilter>('active')
 
   const load = useCallback(async () => {
     setSpaces(await client.get('/spaces'))
@@ -129,12 +141,22 @@ function Spaces() {
     [load],
   )
 
+  const byStatus = useMemo(
+    () =>
+      (spaces?.spaces ?? []).filter((space) => {
+        if (status === 'active') return space.retiredOn === null
+        if (status === 'retired') return space.retiredOn !== null
+        return true
+      }),
+    [spaces, status],
+  )
+
   const shown = useMemo(
     () =>
-      (spaces?.spaces ?? []).filter((space) =>
+      byStatus.filter((space) =>
         matches(filter, space.name, KIND_LABEL[space.kind], ...space.occupants.map((h) => h.name)),
       ),
-    [spaces, filter],
+    [byStatus, filter],
   )
 
   return (
@@ -187,19 +209,31 @@ function Spaces() {
         </Empty>
       ) : (
         <>
+          <Choice
+            legend="Show"
+            name="status"
+            options={STATUS_OPTIONS}
+            value={status}
+            onChange={setStatus}
+          />
+
           {spaces.spaces.length > 8 && (
             <Filter
               label="Find a Space"
               value={filter}
               onChange={setFilter}
               showing={shown.length}
-              of={spaces.spaces.length}
+              of={byStatus.length}
               noun="Spaces"
             />
           )}
 
           {shown.length === 0 ? (
-            <Empty>No Space matches “{filter}”.</Empty>
+            <Empty>
+              {filter === ''
+                ? `No ${status === 'all' ? '' : `${status} `}Spaces.`
+                : `No Space matches “${filter}”.`}
+            </Empty>
           ) : (
             <Table>
               <TableHeader>
@@ -236,7 +270,13 @@ function Spaces() {
                         <Pencil aria-hidden="true" />
                         Edit
                       </Button>
-                      <Retirement space={space} act={act} />
+                      <Retirement
+                        space={space}
+                        act={act}
+                        onRetire={() => {
+                          setOpen({ kind: 'retire', space })
+                        }}
+                      />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -256,6 +296,24 @@ function Spaces() {
         >
           <SeveralSpacesForm
             existing={spaces?.spaces ?? []}
+            act={act}
+            onSaved={() => {
+              setOpen(null)
+            }}
+          />
+        </Sheet>
+      )}
+
+      {open?.kind === 'retire' && (
+        <Sheet
+          title={`Retire ${open.space.name}`}
+          description="A date is a correction, never a delete — the Space's history stays reachable here."
+          onClose={() => {
+            setOpen(null)
+          }}
+        >
+          <RetireForm
+            space={open.space}
             act={act}
             onSaved={() => {
               setOpen(null)
@@ -289,12 +347,16 @@ function Spaces() {
   )
 }
 
+/** The retire/un-retire control on each row — a single button either way, so
+ * the table stays a table rather than a form sprouting under every Space. */
 function Retirement({
   space,
   act,
+  onRetire,
 }: {
   space: Space
   act: (work: () => Promise<unknown>) => Promise<void>
+  onRetire: () => void
 }) {
   if (space.retiredOn !== null) {
     return (
@@ -307,7 +369,7 @@ function Retirement({
           )
         }}
       >
-        {/* A date is a correction, never a delete (ADR 0002) — the same as setting one below. */}
+        {/* A date is a correction, never a delete (ADR 0002) — the same as the sheet does. */}
         <Button type="submit" variant="outline" size="sm">
           Correct: not Retired
         </Button>
@@ -316,48 +378,64 @@ function Retirement({
   }
 
   return (
+    <Button type="button" variant="outline" size="sm" className="mt-2" onClick={onRetire}>
+      Retire…
+    </Button>
+  )
+}
+
+/** The date-and-reason form, moved into the sheet `onRetire` opens: this is
+ * the part that used to sit under every row and cost the table its height. */
+function RetireForm({
+  space,
+  act,
+  onSaved,
+}: {
+  space: Space
+  act: (work: () => Promise<unknown>) => Promise<void>
+  onSaved: () => void
+}) {
+  const { pending, saved, save } = useSaving()
+
+  return (
     <form
-      className="mt-2"
       onSubmit={(event: FormEvent<HTMLFormElement>) => {
         event.preventDefault()
         const data = new FormData(event.currentTarget)
-        void act(() =>
-          client.post('/spaces/retirement', {
-            spaceId: space.id,
-            retiredOn: dayString(String(data.get('retiredOn') ?? '')),
-            reason: String(data.get('reason') ?? '') || null,
-          }),
-        )
+        void save(() =>
+          act(() =>
+            client.post('/spaces/retirement', {
+              spaceId: space.id,
+              retiredOn: dayString(String(data.get('retiredOn') ?? '')),
+              reason: String(data.get('reason') ?? '') || null,
+            }),
+          ).then(onSaved),
+        ).catch(() => {
+          // The refusal is already on the screen behind the sheet, put there by `act`.
+        })
       }}
     >
-      <label
-        htmlFor={`retire-on-${space.id}`}
-        className="mb-1 mt-2 block text-sm font-medium text-foreground"
-      >
-        Retired on
-      </label>
-      <Input id={`retire-on-${space.id}`} name="retiredOn" type="date" required />
-      <label
-        htmlFor={`retire-reason-${space.id}`}
-        className="mb-1 mt-2 block text-sm font-medium text-foreground"
-      >
-        Reason (optional)
-      </label>
-      <Input id={`retire-reason-${space.id}`} name="reason" maxLength={500} />
-      <Button
-        type="submit"
-        variant="outline"
-        size="sm"
-        className="mt-2"
-        disabled={space.occupants.length > 0}
-      >
-        Retire
-      </Button>
+      <Fields>
+        <Field label="Retired on" htmlFor="retire-on">
+          <Input id="retire-on" name="retiredOn" type="date" required autoFocus />
+        </Field>
+        <WideField label="Reason" htmlFor="retire-reason" optional>
+          <Input id="retire-reason" name="reason" maxLength={500} />
+        </WideField>
+      </Fields>
+
       {space.occupants.length > 0 && (
-        <p className="m-0 mt-1 text-[13px] leading-snug text-muted-foreground">
+        <p className="m-0 mt-2 text-[13px] leading-snug text-muted-foreground">
           Move every horse out before retiring this Space.
         </p>
       )}
+
+      <Actions>
+        <Button type="submit" disabled={pending || space.occupants.length > 0}>
+          {pending ? 'Saving…' : 'Retire'}
+        </Button>
+        <Saved saved={saved} />
+      </Actions>
     </form>
   )
 }
