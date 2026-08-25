@@ -1,21 +1,37 @@
 /**
  * The document, and the shell every screen is drawn inside.
  *
- * Two things live here that used to live nowhere. The **app bar** carries the
- * wordmark as a link to `/`, on every screen, which is the way back that this
- * application did not have: a volunteer four screens into the desk had only the
- * browser's own chrome, and a standalone install (#48) does not have that. The
- * **tab bar** is the phone's navigation — five destinations at thumb height,
- * fixed to the bottom, replaced by a row in the app bar once the screen is wide
- * enough to hold one.
+ * **Navigation is a Sidebar, and it offers what you may act on** (#66, ADR
+ * 0026). Above 900px it is the whole of the navigation and there is no desktop
+ * top bar at all; below it, it is a drawer behind a trigger in a thin bar
+ * carrying the wordmark. What it offers is decided by `src/shared/navigation.ts`
+ * against the Domain Scopes `/me` answers with: a plain Volunteer is offered
+ * **General** and no **Admin** heading, rather than an Admin heading with two
+ * dead entries under it. That is a change of rule for Destinations and not for
+ * controls — ADR 0011's disabled-and-explained action still governs a button on
+ * a screen you are already on — and it is **cosmetic**: every screen is still
+ * reachable by typing its path, and the server still refuses.
  *
- * Both are hidden on exactly two paths. `/login` has nowhere to navigate to,
+ * **The bottom tab bar stays on the phone.** It is not replaced by the drawer.
+ * A drawer is two taps and hides everything; the tabs are one tap, always
+ * visible, at thumb height, and this application is built for gloves and
+ * sunlight (ADR 0007). All five are on the floor, so the bar never changes
+ * shape — a volunteer finds Shifts in the same place every time.
+ *
+ * **The footer carries the account**: who you are, the Theme menu (moved out of
+ * the app bar) and Sign out. Sign out lived on Home, and Home is becoming the
+ * barn's dashboard (#67), so it had to move somewhere that is on every screen.
+ *
+ * Both bars stay off exactly two paths. `/login` has nowhere to navigate to,
  * and `/board` is a wall a barn reads across a room, authenticated as the barn
- * and with no `Actor` to navigate as (ADR 0022) — chrome on it is chrome
- * somebody has to walk over and look past.
+ * and with no `Actor` to navigate as (ADR 0022).
  *
- * `src/styles/app.css` is the whole of the visual system, transcribed from
- * `DESIGN.md`; it is linked here because this is the only document.
+ * `src/styles/tailwind.css` is the whole styling system (ADR 0025, #61–#63):
+ * Tailwind's theme carrying DESIGN.md's tokens, the shadcn semantic tokens
+ * with their dark twins, and the base element typography. The inline script
+ * in `head` is dark mode's before-first-paint half — the app is
+ * server-rendered and the server does not know the choice, so without it
+ * every load flashes the wrong theme.
  */
 import {
   HeadContent,
@@ -25,26 +41,25 @@ import {
   createRootRoute,
   useRouterState,
 } from '@tanstack/react-router'
-import type { ReactNode } from 'react'
+import { CalendarDays, House, Package, PawPrint, Phone } from 'lucide-react'
+import { useEffect, useState, type ReactNode } from 'react'
 
-import appCss from '../styles/app.css?url'
+import { Navigation } from '../components/navigation'
+import { SidebarInset, SidebarProvider, SidebarTrigger } from '../components/ui/sidebar'
+import { ApiError, client } from '../shared/api-client'
+import { THEME_HEAD_SCRIPT, applyTheme } from '../shared/theme'
+import appCss from '../styles/tailwind.css?url'
+import type { Answers, contract } from '../shared/api-contract'
+
+type Me = Answers<typeof contract, '/me'>
 
 /** Where the phone's tab bar goes, in the order a thumb meets them. */
 const tabs = [
-  { to: '/', glyph: '\u{1F3E0}', label: 'Home' },
-  { to: '/shifts', glyph: '\u{1F5D3}', label: 'Shifts' },
-  { to: '/horses', glyph: '\u{1F434}', label: 'Horses' },
-  { to: '/supplies', glyph: '\u{1F4E6}', label: 'Supplies' },
-  { to: '/contacts', glyph: '\u{260E}', label: 'Contacts' },
-] as const
-
-/** The same destinations plus the Board, for a screen with a top bar's room. */
-const barLinks = [
-  { to: '/shifts', label: 'Shifts' },
-  { to: '/horses', label: 'Horses' },
-  { to: '/board', label: 'Board' },
-  { to: '/supplies', label: 'Supplies' },
-  { to: '/contacts', label: 'Contacts' },
+  { to: '/', Icon: House, label: 'Home' },
+  { to: '/shifts', Icon: CalendarDays, label: 'Shifts' },
+  { to: '/horses', Icon: PawPrint, label: 'Horses' },
+  { to: '/supplies', Icon: Package, label: 'Supplies' },
+  { to: '/contacts', Icon: Phone, label: 'Contacts' },
 ] as const
 
 /** The two paths the shell stays off: nowhere to go, and nobody to go as. */
@@ -71,6 +86,10 @@ export const Route = createRootRoute({
       { rel: 'icon', href: '/icons/icon-192.png' },
       { rel: 'apple-touch-icon', href: '/icons/apple-touch-icon.png' },
     ],
+    // Dark mode before first paint (#61): the five-line restatement of
+    // `resolveDark`, because the class has to be on <html> before the
+    // stylesheet paints anything.
+    scripts: [{ children: THEME_HEAD_SCRIPT }],
   }),
   component: RootComponent,
 })
@@ -84,54 +103,133 @@ function RootComponent() {
 }
 
 /**
+ * Who `/me` says is reading, and what the shell does about each answer.
+ *
+ * Four, not two, because the two failures are not the same fact and the shell
+ * has to treat them differently.
+ *
+ * - `asking` — nothing has answered yet. **No chrome**, because a navigation
+ *   that appears and then vanishes is worse than one that arrives a beat late,
+ *   and the answer this is waiting on decides whether it should be there at
+ *   all. It lasts one round trip and only on a full load; a client-side
+ *   navigation already has the answer.
+ * - `signed-in` — the shell, offering what `src/shared/navigation.ts` says.
+ * - `signed-out` — an explicit 401, which ADR 0010 makes a status rather than
+ *   an empty body. **No chrome**: a menu of fourteen Destinations in front of
+ *   somebody with no session is fourteen ways to be refused, and the only two
+ *   screens that mean anything signed out — the hero on `/` and `/login` — both
+ *   say *sign in* on their own.
+ * - `unknown` — the request did not arrive at all. **The chrome stays**, at its
+ *   floor. A volunteer whose signal dropped in a barn must not also lose the
+ *   way back to Shifts, and none of this is a boundary anyway (ADR 0026): the
+ *   server refuses on its own, and it is the thing that decides.
+ */
+type Reader =
+  | { readonly state: 'asking' }
+  | { readonly state: 'signed-in'; readonly me: Me }
+  | { readonly state: 'signed-out' }
+  | { readonly state: 'unknown' }
+
+/**
  * The shell, or nothing. `useRouterState` rather than a prop, because the
  * decision is about the path and the path is the router's fact.
+ *
+ * Exported for `__root.test.tsx`, which renders it inside a router of its own:
+ * `RootComponent` above wraps it in the `<html>` document, which is not a thing
+ * a component test can mount, and *is there a sidebar* is exactly the decision
+ * worth a test.
  */
-function Shell() {
+export function Shell() {
   const path = useRouterState({ select: (state) => state.location.pathname })
-  if (bare.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))) {
+  const [reader, setReader] = useState<Reader>({ state: 'asking' })
+
+  // Client-side navigation onto or off `/board` re-answers the theme, because
+  // the head script only runs on a full load and the Board is pinned light.
+  useEffect(() => {
+    applyTheme()
+  }, [path])
+
+  // Who is reading: what the sidebar offers, and whether there is a sidebar.
+  useEffect(() => {
+    let current = true
+    client
+      .get('/me')
+      .then((answered) => {
+        if (current) setReader({ state: 'signed-in', me: answered })
+      })
+      .catch((error: unknown) => {
+        if (!current) return
+        setReader(
+          error instanceof ApiError && error.status === 401
+            ? { state: 'signed-out' }
+            : { state: 'unknown' },
+        )
+      })
+    return () => {
+      current = false
+    }
+  }, [])
+
+  const bareHere = bare.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))
+  // `/login` and `/board` have nowhere to navigate to and nobody to navigate
+  // as (ADR 0022); the other two are the answers above.
+  if (bareHere || reader.state === 'asking' || reader.state === 'signed-out') {
     return <Outlet />
   }
 
+  const me = reader.state === 'signed-in' ? reader.me : null
+
   return (
-    <>
-      <header className="appbar">
-        {/* The way home, on every screen, from the mark itself. */}
-        <Link to="/" className="appbar-home" aria-label="Caballus home">
-          <span className="appbar-mark" aria-hidden="true">
-            C
-          </span>
-          Caballus
-        </Link>
-        <span className="appbar-spacer" />
-        <nav className="appbar-links" aria-label="Sections">
-          {barLinks.map((link) => (
-            <Link key={link.to} to={link.to} data-current={path === link.to}>
-              {link.label}
+    <SidebarProvider>
+      <Navigation me={me} path={path} />
+
+      <SidebarInset>
+        {/* The thin bar the drawer opens from. Gone above 900px, where the
+            sidebar is the navigation and a second copy of the wordmark over
+            it is chrome for nothing. */}
+        <header className="sticky top-0 z-20 flex h-(--shell-top) items-center gap-1 border-b border-border bg-background px-2 min-[900px]:hidden">
+          <SidebarTrigger />
+          <Link
+            to="/"
+            className="flex min-h-11 items-center gap-2 px-1 text-base font-semibold tracking-[-0.2px] text-foreground hover:text-primary hover:no-underline"
+            aria-label="Caballus home"
+          >
+            <span
+              className="grid size-7 flex-none place-items-center rounded-md bg-brand-navy text-[15px] font-semibold text-on-dark"
+              aria-hidden="true"
+            >
+              C
+            </span>
+            Caballus
+          </Link>
+        </header>
+
+        <Outlet />
+
+        <nav
+          className="fixed inset-x-0 bottom-0 z-20 grid auto-cols-fr grid-flow-col border-t border-border bg-background pb-[env(safe-area-inset-bottom,0px)] min-[900px]:hidden"
+          aria-label="Main"
+        >
+          {tabs.map((tab) => (
+            <Link
+              key={tab.to}
+              to={tab.to}
+              className="flex min-h-[60px] flex-col items-center justify-center gap-0.5 px-0.5 py-1 text-center text-[11px] font-medium leading-tight text-muted-foreground hover:no-underline data-[current=true]:text-primary"
+              data-current={path === tab.to}
+            >
+              <tab.Icon aria-hidden="true" className="size-5" />
+              {tab.label}
             </Link>
           ))}
         </nav>
-      </header>
-
-      <Outlet />
-
-      <nav className="tabbar" aria-label="Main">
-        {tabs.map((tab) => (
-          <Link key={tab.to} to={tab.to} data-current={path === tab.to}>
-            <span className="tabbar-glyph" aria-hidden="true">
-              {tab.glyph}
-            </span>
-            {tab.label}
-          </Link>
-        ))}
-      </nav>
-    </>
+      </SidebarInset>
+    </SidebarProvider>
   )
 }
 
 function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
       </head>

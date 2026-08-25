@@ -20,15 +20,18 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, type ChangeEvent, type FormEvent } from 'react'
 
+import { Actions, Empty, Field, Fields, SaveButton, useSaving } from '../../components/forms'
+import { Refusal } from '../../components/refusal'
+import { Alert, AlertTitle } from '../../components/ui/alert'
+import { Badge } from '../../components/ui/badge'
+import { Input } from '../../components/ui/input'
 import {
-  Actions,
-  Choice,
-  Empty,
-  Field,
-  Fields,
-  SaveButton,
-  useSaving,
-} from '../../components/forms'
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../components/ui/select'
 import { client } from '../../shared/api-client'
 import type { AnswersWrite, contract } from '../../shared/api-contract'
 import { refusalText } from '../../shared/refusals'
@@ -128,33 +131,48 @@ function WhiteboardRead() {
 
   return (
     <main>
-      <h1>Read the whiteboard</h1>
+      <h1 className="text-foreground">Read the whiteboard</h1>
 
-      <p className="lede">
+      <p className="mb-5 max-w-[68ch] text-base leading-relaxed text-muted-foreground">
         One photograph of one panel becomes records. It only ever adds: a name already on file is
         skipped and named back, so running the same panel twice cannot overwrite a correction. The
         photograph itself is never stored.
       </p>
 
-      {problem !== null && <p role="alert">{problem}</p>}
+      {problem !== null && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertTitle>
+            <Refusal>{problem}</Refusal>
+          </AlertTitle>
+        </Alert>
+      )}
 
       <form onSubmit={send}>
         <Fields>
-          <div className="field-wide">
-            <Choice
-              legend="Which panel is this?"
-              name="panel"
-              options={PANEL_OPTIONS}
-              value={panel}
-              onChange={(next) => {
-                setPanel(next)
-                setReport(null)
-              }}
-            />
-            <p className="hint">{PANEL_HINT[panel]}</p>
+          <div className="sm:col-span-2">
+            <Field label="Which panel is this?" htmlFor="whiteboard-panel" hint={PANEL_HINT[panel]}>
+              <Select
+                value={panel}
+                onValueChange={(next) => {
+                  setPanel(next as WhiteboardPanel)
+                  setReport(null)
+                }}
+              >
+                <SelectTrigger id="whiteboard-panel" aria-label="Which panel is this?">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PANEL_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
           </div>
 
-          <div className="field-wide">
+          <div className="sm:col-span-2">
             <Field
               label="The photograph"
               htmlFor="whiteboard-photo"
@@ -167,7 +185,7 @@ function WhiteboardRead() {
                * reading happens at the desk afterwards, off a phone that
                * already has them.
                */}
-              <input
+              <Input
                 id="whiteboard-photo"
                 name="photo"
                 type="file"
@@ -175,7 +193,11 @@ function WhiteboardRead() {
                 onChange={choose}
               />
             </Field>
-            {photo !== null && <p className="hint">Ready to read: {photo.fileName}</p>}
+            {photo !== null && (
+              <p className="mt-1 text-[13px] leading-snug text-muted-foreground">
+                Ready to read: {photo.fileName}
+              </p>
+            )}
           </div>
         </Fields>
 
@@ -204,19 +226,21 @@ function Report({ report }: { report: Report }) {
     report.couldNotPlace.length === 0
 
   return (
-    <section>
-      <h2>What that panel said</h2>
+    <section className="mb-4 mt-6 rounded-lg border border-border bg-background p-4 sm:p-6">
+      <h2 className="mt-0 text-foreground">What that panel said</h2>
 
       {nothing && <Empty>Nothing was read off it. Try a straighter, brighter shot.</Empty>}
 
       {report.check.length > 0 && (
         <>
-          <h3>Check these</h3>
-          <ul role="list">
+          <h3 className="text-foreground">Check these</h3>
+          <ul role="list" className="m-0 mb-4 list-none p-0">
             {report.check.map((sentence, at) => (
               // Keyed by position: two rows that were unreadable in the same
               // way produce the same sentence, and the list never reorders.
-              <li key={`${String(at)} ${sentence}`}>{sentence}</li>
+              <li key={`${String(at)} ${sentence}`} className="mb-1 last:mb-0">
+                {sentence}
+              </li>
             ))}
           </ul>
         </>
@@ -224,11 +248,11 @@ function Report({ report }: { report: Report }) {
 
       {report.created.length > 0 && (
         <>
-          <h3>Created</h3>
-          <ul role="list">
+          <h3 className="text-foreground">Created</h3>
+          <ul role="list" className="m-0 mb-4 list-none p-0">
             {report.created.map((entry) => (
-              <li key={entry.id}>
-                <span className="badge">{RECORD_LABEL[entry.record]}</span> {entry.name}
+              <li key={entry.id} className="mb-1 last:mb-0">
+                <Badge className="mr-1">{RECORD_LABEL[entry.record]}</Badge> {entry.name}
               </li>
             ))}
           </ul>
@@ -237,11 +261,11 @@ function Report({ report }: { report: Report }) {
 
       {report.skipped.length > 0 && (
         <>
-          <h3>Already on file</h3>
-          <ul role="list">
+          <h3 className="text-foreground">Already on file</h3>
+          <ul role="list" className="m-0 mb-4 list-none p-0">
             {report.skipped.map((entry, at) => (
-              <li key={`${String(at)} ${entry.record} ${entry.name}`}>
-                <span className="badge">{RECORD_LABEL[entry.record]}</span> {entry.name}
+              <li key={`${String(at)} ${entry.record} ${entry.name}`} className="mb-1 last:mb-0">
+                <Badge className="mr-1">{RECORD_LABEL[entry.record]}</Badge> {entry.name}
               </li>
             ))}
           </ul>
@@ -250,15 +274,17 @@ function Report({ report }: { report: Report }) {
 
       {report.blank.length > 0 && (
         <>
-          <h3>Left blank</h3>
-          <p className="hint">
+          <h3 className="text-foreground">Left blank</h3>
+          <p className="m-0 mb-2 text-sm text-muted-foreground">
             Not clearly legible, so nothing was recorded. Go and look at the board.
           </p>
-          <ul role="list">
+          <ul role="list" className="m-0 mb-4 list-none p-0">
             {report.blank.map((sentence, at) => (
               // Keyed by position: two rows that were unreadable in the same
               // way produce the same sentence, and the list never reorders.
-              <li key={`${String(at)} ${sentence}`}>{sentence}</li>
+              <li key={`${String(at)} ${sentence}`} className="mb-1 last:mb-0">
+                {sentence}
+              </li>
             ))}
           </ul>
         </>
@@ -266,12 +292,14 @@ function Report({ report }: { report: Report }) {
 
       {report.couldNotPlace.length > 0 && (
         <>
-          <h3>Could not be placed</h3>
-          <ul role="list">
+          <h3 className="text-foreground">Could not be placed</h3>
+          <ul role="list" className="m-0 mb-4 list-none p-0">
             {report.couldNotPlace.map((sentence, at) => (
               // Keyed by position: two rows that were unreadable in the same
               // way produce the same sentence, and the list never reorders.
-              <li key={`${String(at)} ${sentence}`}>{sentence}</li>
+              <li key={`${String(at)} ${sentence}`} className="mb-1 last:mb-0">
+                {sentence}
+              </li>
             ))}
           </ul>
         </>

@@ -10,8 +10,8 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { stubApi } from '../test/api-stub'
-import { renderRoutes } from '../test/route-harness'
+import { answeredNothing, stubApi } from '../test/api-stub'
+import { chooseOption, renderRoutes } from '../test/route-harness'
 import { Route } from './supplies'
 
 afterEach(() => {
@@ -56,7 +56,13 @@ const RICE_BRAN_UNCOUNTED = {
 describe('the Supplies screen', () => {
   it("shows a Product's decremented figure and its last-counted date", async () => {
     stubApi({
-      '/me': { volunteerId: 'reader', name: 'Reader', domainScopes: [] },
+      '/me': {
+        volunteerId: 'reader',
+        name: 'Reader',
+        email: 'someone@barn.test',
+        mobile: null,
+        domainScopes: [],
+      },
       '/supplies': { today: '2026-08-18', products: [SENIOR_COUNTED] },
       '/reorders': { reorders: [] },
       '/escalations': EMPTY_ESCALATIONS,
@@ -70,7 +76,13 @@ describe('the Supplies screen', () => {
 
   it('reads a Product nobody has ever counted as unanswered, never as zero', async () => {
     stubApi({
-      '/me': { volunteerId: 'reader', name: 'Reader', domainScopes: [] },
+      '/me': {
+        volunteerId: 'reader',
+        name: 'Reader',
+        email: 'someone@barn.test',
+        mobile: null,
+        domainScopes: [],
+      },
       '/supplies': { today: '2026-08-18', products: [RICE_BRAN_UNCOUNTED] },
       '/reorders': { reorders: [] },
       '/escalations': EMPTY_ESCALATIONS,
@@ -83,7 +95,13 @@ describe('the Supplies screen', () => {
 
   it('reads a zero projection as out, with the last-counted date', async () => {
     stubApi({
-      '/me': { volunteerId: 'reader', name: 'Reader', domainScopes: [] },
+      '/me': {
+        volunteerId: 'reader',
+        name: 'Reader',
+        email: 'someone@barn.test',
+        mobile: null,
+        domainScopes: [],
+      },
       '/supplies': {
         today: '2026-08-18',
         products: [{ ...SENIOR_COUNTED, projectedDaysRemaining: 0 }],
@@ -99,7 +117,13 @@ describe('the Supplies screen', () => {
 
   it('offers the reading form to a supplies holder', async () => {
     stubApi({
-      '/me': { volunteerId: 'bm', name: 'Barn Manager', domainScopes: ['supplies'] },
+      '/me': {
+        volunteerId: 'bm',
+        name: 'Barn Manager',
+        email: 'someone@barn.test',
+        mobile: null,
+        domainScopes: ['supplies'],
+      },
       '/supplies': { today: '2026-08-18', products: [SENIOR_COUNTED] },
       '/reorders': { reorders: [] },
       '/escalations': EMPTY_ESCALATIONS,
@@ -112,7 +136,13 @@ describe('the Supplies screen', () => {
 
   it('withholds the reading form from a reader with no supplies scope and no Shift Authority today', async () => {
     stubApi({
-      '/me': { volunteerId: 'reader', name: 'Reader', domainScopes: [] },
+      '/me': {
+        volunteerId: 'reader',
+        name: 'Reader',
+        email: 'someone@barn.test',
+        mobile: null,
+        domainScopes: [],
+      },
       '/supplies': { today: '2026-08-18', products: [SENIOR_COUNTED] },
       '/reorders': { reorders: [] },
       '/escalations': EMPTY_ESCALATIONS,
@@ -126,7 +156,13 @@ describe('the Supplies screen', () => {
 
   it('offers the reading form to Shift Authority on a Shift standing today, with no supplies scope', async () => {
     stubApi({
-      '/me': { volunteerId: 'kate', name: 'Kate', domainScopes: [] },
+      '/me': {
+        volunteerId: 'kate',
+        name: 'Kate',
+        email: 'someone@barn.test',
+        mobile: null,
+        domainScopes: [],
+      },
       '/supplies': { today: '2026-08-18', products: [SENIOR_COUNTED] },
       '/reorders': { reorders: [] },
       '/escalations': EMPTY_ESCALATIONS,
@@ -171,7 +207,13 @@ describe('the Supplies screen', () => {
   it('records a reading against the picked Product', async () => {
     let posted: unknown = null
     stubApi({
-      '/me': { volunteerId: 'bm', name: 'Barn Manager', domainScopes: ['supplies'] },
+      '/me': {
+        volunteerId: 'bm',
+        name: 'Barn Manager',
+        email: 'someone@barn.test',
+        mobile: null,
+        domainScopes: ['supplies'],
+      },
       '/supplies': { today: '2026-08-18', products: [SENIOR_COUNTED] },
       '/reorders': { reorders: [] },
       '/escalations': EMPTY_ESCALATIONS,
@@ -183,7 +225,8 @@ describe('the Supplies screen', () => {
     })
     renderSupplies()
 
-    fireEvent.change(await screen.findByLabelText('Product'), { target: { value: 'prod-1' } })
+    await screen.findByLabelText('Days remaining')
+    await chooseOption('Product', 'Senior')
     fireEvent.change(screen.getByLabelText('Days remaining'), { target: { value: '9.5' } })
     fireEvent.click(screen.getByRole('button', { name: 'Record' }))
 
@@ -195,7 +238,13 @@ describe('the Supplies screen', () => {
   it('opens a Reorder for a supplies holder, and never offers the button to a reader', async () => {
     let opened: unknown = null
     stubApi({
-      '/me': { volunteerId: 'bm', name: 'Barn Manager', domainScopes: ['supplies'] },
+      '/me': {
+        volunteerId: 'bm',
+        name: 'Barn Manager',
+        email: 'someone@barn.test',
+        mobile: null,
+        domainScopes: ['supplies'],
+      },
       '/supplies': { today: '2026-08-18', products: [SENIOR_COUNTED] },
       '/escalations': EMPTY_ESCALATIONS,
       '/shifts': EMPTY_SHIFTS,
@@ -219,7 +268,13 @@ describe('the Supplies screen', () => {
   it('shows a Reorder’s thread and closes it with a note, for a supplies holder', async () => {
     let closed: unknown = null
     stubApi({
-      '/me': { volunteerId: 'bm', name: 'Barn Manager', domainScopes: ['supplies'] },
+      '/me': {
+        volunteerId: 'bm',
+        name: 'Barn Manager',
+        email: 'someone@barn.test',
+        mobile: null,
+        domainScopes: ['supplies'],
+      },
       '/supplies': { today: '2026-08-18', products: [SENIOR_COUNTED] },
       '/reorders': {
         reorders: [
@@ -251,7 +306,7 @@ describe('the Supplies screen', () => {
       '/shifts': EMPTY_SHIFTS,
       '/reorders/close': (init: RequestInit) => {
         closed = JSON.parse(String(init.body))
-        return {}
+        return answeredNothing()
       },
     })
     renderSupplies()
@@ -270,7 +325,13 @@ describe('the Supplies screen', () => {
 
   it('withholds the close form on a Reorder from a reader with no supplies scope', async () => {
     stubApi({
-      '/me': { volunteerId: 'reader', name: 'Reader', domainScopes: [] },
+      '/me': {
+        volunteerId: 'reader',
+        name: 'Reader',
+        email: 'someone@barn.test',
+        mobile: null,
+        domainScopes: [],
+      },
       '/supplies': { today: '2026-08-18', products: [SENIOR_COUNTED] },
       '/reorders': {
         reorders: [

@@ -30,6 +30,7 @@
  * not a mistake: those three are left alone and the preview says so first.
  */
 import { createFileRoute } from '@tanstack/react-router'
+import { Pencil } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 
 import {
@@ -44,9 +45,22 @@ import {
   SaveButton,
   Saved,
   Sheet,
+  WideField,
   matches,
   useSaving,
 } from '../../components/forms'
+import { Refusal } from '../../components/refusal'
+import { Alert, AlertTitle } from '../../components/ui/alert'
+import { Button } from '../../components/ui/button'
+import { Input } from '../../components/ui/input'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../../components/ui/table'
 import { client } from '../../shared/api-client'
 import { refusalText } from '../../shared/refusals'
 import type { Answers, contract } from '../../shared/api-contract'
@@ -83,13 +97,25 @@ type Open =
   | { readonly kind: 'add' }
   | { readonly kind: 'several' }
   | { readonly kind: 'edit'; readonly space: Space }
+  | { readonly kind: 'retire'; readonly space: Space }
   | null
+
+const STATUS_OPTIONS = [
+  { value: 'active', label: 'Active' },
+  { value: 'retired', label: 'Retired' },
+  { value: 'all', label: 'All' },
+] as const
+
+type StatusFilter = (typeof STATUS_OPTIONS)[number]['value']
 
 function Spaces() {
   const [spaces, setSpaces] = useState<SpaceList | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
   const [open, setOpen] = useState<Open>(null)
   const [filter, setFilter] = useState('')
+  // Active is what everybody wants on the way in: a Retired Space is history,
+  // not something to scroll past every time this screen opens.
+  const [status, setStatus] = useState<StatusFilter>('active')
 
   const load = useCallback(async () => {
     setSpaces(await client.get('/spaces'))
@@ -115,29 +141,45 @@ function Spaces() {
     [load],
   )
 
+  const byStatus = useMemo(
+    () =>
+      (spaces?.spaces ?? []).filter((space) => {
+        if (status === 'active') return space.retiredOn === null
+        if (status === 'retired') return space.retiredOn !== null
+        return true
+      }),
+    [spaces, status],
+  )
+
   const shown = useMemo(
     () =>
-      (spaces?.spaces ?? []).filter((space) =>
+      byStatus.filter((space) =>
         matches(filter, space.name, KIND_LABEL[space.kind], ...space.occupants.map((h) => h.name)),
       ),
-    [spaces, filter],
+    [byStatus, filter],
   )
 
   return (
     <main>
-      <h1>Spaces</h1>
+      <h1 className="text-foreground">Spaces</h1>
 
-      <p className="lede">
+      <p className="mb-5 max-w-[68ch] text-base leading-relaxed text-muted-foreground">
         A Space is one named area — a stall, a pasture, a paddock or a barn — that may be more than
         one physical unit joined together. An empty Space is shown exactly like an occupied one:
         nothing here is removed for having nobody in it.
       </p>
 
-      {problem !== null && <p role="alert">{problem}</p>}
+      {problem !== null && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertTitle>
+            <Refusal>{problem}</Refusal>
+          </AlertTitle>
+        </Alert>
+      )}
 
-      <div className="list-head">
-        <h2>Every Space</h2>
-        <div className="list-head-actions">
+      <div className="mb-3 mt-6 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="m-0 text-foreground">Every Space</h2>
+        <div className="flex flex-wrap gap-2">
           {/* The run is the primary act on this screen, not the exception:
               describing a barn is where everybody starts. */}
           <AddButton
@@ -147,14 +189,15 @@ function Spaces() {
           >
             Add several
           </AddButton>
-          <button
+          <Button
             type="button"
+            variant="outline"
             onClick={() => {
               setOpen({ kind: 'add' })
             }}
           >
             Add one
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -166,56 +209,79 @@ function Spaces() {
         </Empty>
       ) : (
         <>
+          <Choice
+            legend="Show"
+            name="status"
+            options={STATUS_OPTIONS}
+            value={status}
+            onChange={setStatus}
+          />
+
           {spaces.spaces.length > 8 && (
             <Filter
               label="Find a Space"
               value={filter}
               onChange={setFilter}
               showing={shown.length}
-              of={spaces.spaces.length}
+              of={byStatus.length}
               noun="Spaces"
             />
           )}
 
           {shown.length === 0 ? (
-            <Empty>No Space matches “{filter}”.</Empty>
+            <Empty>
+              {filter === ''
+                ? `No ${status === 'all' ? '' : `${status} `}Spaces.`
+                : `No Space matches “${filter}”.`}
+            </Empty>
           ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th scope="col">Name</th>
-                  <th scope="col">Kind</th>
-                  <th scope="col">Occupied by</th>
-                  <th scope="col">Status</th>
-                  <th scope="col" />
-                </tr>
-              </thead>
-              <tbody>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead scope="col">Name</TableHead>
+                  <TableHead scope="col">Kind</TableHead>
+                  <TableHead scope="col">Occupied by</TableHead>
+                  <TableHead scope="col">Status</TableHead>
+                  <TableHead scope="col" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {shown.map((space) => (
-                  <tr key={space.id}>
-                    <td>{space.name}</td>
-                    <td>{KIND_LABEL[space.kind]}</td>
-                    <td>
+                  <TableRow key={space.id}>
+                    <TableCell>{space.name}</TableCell>
+                    <TableCell>{KIND_LABEL[space.kind]}</TableCell>
+                    <TableCell>
                       {space.occupants.length === 0
                         ? 'Nobody'
                         : space.occupants.map((horse) => horse.name).join(', ')}
-                    </td>
-                    <td>{space.retiredOn === null ? 'Active' : `Retired ${space.retiredOn}`}</td>
-                    <td>
-                      <button
+                    </TableCell>
+                    <TableCell>
+                      {space.retiredOn === null ? 'Active' : `Retired ${space.retiredOn}`}
+                    </TableCell>
+                    <TableCell>
+                      <Button
                         type="button"
+                        variant="outline"
+                        size="sm"
                         onClick={() => {
                           setOpen({ kind: 'edit', space })
                         }}
                       >
+                        <Pencil aria-hidden="true" />
                         Edit
-                      </button>
-                      <Retirement space={space} act={act} />
-                    </td>
-                  </tr>
+                      </Button>
+                      <Retirement
+                        space={space}
+                        act={act}
+                        onRetire={() => {
+                          setOpen({ kind: 'retire', space })
+                        }}
+                      />
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           )}
         </>
       )}
@@ -230,6 +296,24 @@ function Spaces() {
         >
           <SeveralSpacesForm
             existing={spaces?.spaces ?? []}
+            act={act}
+            onSaved={() => {
+              setOpen(null)
+            }}
+          />
+        </Sheet>
+      )}
+
+      {open?.kind === 'retire' && (
+        <Sheet
+          title={`Retire ${open.space.name}`}
+          description="A date is a correction, never a delete — the Space's history stays reachable here."
+          onClose={() => {
+            setOpen(null)
+          }}
+        >
+          <RetireForm
+            space={open.space}
             act={act}
             onSaved={() => {
               setOpen(null)
@@ -263,16 +347,21 @@ function Spaces() {
   )
 }
 
+/** The retire/un-retire control on each row — a single button either way, so
+ * the table stays a table rather than a form sprouting under every Space. */
 function Retirement({
   space,
   act,
+  onRetire,
 }: {
   space: Space
   act: (work: () => Promise<unknown>) => Promise<void>
+  onRetire: () => void
 }) {
   if (space.retiredOn !== null) {
     return (
       <form
+        className="mt-2"
         onSubmit={(event: FormEvent<HTMLFormElement>) => {
           event.preventDefault()
           void act(() =>
@@ -280,34 +369,73 @@ function Retirement({
           )
         }}
       >
-        {/* A date is a correction, never a delete (ADR 0002) — the same as setting one below. */}
-        <button type="submit">Correct: not Retired</button>
+        {/* A date is a correction, never a delete (ADR 0002) — the same as the sheet does. */}
+        <Button type="submit" variant="outline" size="sm">
+          Correct: not Retired
+        </Button>
       </form>
     )
   }
+
+  return (
+    <Button type="button" variant="outline" size="sm" className="mt-2" onClick={onRetire}>
+      Retire…
+    </Button>
+  )
+}
+
+/** The date-and-reason form, moved into the sheet `onRetire` opens: this is
+ * the part that used to sit under every row and cost the table its height. */
+function RetireForm({
+  space,
+  act,
+  onSaved,
+}: {
+  space: Space
+  act: (work: () => Promise<unknown>) => Promise<void>
+  onSaved: () => void
+}) {
+  const { pending, saved, save } = useSaving()
 
   return (
     <form
       onSubmit={(event: FormEvent<HTMLFormElement>) => {
         event.preventDefault()
         const data = new FormData(event.currentTarget)
-        void act(() =>
-          client.post('/spaces/retirement', {
-            spaceId: space.id,
-            retiredOn: dayString(String(data.get('retiredOn') ?? '')),
-            reason: String(data.get('reason') ?? '') || null,
-          }),
-        )
+        void save(() =>
+          act(() =>
+            client.post('/spaces/retirement', {
+              spaceId: space.id,
+              retiredOn: dayString(String(data.get('retiredOn') ?? '')),
+              reason: String(data.get('reason') ?? '') || null,
+            }),
+          ).then(onSaved),
+        ).catch(() => {
+          // The refusal is already on the screen behind the sheet, put there by `act`.
+        })
       }}
     >
-      <label htmlFor={`retire-on-${space.id}`}>Retired on</label>
-      <input id={`retire-on-${space.id}`} name="retiredOn" type="date" required />
-      <label htmlFor={`retire-reason-${space.id}`}>Reason (optional)</label>
-      <input id={`retire-reason-${space.id}`} name="reason" maxLength={500} />
-      <button type="submit" disabled={space.occupants.length > 0}>
-        Retire
-      </button>
-      {space.occupants.length > 0 && <p>Move every horse out before retiring this Space.</p>}
+      <Fields>
+        <Field label="Retired on" htmlFor="retire-on">
+          <Input id="retire-on" name="retiredOn" type="date" required autoFocus />
+        </Field>
+        <WideField label="Reason" htmlFor="retire-reason" optional>
+          <Input id="retire-reason" name="reason" maxLength={500} />
+        </WideField>
+      </Fields>
+
+      {space.occupants.length > 0 && (
+        <p className="m-0 mt-2 text-[13px] leading-snug text-muted-foreground">
+          Move every horse out before retiring this Space.
+        </p>
+      )}
+
+      <Actions>
+        <Button type="submit" disabled={pending || space.occupants.length > 0}>
+          {pending ? 'Saving…' : 'Retire'}
+        </Button>
+        <Saved saved={saved} />
+      </Actions>
     </form>
   )
 }
@@ -354,7 +482,7 @@ function SpaceForm({
     >
       <Fields>
         <Field label="Name" htmlFor="space-name" hint="What the barn calls it. “Stall 7”, “2 & 3”.">
-          <input
+          <Input
             id="space-name"
             name="name"
             defaultValue={space?.name}
@@ -364,7 +492,7 @@ function SpaceForm({
             aria-describedby="space-name-hint"
           />
         </Field>
-        <div className="field">
+        <div className="min-w-0">
           <Choice
             legend="Kind"
             name="kind"
@@ -373,21 +501,19 @@ function SpaceForm({
           />
         </div>
         {space !== null && (
-          <div className="field-wide">
-            <Field
-              label="Reason"
-              htmlFor="space-reason"
-              optional
-              hint="Why it changed. This is what the audit entry carries."
-            >
-              <input
-                id="space-reason"
-                name="reason"
-                maxLength={500}
-                aria-describedby="space-reason-hint"
-              />
-            </Field>
-          </div>
+          <WideField
+            label="Reason"
+            htmlFor="space-reason"
+            optional
+            hint="Why it changed. This is what the audit entry carries."
+          >
+            <Input
+              id="space-reason"
+              name="reason"
+              maxLength={500}
+              aria-describedby="space-reason-hint"
+            />
+          </WideField>
         )}
       </Fields>
 
@@ -454,7 +580,7 @@ function SeveralSpacesForm({
       }}
     >
       <Fields>
-        <div className="field-wide">
+        <div className="sm:col-span-2">
           <Choice
             legend="What are you adding?"
             name="kind"
@@ -475,7 +601,7 @@ function SeveralSpacesForm({
           htmlFor="several-count"
           hint={`Up to ${String(MOST_SPACES_AT_ONCE)} at a time.`}
         >
-          <input
+          <Input
             id="several-count"
             type="number"
             inputMode="numeric"
@@ -495,7 +621,7 @@ function SeveralSpacesForm({
           htmlFor="several-prefix"
           hint="What goes before the number. Keep the trailing space."
         >
-          <input
+          <Input
             id="several-prefix"
             value={prefix}
             maxLength={180}
@@ -506,7 +632,7 @@ function SeveralSpacesForm({
           />
         </Field>
 
-        <div className="field">
+        <div className="min-w-0">
           <Choice
             legend="Numbered"
             name="style"
@@ -524,7 +650,7 @@ function SeveralSpacesForm({
           htmlFor="several-from"
           hint="Where the run begins, for a barn that already has some."
         >
-          <input
+          <Input
             id="several-from"
             type="number"
             inputMode="numeric"
@@ -540,8 +666,8 @@ function SeveralSpacesForm({
 
       {/* Every name, not a summary of them: the whole reason this is safe to
           press is that nothing about it has to be imagined. */}
-      <div className="preview">
-        <p className="preview-head" role="status" aria-live="polite">
+      <div className="mt-5 rounded-lg bg-secondary p-4">
+        <p className="m-0 mb-2 text-sm font-medium" role="status" aria-live="polite">
           {fresh.length === 0
             ? 'Nothing to add.'
             : `Adds ${String(fresh.length)} ${fresh.length === 1 ? 'Space' : 'Spaces'}.`}
@@ -549,9 +675,20 @@ function SeveralSpacesForm({
             ` ${String(clashes)} ${clashes === 1 ? 'name is' : 'names are'} already taken and will be left alone.`}
         </p>
         {names.length > 0 && (
-          <ul className="preview-names" aria-label="The names to be added">
+          <ul
+            className="m-0 flex max-h-[30dvh] list-none flex-wrap gap-1 overflow-y-auto p-0"
+            aria-label="The names to be added"
+          >
             {names.map((name) => (
-              <li key={name} data-held={held.has(name)}>
+              <li
+                key={name}
+                data-held={held.has(name)}
+                className={
+                  held.has(name)
+                    ? 'm-0 rounded-sm border border-dashed border-border bg-transparent px-2.5 py-1 text-sm text-muted-foreground line-through'
+                    : 'm-0 rounded-sm border border-border bg-background px-2.5 py-1 text-sm'
+                }
+              >
                 {name}
               </li>
             ))}

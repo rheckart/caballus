@@ -31,13 +31,16 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useState } from 'react'
 
-import { Loading } from '../components/forms'
+import { Empty, Loading } from '../components/forms'
+import { Refusal } from '../components/refusal'
+import { Alert, AlertTitle } from '../components/ui/alert'
+import { Button } from '../components/ui/button'
 import { client } from '../shared/api-client'
 import { rosteredAbsent } from '../shared/attendance'
 import { refusalText } from '../shared/refusals'
 import type { AssignablePosition } from '../shared/shifts'
 import { carriesShiftAuthority } from '../shared/shifts'
-import { staffingFacts } from '../shared/staffing'
+import { PROMINENT_DAYS, staffingFacts } from '../shared/staffing'
 import { daysBetween } from '../shared/time'
 import type { Answers, contract } from '../shared/api-contract'
 
@@ -62,20 +65,6 @@ const POSITION_LABEL: Record<AssignablePosition | 'acting_lead', string> = {
   acting_lead: 'Acting Lead',
   volunteer: 'Volunteer',
 }
-
-/**
- * How far out a volunteer sees what a Shift is missing.
- *
- * ADR 0011: the gaps are computed across the whole horizon **for holders of
- * `roster`**, and are "prominent to everyone else only inside roughly the next
- * 48 hours". A fortnight of *no Lead* on a phone is a wall of red about Shifts
- * nobody can do anything about yet, and a screen that shouts every day is a
- * screen people stop reading — the same argument the four-gap list is shaped
- * by, pointed at distance instead of at count. Beyond the window the Shift is
- * still listed and still coverable; the headcount beside it still says how
- * thin it is.
- */
-const PROMINENT_DAYS = 2
 
 /**
  * What this Shift is missing, in words. `staffingFacts` is the one place those
@@ -125,33 +114,35 @@ function AttendanceControl({
 
   if (entry === undefined) {
     return (
-      <button
+      <Button
         type="button"
+        size="sm"
         disabled={busy}
         onClick={() => {
           void act(() => client.post('/attendance/sign-in', { volunteerId, shiftId }))
         }}
       >
         Sign in{name !== undefined ? ` — ${name}` : ''}
-      </button>
+      </Button>
     )
   }
 
   if (entry.departedAt === null) {
     return (
-      <button
+      <Button
         type="button"
+        size="sm"
         disabled={busy}
         onClick={() => {
           void act(() => client.post('/attendance/sign-out', { volunteerId, shiftId }))
         }}
       >
         Sign out{name !== undefined ? ` — ${name}` : ''}
-      </button>
+      </Button>
     )
   }
 
-  return <span> — signed out</span>
+  return <span className="text-sm text-muted-foreground">— signed out</span>
 }
 
 /**
@@ -169,7 +160,11 @@ function RosteredAbsent({ shift }: { shift: Shift }) {
     (volunteerId) => shift.roster.find((member) => member.volunteerId === volunteerId)?.name,
   )
 
-  return <p>Rostered, not yet signed in: {names.filter((name) => name !== undefined).join(', ')}</p>
+  return (
+    <p className="m-0 mt-1 text-sm text-muted-foreground">
+      Rostered, not yet signed in: {names.filter((name) => name !== undefined).join(', ')}
+    </p>
+  )
 }
 
 function MyShifts() {
@@ -216,7 +211,15 @@ function MyShifts() {
     return (
       <main>
         <h1>My shifts</h1>
-        {problem === null ? <Loading what="shifts" /> : <p role="alert">{problem}</p>}
+        {problem === null ? (
+          <Loading what="shifts" />
+        ) : (
+          <Alert variant="destructive" className="mb-4">
+            <AlertTitle>
+              <Refusal>{problem}</Refusal>
+            </AlertTitle>
+          </Alert>
+        )}
       </main>
     )
   }
@@ -238,152 +241,186 @@ function MyShifts() {
   return (
     <main>
       <h1>My shifts</h1>
-      {problem !== null && <p role="alert">{problem}</p>}
+      {problem !== null && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertTitle>
+            <Refusal>{problem}</Refusal>
+          </AlertTitle>
+        </Alert>
+      )}
 
-      <section>
+      <section className="mb-6">
         <h2>Mine</h2>
         {mine.length === 0 ? (
-          <p>You are not on any Shift in the next fortnight.</p>
+          <Empty>You are not on any Shift in the next fortnight.</Empty>
         ) : (
-          <ul>
-            {mine.map((shift) => {
-              const member = standing(shift)
-              return (
-                <li key={shift.id}>
-                  <strong>{shift.day}</strong> — {SHIFT_TYPE_LABEL[shift.shiftType]} at{' '}
-                  {shift.startTime}
-                  {member !== undefined && <> — {POSITION_LABEL[member.position]}</>}
-                  {shift.purpose !== null && <> — {shift.purpose}</>}
-                  {shift.state === 'in_progress' && <em> — under way</em>}
-                  <WhatIsMissing shift={shift} within={soon(shift)} />
-                  {/* A Pop-up materializes no checklist — it authors its own
-                      list, and this ticket does not build that screen
-                      (ADR 0013) — so the link is offered only where one
-                      might exist. */}
-                  {shift.shiftType !== 'pop_up' && (
-                    <>
-                      {' '}
-                      <Link to="/shifts/$shiftId" params={{ shiftId: shift.id }}>
-                        Checklist
-                      </Link>
-                    </>
-                  )}{' '}
-                  <AttendanceControl
-                    shiftId={shift.id}
-                    forVolunteer={{
-                      volunteerId: me.volunteerId,
-                      entry: shift.attendance.find((entry) => entry.volunteerId === me.volunteerId),
-                    }}
-                    busy={busy}
-                    act={act}
-                  />
-                  {/* Who a Lead can see is standing and rostered but has not
-                      signed in — a displayed fact, never a label the app
-                      applies to a person (ADR 0012). */}
-                  {member !== undefined &&
-                    carriesShiftAuthority(member.position) &&
-                    shift.state === 'in_progress' && <RosteredAbsent shift={shift} />}
-                  {/* Short is declared and cleared by whoever carries Shift
-                      Authority here, which is what the Lead needs at 5am on
-                      the screen they are already looking at (ADR 0011). The
-                      server refuses anybody else, and the button is shown only
-                      to somebody it will take. */}
-                  {member !== undefined && carriesShiftAuthority(member.position) && (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => {
-                        void act(() =>
-                          client.post('/shifts/short', {
-                            shiftId: shift.id,
-                            short: shift.short === null,
-                          }),
-                        )
-                      }}
-                    >
-                      {shift.short === null ? 'Call it short' : 'Clear short'}
-                    </button>
-                  )}
-                  {/* Offered to anybody rostered on a leaderless Shift, and to
-                      the suggested person with the suggestion said out loud —
-                      a claim nobody made silently is the point (ADR 0010). */}
-                  {shift.staffing.gaps.includes('no_lead') && (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => {
-                        void act(() => client.post('/shifts/acting-lead', { shiftId: shift.id }))
-                      }}
-                    >
-                      {shift.staffing.suggestedActingLead === me.volunteerId
-                        ? 'Take charge as acting lead (suggested)'
-                        : 'Take charge as acting lead'}
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => {
-                      const reason = window.prompt(
-                        'Anything you want to say about why? (optional)',
-                        '',
-                      )
-                      // A cancelled prompt is a cancelled Drop; an empty one is
-                      // a Drop with no reason, which is allowed and normal — a
-                      // required reason collects the word "personal" sixty
-                      // times (ADR 0011).
-                      if (reason === null) return
-                      void act(() =>
-                        client.post('/shifts/drop', {
-                          shiftId: shift.id,
-                          reason: reason === '' ? null : reason,
-                        }),
-                      )
-                    }}
+          <div className="rounded-lg border border-border bg-background p-4 sm:p-6">
+            <ul className="m-0 list-none p-0">
+              {mine.map((shift) => {
+                const member = standing(shift)
+                return (
+                  <li
+                    key={shift.id}
+                    className="border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0"
                   >
-                    Drop
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
+                    <p className="m-0">
+                      <strong>{shift.day}</strong> — {SHIFT_TYPE_LABEL[shift.shiftType]} at{' '}
+                      {shift.startTime}
+                      {member !== undefined && <> — {POSITION_LABEL[member.position]}</>}
+                      {shift.purpose !== null && <> — {shift.purpose}</>}
+                      {shift.state === 'in_progress' && <em> — under way</em>}
+                      <WhatIsMissing shift={shift} within={soon(shift)} />
+                    </p>
+                    {/* Who a Lead can see is standing and rostered but has not
+                        signed in — a displayed fact, never a label the app
+                        applies to a person (ADR 0012). */}
+                    {member !== undefined &&
+                      carriesShiftAuthority(member.position) &&
+                      shift.state === 'in_progress' && <RosteredAbsent shift={shift} />}
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      {/* A Pop-up materializes no checklist — it authors its own
+                          list, and this ticket does not build that screen
+                          (ADR 0013) — so the link is offered only where one
+                          might exist. */}
+                      {shift.shiftType !== 'pop_up' && (
+                        <Button asChild variant="outline" size="sm">
+                          <Link to="/shifts/$shiftId" params={{ shiftId: shift.id }}>
+                            Checklist
+                          </Link>
+                        </Button>
+                      )}
+                      <AttendanceControl
+                        shiftId={shift.id}
+                        forVolunteer={{
+                          volunteerId: me.volunteerId,
+                          entry: shift.attendance.find(
+                            (entry) => entry.volunteerId === me.volunteerId,
+                          ),
+                        }}
+                        busy={busy}
+                        act={act}
+                      />
+                      {/* Short is declared and cleared by whoever carries Shift
+                          Authority here, which is what the Lead needs at 5am on
+                          the screen they are already looking at (ADR 0011). The
+                          server refuses anybody else, and the button is shown only
+                          to somebody it will take. */}
+                      {member !== undefined && carriesShiftAuthority(member.position) && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => {
+                            void act(() =>
+                              client.post('/shifts/short', {
+                                shiftId: shift.id,
+                                short: shift.short === null,
+                              }),
+                            )
+                          }}
+                        >
+                          {shift.short === null ? 'Call it short' : 'Clear short'}
+                        </Button>
+                      )}
+                      {/* Offered to anybody rostered on a leaderless Shift, and to
+                          the suggested person with the suggestion said out loud —
+                          a claim nobody made silently is the point (ADR 0010). */}
+                      {shift.staffing.gaps.includes('no_lead') && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => {
+                            void act(() =>
+                              client.post('/shifts/acting-lead', { shiftId: shift.id }),
+                            )
+                          }}
+                        >
+                          {shift.staffing.suggestedActingLead === me.volunteerId
+                            ? 'Take charge as acting lead (suggested)'
+                            : 'Take charge as acting lead'}
+                        </Button>
+                      )}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => {
+                          const reason = window.prompt(
+                            'Anything you want to say about why? (optional)',
+                            '',
+                          )
+                          // A cancelled prompt is a cancelled Drop; an empty one is
+                          // a Drop with no reason, which is allowed and normal — a
+                          // required reason collects the word "personal" sixty
+                          // times (ADR 0011).
+                          if (reason === null) return
+                          void act(() =>
+                            client.post('/shifts/drop', {
+                              shiftId: shift.id,
+                              reason: reason === '' ? null : reason,
+                            }),
+                          )
+                        }}
+                      >
+                        Drop
+                      </Button>
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
         )}
       </section>
 
-      <section>
+      <section className="mb-6">
         <h2>Open to sign-up</h2>
         {open.length === 0 ? (
-          <p>Nothing is open for cover.</p>
+          <Empty>Nothing is open for cover.</Empty>
         ) : (
-          <ul>
-            {open.map((shift) => (
-              <li key={shift.id}>
-                <strong>{shift.day}</strong> — {SHIFT_TYPE_LABEL[shift.shiftType]} at{' '}
-                {shift.startTime}
-                {shift.purpose !== null && <> — {shift.purpose}</>}
-                <span>
-                  {' '}
-                  {shift.roster.filter((member) => member.endedAs === null).length} of{' '}
-                  {shift.targetHeadcount} so far
-                </span>
-                {/* What it still needs, beside the button that takes you
-                    anyway. A Shift needing medication takes somebody who
-                    cannot give it — turning away a volunteer who is offering
-                    to come is the worst thing this surface could do
-                    (ADR 0011). */}
-                <WhatIsMissing shift={shift} within={soon(shift)} />
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => {
-                    void act(() => client.post('/shifts/cover', { shiftId: shift.id }))
-                  }}
+          <div className="rounded-lg border border-border bg-background p-4 sm:p-6">
+            <ul className="m-0 list-none p-0">
+              {open.map((shift) => (
+                <li
+                  key={shift.id}
+                  className="border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0"
                 >
-                  Cover this
-                </button>
-              </li>
-            ))}
-          </ul>
+                  <p className="m-0">
+                    <strong>{shift.day}</strong> — {SHIFT_TYPE_LABEL[shift.shiftType]} at{' '}
+                    {shift.startTime}
+                    {shift.purpose !== null && <> — {shift.purpose}</>}
+                    <span>
+                      {' '}
+                      {shift.roster.filter((member) => member.endedAs === null).length} of{' '}
+                      {shift.targetHeadcount} so far
+                    </span>
+                    {/* What it still needs, beside the button that takes you
+                        anyway. A Shift needing medication takes somebody who
+                        cannot give it — turning away a volunteer who is offering
+                        to come is the worst thing this surface could do
+                        (ADR 0011). */}
+                    <WhatIsMissing shift={shift} within={soon(shift)} />
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => {
+                        void act(() => client.post('/shifts/cover', { shiftId: shift.id }))
+                      }}
+                    >
+                      Cover this
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
       </section>
     </main>

@@ -1171,6 +1171,20 @@ export const shiftPatterns = pgTable(
   },
   (table) => [
     index('shift_patterns_weekday').on(table.orgId, table.weekday),
+    // One live Pattern per weekday and Shift Type. Two `monday`/`feed_am`
+    // Patterns generate two Monday morning Shifts, and the Board then shows the
+    // barn a morning it does not have — a state nothing ever prevented, because
+    // the single-add form allowed it by accident.
+    //
+    // Partial for the reason `volunteers_email_in_org` is partial: a retired
+    // Pattern is kept so that *what were the Tuesday mornings before we
+    // stopped* stays answerable, and a total index would mean retiring a
+    // Pattern makes that weekday's Shift Type uncreatable forever. Retirement
+    // everywhere else in this application means *done with this one, make a new
+    // one if you need one*; this keeps Patterns from being the exception.
+    uniqueIndex('shift_patterns_live_occurrence')
+      .on(table.orgId, table.weekday, table.shiftType)
+      .where(sql`retired_at is null`),
     inScope('shift_patterns_in_scope'),
   ],
 ).enableRLS()

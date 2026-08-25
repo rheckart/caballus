@@ -29,6 +29,13 @@ const REFUSALS: Record<string, string> = {
     'That is the last person who can confer a role. Give somebody else an officer role first.',
   not_held: 'They do not hold that.',
   volunteer_not_found: 'That volunteer is not here any more.',
+  email_unchanged: 'That is already your address — nothing to change.',
+  email_not_sent:
+    'The code could not be sent. Your address has not changed. Try again in a minute.',
+  no_code: 'That code has expired or was already used. Ask for a new one.',
+  too_many_codes: 'That address has been sent too many codes. Try again in an hour.',
+  wrong_code: 'That code is not right. Check the message and try again.',
+  account_not_claimed: 'You have never signed in, so there is no address to move yet.',
   release_version_not_found: 'That release version is gone.',
   signature_not_found: 'That signature is gone.',
   horse_not_found: 'That horse is not here any more.',
@@ -108,8 +115,30 @@ const REFUSALS: Record<string, string> = {
 /** What a failed call says when the server never answered at all. */
 export const UNREACHABLE = 'We could not reach the app. Check the connection and try again.'
 
+/**
+ * What a 401 says. The server already separates the two — 401 is *nobody is
+ * signed in*, 403 is *this person may not* (`src/server/api/authorization.ts`)
+ * — and both used to arrive here as `not_authorized`, so a volunteer whose
+ * session had ended was told they lacked a Domain Scope. That sentence sends
+ * somebody to a Coordinator for a permission they already hold; this one sends
+ * them to the sign-in screen, which is where the problem actually is.
+ */
+export const SIGNED_OUT = 'You have been signed out. Sign in again to carry on.'
+
+/**
+ * What a 401 says **to the barn's tablet**, which is nobody (ADR 0022).
+ *
+ * The Board authenticates as the barn with a kiosk token and resolves to no
+ * `Actor`, so a 401 there is a token the server no longer accepts and not a
+ * session that ended. Telling a wall-mounted screen with no keyboard to sign in
+ * again is an instruction nobody standing in front of it can follow — this one
+ * names the thing somebody at a desk can actually fix.
+ */
+export const BOARD_NOT_LINKED = 'This board is no longer linked. Re-enter the barn code.'
+
 export function refusalText(error: unknown): string {
   if (!(error instanceof ApiError)) return UNREACHABLE
+  if (error.status === 401) return SIGNED_OUT
 
   const named = (error.body as { error?: unknown } | null)?.error
   if (typeof named !== 'string') return UNREACHABLE

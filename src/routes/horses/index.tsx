@@ -7,7 +7,9 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 
-import { Loading } from '../../components/forms'
+import { Empty, Loading } from '../../components/forms'
+import { Refusal } from '../../components/refusal'
+import { Alert, AlertTitle } from '../../components/ui/alert'
 import { client } from '../../shared/api-client'
 import { refusalText } from '../../shared/refusals'
 import type { Answers, contract } from '../../shared/api-contract'
@@ -41,7 +43,11 @@ function HorseList() {
     return (
       <main>
         <h1>Horses</h1>
-        <p role="alert">{problem}</p>
+        <Alert variant="destructive" className="mb-4">
+          <AlertTitle>
+            <Refusal>{problem}</Refusal>
+          </AlertTitle>
+        </Alert>
       </main>
     )
   }
@@ -60,23 +66,37 @@ function HorseList() {
   return (
     <main>
       <h1>Horses</h1>
-      <ul>
-        {here.map((horse) => (
-          <li key={horse.id}>
-            <Link to="/horses/$horseId" params={{ horseId: horse.id }}>
-              {horse.photoUrl !== null && (
-                <img src={horse.photoUrl} alt="" width={48} height={48} />
-              )}
-              {horse.name}
-              {horse.spaces.stall !== null && ` — ${horse.spaces.stall.name}`}
-              {horse.spaces.pasture !== null && ` — ${horse.spaces.pasture.name}`}
-              {horse.spaces.paddock !== null && ` — ${horse.spaces.paddock.name}`}
-              {horse.spaces.barn !== null && ` — ${horse.spaces.barn.name}`}
-            </Link>
-          </li>
-        ))}
-      </ul>
-      {here.length === 0 && <p>No horses yet.</p>}
+      {here.length === 0 ? (
+        <Empty>No horses yet.</Empty>
+      ) : (
+        <section className="mb-4 rounded-lg border border-border bg-background p-4 sm:p-6">
+          <ul className="m-0 list-none p-0">
+            {here.map((horse) => (
+              <li
+                key={horse.id}
+                className="border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0"
+              >
+                <Link to="/horses/$horseId" params={{ horseId: horse.id }}>
+                  {horse.photoUrl !== null && (
+                    <img
+                      src={horse.photoUrl}
+                      alt=""
+                      width={48}
+                      height={48}
+                      className="mr-3 inline-block rounded-md object-cover align-middle"
+                    />
+                  )}
+                  {horse.name}
+                  {horse.spaces.stall !== null && ` — ${horse.spaces.stall.name}`}
+                  {horse.spaces.pasture !== null && ` — ${horse.spaces.pasture.name}`}
+                  {horse.spaces.paddock !== null && ` — ${horse.spaces.paddock.name}`}
+                  {horse.spaces.barn !== null && ` — ${horse.spaces.barn.name}`}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </main>
   )
 }

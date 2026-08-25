@@ -119,6 +119,77 @@ export async function createVolunteerIn(
 }
 
 /**
+ * A Volunteer's own name and mobile, changed by themselves (#68, ADR 0027).
+ *
+ * The subject is the actor, always — the parameter is one id and not two, so
+ * there is no shape in which this edits somebody else. `floor(
+ * 'edit-your-own-contact-details')` is the door, on ADR 0012's own reading of
+ * *your own*, rather than a third authorization axis past ADR 0010's two.
+ *
+ * **Three fields and no more, and this is two of them.** Everything else about
+ * a Volunteer is a statement somebody *else* has to make — an Orientation is a
+ * Coordinator saying they oriented you, a Release records that a piece of paper
+ * exists, a date of birth is verified against photo ID, a Role is a grant — and
+ * letting the subject make it defeats the thing. The third is the email, which
+ * is the credential and lives in `src/server/auth/email-change.ts`.
+ *
+ * **Audited, and with no `reason`.** A reason exists because somebody is
+ * explaining a decision about another person; nobody will ever ask why you
+ * changed your own phone number.
+ */
+export async function recordOwnContactDetails(
+  db: OrgScopedDatabase,
+  orgId: OrgId,
+  volunteerId: string,
+  details: { readonly name: string; readonly mobile: string | null },
+): Promise<Recorded> {
+  const name = details.name.trim()
+  // Blank and absent are the same fact about a phone number, and storing the
+  // empty string would make *has a mobile* two questions.
+  const mobile =
+    details.mobile === null || details.mobile.trim() === '' ? null : details.mobile.trim()
+
+  const [existing] = await db
+    .select({ name: volunteers.name, mobile: volunteers.mobile })
+    .from(volunteers)
+    .where(and(eq(volunteers.id, volunteerId), isNull(volunteers.removedAt)))
+    .limit(1)
+  if (existing === undefined) return refused('volunteer_not_found')
+
+  await db.update(volunteers).set({ name, mobile }).where(eq(volunteers.id, volunteerId))
+
+  // One entry per field that actually moved. An entry saying a name changed
+  // from *Kate* to *Kate* is noise in the one record that has to stay readable.
+  await audit(
+    db,
+    orgId,
+    volunteerId,
+    [
+      existing.name === name
+        ? null
+        : {
+            entity: 'volunteer' as const,
+            entityId: volunteerId,
+            field: 'name',
+            before: existing.name,
+            after: name,
+          },
+      existing.mobile === mobile
+        ? null
+        : {
+            entity: 'volunteer' as const,
+            entityId: volunteerId,
+            field: 'mobile',
+            before: existing.mobile,
+            after: mobile,
+          },
+    ].filter((entry) => entry !== null),
+  )
+
+  return recorded(null)
+}
+
+/**
  * Records the date of birth and how it was established.
  *
  * A precondition of the Orientation tick rather than a fourth gate: the person

@@ -133,6 +133,7 @@ describe.skipIf(!reachable)('idempotency, against the database', () => {
         requestId: request.headers.get('x-request-id') ?? randomUUID(),
         actor: { volunteerId: 'v_01J8', domainScopes: [] },
         kiosk: false,
+        sessionToken: null,
       }),
     })
 
@@ -221,6 +222,7 @@ describe.skipIf(!reachable)('idempotency, against the database', () => {
         requestId: randomUUID(),
         actor: { volunteerId: 'v_01J8', domainScopes: [] },
         kiosk: false,
+        sessionToken: null,
       }),
     })
     api.mutation(
@@ -290,6 +292,7 @@ describe.skipIf(!reachable)('idempotency, against the database', () => {
         requestId: request.headers.get('x-request-id') ?? randomUUID(),
         actor: { volunteerId: 'v_01J8', domainScopes: [] },
         kiosk: false,
+        sessionToken: null,
       }),
     })
     api.mutation('/quiet', floor('work-on-a-shift-you-are-rostered-on'), () => {

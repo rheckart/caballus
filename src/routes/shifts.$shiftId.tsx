@@ -17,6 +17,10 @@
  * confirmed and nothing the server confirmed still reads Unsent once the
  * checklist is re-read after a send.
  *
+ * The tick's checkbox stays a native `<input type="checkbox">`, styled rather
+ * than replaced: the TickQueue flow reads it through `onChange`, and a
+ * composite control between a glove and an offline write buys nothing here.
+ *
  * `materialized: false` is a Shift whose day nothing has fixed yet — shown as
  * that fact rather than as an empty checklist, so nobody reads *nothing to
  * do* where the honest sentence is *not fixed yet*.
@@ -24,7 +28,11 @@
 import { Link, createFileRoute, useParams } from '@tanstack/react-router'
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 
-import { Loading } from '../components/forms'
+import { Empty, Loading } from '../components/forms'
+import { Refusal } from '../components/refusal'
+import { Alert as AlertBox, AlertDescription, AlertTitle } from '../components/ui/alert'
+import { Button } from '../components/ui/button'
+import { Input } from '../components/ui/input'
 import { client } from '../shared/api-client'
 import type { Answers, contract } from '../shared/api-contract'
 import { report } from '../shared/observability.browser'
@@ -60,6 +68,9 @@ const BLOCKER_LABEL: Record<CloseBlockerKind, string> = {
   open_attendance: 'Somebody still signed in',
   undispositioned_observation: 'A report with no decision yet',
 }
+
+/** The card every grouped section of the checklist sits in. */
+const CARD = 'mb-4 rounded-lg border border-border bg-background p-4 sm:p-6'
 
 /**
  * One `TickQueue` for the life of this component. A page reload — the case
@@ -161,42 +172,70 @@ function ItemActions({
   if (item.done) return null
 
   return (
-    <span>
-      {' '}
+    <div className="mt-1 flex flex-wrap items-center gap-2">
       {item.assignedToVolunteerName !== null ? (
-        <span>— assigned to {item.assignedToVolunteerName} </span>
+        <span className="text-sm text-muted-foreground">
+          — assigned to {item.assignedToVolunteerName}
+        </span>
       ) : (
-        <button type="button" disabled={busy || myVolunteerId === null} onClick={selfClaim}>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={busy || myVolunteerId === null}
+          onClick={selfClaim}
+        >
           It's mine
-        </button>
+        </Button>
       )}
       {item.priority === 'discretionary' &&
         (item.overdue ? (
-          <span> — overdue: Drop is withdrawn</span>
+          <span className="text-sm text-muted-foreground">— overdue: Drop is withdrawn</span>
         ) : (
-          <button type="button" disabled={busy} onClick={() => setReasonFor('drop')}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={busy}
+            onClick={() => setReasonFor('drop')}
+          >
             Drop
-          </button>
+          </Button>
         ))}
-      <button type="button" disabled={busy} onClick={() => setReasonFor('not_done')}>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled={busy}
+        onClick={() => setReasonFor('not_done')}
+      >
         Not done
-      </button>
+      </Button>
       {reasonFor !== null && (
-        <form onSubmit={submitReason}>
-          <label>
+        <form onSubmit={submitReason} className="flex w-full flex-wrap items-center gap-2">
+          <label htmlFor={`why-${item.id}`} className="m-0 text-sm font-medium text-foreground">
             Why{reasonFor === 'not_done' ? ' (required)' : ''}:
-            <input value={reason} onChange={(event) => setReason(event.target.value)} />
           </label>
-          <button type="submit" disabled={busy}>
+          <Input
+            id={`why-${item.id}`}
+            className="h-9 w-auto max-w-64 flex-1 basis-40"
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+          />
+          <Button type="submit" size="sm" disabled={busy}>
             Save
-          </button>
-          <button type="button" onClick={() => setReasonFor(null)}>
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => setReasonFor(null)}>
             Cancel
-          </button>
+          </Button>
         </form>
       )}
-      {problem !== null && <span role="alert"> {problem}</span>}
-    </span>
+      {problem !== null && (
+        <span role="alert" className="text-sm text-destructive">
+          {problem}
+        </span>
+      )}
+    </div>
   )
 }
 
@@ -226,51 +265,84 @@ function ItemLine({
   }, [queue, shiftId, item.id])
 
   return (
-    <li>
-      <label>
-        <input type="checkbox" checked={checked} disabled={checked} onChange={tick} />
-        <strong>{KIND_LABEL[item.kind]}</strong> — {item.instructionText}
-        {item.requiresMedicationAuthority && <em> (needs Medication Authority)</em>}
-        {item.priority === 'discretionary' && <span> (discretionary)</span>}
-        {item.closing && <span> (closing)</span>}
-        {item.assignedShiftType !== null && (
-          <span> — normally {SHIFT_TYPE_LABEL[item.assignedShiftType]}'s</span>
-        )}
-        {/* The unanswered question, said as one — never silently read as no work (ADR 0013). */}
-        {item.assignmentUndecided && <span> — not yet decided which Shift normally does this</span>}
-        {item.prepForShiftType !== null && (
-          <span> — Prep owed to {SHIFT_TYPE_LABEL[item.prepForShiftType]}</span>
-        )}
+    <li className="border-b border-border py-2 first:pt-0 last:border-b-0 last:pb-0">
+      <label className="flex min-h-11 items-center gap-2">
+        <input
+          type="checkbox"
+          className="size-[22px] flex-none accent-primary"
+          checked={checked}
+          disabled={checked}
+          onChange={tick}
+        />
+        <span className="min-w-0">
+          <strong>{KIND_LABEL[item.kind]}</strong> — {item.instructionText}
+          {item.requiresMedicationAuthority && <em> (needs Medication Authority)</em>}
+          {item.priority === 'discretionary' && (
+            <span className="text-muted-foreground"> (discretionary)</span>
+          )}
+          {item.closing && <span className="text-muted-foreground"> (closing)</span>}
+          {item.assignedShiftType !== null && (
+            <span className="text-muted-foreground">
+              {' '}
+              — normally {SHIFT_TYPE_LABEL[item.assignedShiftType]}'s
+            </span>
+          )}
+          {/* The unanswered question, said as one — never silently read as no work (ADR 0013). */}
+          {item.assignmentUndecided && (
+            <span className="text-muted-foreground">
+              {' '}
+              — not yet decided which Shift normally does this
+            </span>
+          )}
+          {item.prepForShiftType !== null && (
+            <span className="text-muted-foreground">
+              {' '}
+              — Prep owed to {SHIFT_TYPE_LABEL[item.prepForShiftType]}
+            </span>
+          )}
+        </span>
       </label>
-      {unsent && <span> Unsent</span>}
-      {confirmedDone && <span> Done{item.doneByName !== null ? ` — ${item.doneByName}` : ''}</span>}
-      {item.outcome === 'dropped' && (
-        <span>
-          {' '}
-          Dropped{item.outcomeByName !== null ? ` — ${item.outcomeByName}` : ''}
-          {item.outcomeReason !== null ? ` (${item.outcomeReason})` : ''}
-        </span>
-      )}
-      {item.outcome === 'not_done' && (
-        <span role="alert">
-          {' '}
-          Not done{item.outcomeByName !== null ? ` — ${item.outcomeByName}` : ''}
-          {item.outcomeReason !== null ? `: ${item.outcomeReason}` : ''}
-        </span>
-      )}
-      {denial !== null && <span role="alert"> {denial.message}</span>}
-      <ItemActions
-        item={item}
-        shiftId={shiftId}
-        myVolunteerId={myVolunteerId}
-        onChanged={onChanged}
-      />
+      <div className="pl-[30px]">
+        {unsent && (
+          <span className="mr-2 text-[13px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Unsent
+          </span>
+        )}
+        {confirmedDone && (
+          <span className="mr-2 text-sm text-success">
+            Done{item.doneByName !== null ? ` — ${item.doneByName}` : ''}
+          </span>
+        )}
+        {item.outcome === 'dropped' && (
+          <span className="mr-2 text-sm text-muted-foreground">
+            Dropped{item.outcomeByName !== null ? ` — ${item.outcomeByName}` : ''}
+            {item.outcomeReason !== null ? ` (${item.outcomeReason})` : ''}
+          </span>
+        )}
+        {item.outcome === 'not_done' && (
+          <span role="alert" className="mr-2 text-sm text-destructive">
+            Not done{item.outcomeByName !== null ? ` — ${item.outcomeByName}` : ''}
+            {item.outcomeReason !== null ? `: ${item.outcomeReason}` : ''}
+          </span>
+        )}
+        {denial !== null && (
+          <span role="alert" className="text-sm text-destructive">
+            {denial.message}
+          </span>
+        )}
+        <ItemActions
+          item={item}
+          shiftId={shiftId}
+          myVolunteerId={myVolunteerId}
+          onChanged={onChanged}
+        />
+      </div>
     </li>
   )
 }
 
 /**
- * A horse's standing Alerts, above her work and in full text (ADR 0024).
+ * A horse's standing Alerts, above its work and in full text (ADR 0024).
  *
  * Nothing is shown when there are none — a card that says *no alerts* on
  * every horse teaches a volunteer to skip the place the words appear, which is
@@ -284,11 +356,24 @@ function HorseAlerts({
   readonly horseName: string
 }) {
   if (alerts.length === 0) return null
+
+  const kindTint: Record<Alert['kind'], string> = {
+    prohibition: 'border-l-destructive bg-card-tint-rose dark:bg-transparent',
+    care: 'border-l-warning bg-card-tint-peach dark:bg-transparent',
+    allergy: 'border-l-brand-purple bg-card-tint-lavender dark:bg-transparent',
+  }
+
   return (
-    <ul className="alerts" aria-label={`Alerts — ${horseName}`}>
+    <ul className="m-0 mb-3 grid list-none gap-2 p-0" aria-label={`Alerts — ${horseName}`}>
       {alerts.map((alert) => (
-        <li key={alert.id} className="alert" data-kind={alert.kind}>
-          <strong>{ALERT_KIND_LABEL[alert.kind]}</strong> {alert.text}
+        <li
+          key={alert.id}
+          className={`m-0 rounded-md border border-border border-l-4 px-3 py-2 ${kindTint[alert.kind]}`}
+        >
+          <strong className="mr-1 text-[13px] uppercase tracking-wide">
+            {ALERT_KIND_LABEL[alert.kind]}
+          </strong>{' '}
+          {alert.text}
         </li>
       ))}
     </ul>
@@ -298,12 +383,15 @@ function HorseAlerts({
 /** Read-only: what this Shift is owed from an earlier one, never tickable from here (ADR 0013). */
 function PrepOwedLine({ item }: { readonly item: Item }) {
   return (
-    <li>
+    <li className="border-b border-border py-2 first:pt-0 last:border-b-0 last:pb-0">
       <strong>{KIND_LABEL[item.kind]}</strong> — {item.instructionText}
       {item.prepForShiftType !== null && (
-        <span> — Prep owed to {SHIFT_TYPE_LABEL[item.prepForShiftType]}</span>
+        <span className="text-muted-foreground">
+          {' '}
+          — Prep owed to {SHIFT_TYPE_LABEL[item.prepForShiftType]}
+        </span>
       )}
-      <span>
+      <span className="text-muted-foreground">
         {item.done
           ? ` — done${item.doneByName !== null ? ` by ${item.doneByName}` : ''}`
           : ' — not yet done'}
@@ -350,31 +438,49 @@ function ShiftNotes({
   )
 
   return (
-    <section>
-      <h2>Shift Notes</h2>
+    <section className={CARD}>
+      <h2 className="m-0 mb-3">Shift Notes</h2>
       {checklist.shiftNotes.length === 0 ? (
-        <p>Nothing left for today or yesterday.</p>
+        <p className="m-0 mb-3 text-sm text-muted-foreground">
+          Nothing left for today or yesterday.
+        </p>
       ) : (
-        <ul>
+        <ul className="m-0 mb-3 list-none p-0">
           {checklist.shiftNotes.map((note) => (
-            <li key={note.id}>
+            <li
+              key={note.id}
+              className="border-b border-border py-2 first:pt-0 last:border-b-0 last:pb-0"
+            >
               {note.text} — {note.authoredByName}
               {note.horseName !== null ? ` (${note.horseName})` : ''}
-              {note.postClose && <em> (added after close)</em>}
+              {note.postClose && <em className="text-muted-foreground"> (added after close)</em>}
             </li>
           ))}
         </ul>
       )}
       <form onSubmit={(event) => void submit(event)}>
-        <label>
+        <label htmlFor="shift-note-text" className="mb-1 block text-sm font-medium text-foreground">
           Add a note:
-          <input value={text} onChange={(event) => setText(event.target.value)} />
         </label>
-        <button type="submit" disabled={busy || text.trim() === ''}>
-          Save
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            id="shift-note-text"
+            className="max-w-96 flex-1 basis-52"
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+          />
+          <Button type="submit" disabled={busy || text.trim() === ''}>
+            Save
+          </Button>
+        </div>
       </form>
-      {problem !== null && <p role="alert">{problem}</p>}
+      {problem !== null && (
+        <AlertBox variant="destructive" className="mt-3">
+          <AlertTitle>
+            <Refusal>{problem}</Refusal>
+          </AlertTitle>
+        </AlertBox>
+      )}
     </section>
   )
 }
@@ -426,21 +532,31 @@ function CloseSection({
   }
 
   return (
-    <section>
+    <section className="mt-6 border-t border-border pt-4">
       {blockers.length > 0 ? (
-        <ul>
+        <ul className="m-0 grid list-none gap-2 p-0">
           {blockers.map((blocker) => (
-            <li key={blocker.kind} role="alert">
+            <li
+              key={blocker.kind}
+              role="alert"
+              className="m-0 rounded-md border border-destructive/35 border-l-3 border-l-destructive bg-destructive/8 px-4 py-3 text-sm text-foreground"
+            >
               {BLOCKER_LABEL[blocker.kind]} ({blocker.count})
             </li>
           ))}
         </ul>
       ) : (
-        <button type="button" disabled={busy} onClick={() => void close()}>
+        <Button type="button" disabled={busy} onClick={() => void close()}>
           Close Shift
-        </button>
+        </Button>
       )}
-      {problem !== null && <p role="alert">{problem}</p>}
+      {problem !== null && (
+        <AlertBox variant="destructive" className="mt-3">
+          <AlertTitle>
+            <Refusal>{problem}</Refusal>
+          </AlertTitle>
+        </AlertBox>
+      )}
     </section>
   )
 }
@@ -516,7 +632,11 @@ export function ShiftChecklist() {
   if (problem !== null) {
     return (
       <main>
-        <p role="alert">{problem}</p>
+        <AlertBox variant="destructive" className="mb-4">
+          <AlertTitle>
+            <Refusal>{problem}</Refusal>
+          </AlertTitle>
+        </AlertBox>
         <Link to="/shifts">Back to my shifts</Link>
       </main>
     )
@@ -536,7 +656,7 @@ export function ShiftChecklist() {
         <h1>
           {SHIFT_TYPE_LABEL[checklist.shiftType]} — {checklist.day}
         </h1>
-        <p>The checklist has not been fixed for today yet.</p>
+        <Empty>The checklist has not been fixed for today yet.</Empty>
         <Link to="/shifts">Back to my shifts</Link>
       </main>
     )
@@ -550,24 +670,36 @@ export function ShiftChecklist() {
       <h1>
         {SHIFT_TYPE_LABEL[checklist.shiftType]} — {checklist.day}
       </h1>
-      <Link to="/shifts">Back to my shifts</Link>
+      <p className="mb-4">
+        <Link to="/shifts">Back to my shifts</Link>
+      </p>
 
       {queue.blocked && (
-        <p role="alert">
-          This app is out of date and cannot send your ticks yet — they are saved, and will send
-          once you reload.{' '}
-          <button type="button" onClick={() => window.location.reload()}>
-            Reload
-          </button>
-        </p>
+        <AlertBox variant="destructive" className="mb-4">
+          <AlertTitle>
+            This app is out of date and cannot send your ticks yet — they are saved, and will send
+            once you reload.
+          </AlertTitle>
+          <AlertDescription>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="justify-self-start"
+              onClick={() => window.location.reload()}
+            >
+              Reload
+            </Button>
+          </AlertDescription>
+        </AlertBox>
       )}
 
       <ShiftNotes checklist={checklist} shiftId={shiftId} onChanged={() => void load()} />
 
       {checklist.prepOwed.length > 0 && (
-        <section>
-          <h2>Prep owed to this Shift</h2>
-          <ul>
+        <section className={CARD}>
+          <h2 className="m-0 mb-3">Prep owed to this Shift</h2>
+          <ul className="m-0 list-none p-0">
             {checklist.prepOwed.map((item) => (
               <PrepOwedLine key={item.id} item={item} />
             ))}
@@ -576,17 +708,17 @@ export function ShiftChecklist() {
       )}
 
       {nothingMaterialized ? (
-        <p>Nothing materialized for this Shift.</p>
+        <Empty>Nothing materialized for this Shift.</Empty>
       ) : (
         <>
           {arranged.horses.map((card) => (
-            <section key={card.horseId}>
-              <h2>{card.horseName}</h2>
+            <section key={card.horseId} className={CARD}>
+              <h2 className="m-0 mb-3">{card.horseName}</h2>
               {/* Above the work, in full: a volunteer who reads the card and
                   not the warning has already walked into the stall (ADR
                   0024). */}
               <HorseAlerts alerts={alertsFor.get(card.horseId) ?? []} horseName={card.horseName} />
-              <ul>
+              <ul className="m-0 list-none p-0">
                 {card.items.map((item) => (
                   <ItemLine
                     key={item.id}
@@ -602,9 +734,9 @@ export function ShiftChecklist() {
           ))}
 
           {arranged.spaces.map((card) => (
-            <section key={card.spaceId}>
-              <h2>{card.spaceName}</h2>
-              <ul>
+            <section key={card.spaceId} className={CARD}>
+              <h2 className="m-0 mb-3">{card.spaceName}</h2>
+              <ul className="m-0 list-none p-0">
                 {card.items.map((item) => (
                   <ItemLine
                     key={item.id}
@@ -620,9 +752,9 @@ export function ShiftChecklist() {
           ))}
 
           {arranged.rescue.length > 0 && (
-            <section>
-              <h2>The rescue</h2>
-              <ul>
+            <section className={CARD}>
+              <h2 className="m-0 mb-3">The rescue</h2>
+              <ul className="m-0 list-none p-0">
                 {arranged.rescue.map((item) => (
                   <ItemLine
                     key={item.id}

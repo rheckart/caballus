@@ -17,6 +17,9 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { useState, type FormEvent } from 'react'
 
+import { Alert, AlertTitle } from '../components/ui/alert'
+import { Button } from '../components/ui/button'
+import { Input } from '../components/ui/input'
 import { requestSignInCode, submitSignInCode } from '../server/auth/login'
 
 export const Route = createFileRoute('/login')({
@@ -46,6 +49,8 @@ const UNREACHABLE = 'We could not reach the app. Check your signal and try again
 function refusalText(because: string): string {
   return REFUSALS[because] ?? 'That did not work. Please try again.'
 }
+
+const LABEL = 'mb-1 block text-sm font-medium text-foreground'
 
 function Login() {
   const router = useRouter()
@@ -106,13 +111,18 @@ function Login() {
   }
 
   return (
-    <main className="centred-page">
-      <h1>Caballus</h1>
+    <main className="grid min-h-dvh max-w-none content-center justify-items-center px-4 py-8">
+      <h1 className="w-full max-w-[400px] text-center">Caballus</h1>
 
       {step.name === 'address' ? (
-        <form onSubmit={askForCode}>
-          <label htmlFor="email">Your email address</label>
-          <input
+        <form
+          className="w-full max-w-[400px] rounded-lg border border-border bg-background p-6"
+          onSubmit={askForCode}
+        >
+          <label htmlFor="email" className={LABEL}>
+            Your email address
+          </label>
+          <Input
             id="email"
             name="email"
             type="email"
@@ -121,17 +131,22 @@ function Login() {
             autoFocus
             required
           />
-          <button type="submit" disabled={working}>
+          <Button type="submit" className="mt-4 w-full" disabled={working}>
             {working ? 'Sending…' : 'Send me a code'}
-          </button>
+          </Button>
         </form>
       ) : (
-        <form onSubmit={(event) => void sendCode(event, step.email)}>
-          <p>
+        <form
+          className="w-full max-w-[400px] rounded-lg border border-border bg-background p-6"
+          onSubmit={(event) => void sendCode(event, step.email)}
+        >
+          <p className="mt-0 text-sm text-muted-foreground">
             We sent a six-digit code to <strong>{step.email}</strong>. It works for five minutes.
           </p>
-          <label htmlFor="code">The code</label>
-          <input
+          <label htmlFor="code" className={LABEL}>
+            The code
+          </label>
+          <Input
             id="code"
             name="code"
             // A numeric keypad on a phone, and the platform's own autofill for
@@ -144,24 +159,30 @@ function Login() {
             autoFocus
             required
           />
-          <button type="submit" disabled={working}>
+          <Button type="submit" className="mt-4 w-full" disabled={working}>
             {working ? 'Checking…' : 'Sign in'}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="outline"
+            className="mt-2 w-full"
             onClick={() => {
               setProblem(null)
               setStep({ name: 'address' })
             }}
           >
             Use a different address
-          </button>
+          </Button>
         </form>
       )}
 
       {/* Announced, not just shown: the screen is read aloud as often as it is
           read, and a refusal that only changes colour says nothing. */}
-      {problem !== null && <p role="alert">{problem}</p>}
+      {problem !== null && (
+        <Alert variant="destructive" className="mt-4 w-full max-w-[400px]">
+          <AlertTitle>{problem}</AlertTitle>
+        </Alert>
+      )}
     </main>
   )
 }

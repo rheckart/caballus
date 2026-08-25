@@ -67,6 +67,76 @@ export async function createPattern(
   return recorded({ id })
 }
 
+export interface NewShiftPatterns {
+  readonly shiftType: ShiftType
+  readonly weekdays: readonly Weekday[]
+  readonly startTime: string
+  readonly targetHeadcount: number
+}
+
+/**
+ * One Shift Type across several weekdays, in one act (#69).
+ *
+ * The rescue runs AM, Lunch and PM seven days a week and only the start time
+ * and the headcount vary, so the composer that matters is *this Shift Type, on
+ * these days* — twenty-one single adds is the same schedule spelled the long
+ * way. **The model does not move for it**: a Pattern is still one weekday,
+ * because a Pattern spanning several would have to share one Standing Roster
+ * across all of them and who is on Saturday morning is not who is on Monday
+ * morning (ADR 0001).
+ *
+ * **A weekday already holding a live Pattern of this Shift Type is skipped and
+ * named back**, the way `/spaces/batch` names a stall the rescue already has:
+ * asking for the week when Monday is already set means the six that are
+ * missing. The held Pattern's start time and headcount are **not** touched —
+ * this creates, and moving an existing one is `editPattern`'s act with its own
+ * apply-to-upcoming prompt.
+ *
+ * A **retired** Pattern does not block, which is what makes the partial unique
+ * index behind this the right one: retirement here means what it means for a
+ * Product and a Space, and a bulk add that silently un-retired something a
+ * person deliberately retired is the surprise that stops the button being
+ * trusted.
+ */
+export async function createPatterns(
+  db: OrgScopedDatabase,
+  orgId: OrgId,
+  actorVolunteerId: string,
+  about: NewShiftPatterns,
+): Promise<Recorded<{ ids: string[]; skipped: Weekday[] }>> {
+  const live = await db
+    .select({ weekday: shiftPatterns.weekday })
+    .from(shiftPatterns)
+    .where(and(eq(shiftPatterns.shiftType, about.shiftType), isNull(shiftPatterns.retiredAt)))
+  const held = new Set(live.map((row) => row.weekday))
+
+  const ids: string[] = []
+  const skipped: Weekday[] = []
+  // In the order sent, so the screen can name the skipped days back in the
+  // order the person ticked them.
+  for (const weekday of about.weekdays) {
+    if (held.has(weekday)) {
+      skipped.push(weekday)
+      continue
+    }
+    // Through `createPattern` rather than one bulk insert, so the durable trail
+    // is one audit entry per created Pattern and there is no batch record to
+    // become the fifth hand-rolled log (ADR 0019, #59).
+    const outcome = await createPattern(db, orgId, actorVolunteerId, {
+      weekday,
+      shiftType: about.shiftType,
+      startTime: about.startTime,
+      targetHeadcount: about.targetHeadcount,
+    })
+    if (!outcome.ok) return outcome
+    ids.push(outcome.value.id)
+    // A weekday sent twice is one Pattern, not a unique violation.
+    held.add(weekday)
+  }
+
+  return recorded({ ids, skipped })
+}
+
 export interface PatternEdit {
   readonly patternId: string
   readonly startTime?: string

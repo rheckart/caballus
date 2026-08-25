@@ -13,6 +13,7 @@
  * see the right-hand half of.
  */
 import { createFileRoute } from '@tanstack/react-router'
+import { Pencil } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 
 import {
@@ -27,9 +28,31 @@ import {
   SaveButton,
   Saved,
   Sheet,
+  WideField,
   matches,
   useSaving,
 } from '../../components/forms'
+import { Refusal } from '../../components/refusal'
+import { Alert, AlertTitle } from '../../components/ui/alert'
+import { Badge } from '../../components/ui/badge'
+import { Button } from '../../components/ui/button'
+import { Checkbox } from '../../components/ui/checkbox'
+import { Input } from '../../components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../components/ui/select'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../../components/ui/table'
 import { client } from '../../shared/api-client'
 import { PRODUCT_KINDS, type ProductKind } from '../../shared/products'
 import { refusalText } from '../../shared/refusals'
@@ -52,6 +75,9 @@ const KIND_LABEL: Record<ProductKind, string> = {
 }
 
 const KIND_OPTIONS = PRODUCT_KINDS.map((kind) => ({ value: kind, label: KIND_LABEL[kind] }))
+
+/** Radix's Select cannot carry an empty-string item, so None is a word. */
+const NO_SUPPLIER = 'none'
 
 type Open =
   | { readonly kind: 'supplier' }
@@ -124,17 +150,23 @@ function Products() {
 
   return (
     <main>
-      <h1>Products and Suppliers</h1>
+      <h1 className="text-foreground">Products and Suppliers</h1>
 
-      <p className="lede">
+      <p className="mb-5 max-w-[68ch] text-base leading-relaxed text-muted-foreground">
         Every Product a Feed Schedule line can name, and who it comes from. The kind is what colours
         it on the Board and what decides whether giving it needs Medication Authority.
       </p>
 
-      {problem !== null && <p role="alert">{problem}</p>}
+      {problem !== null && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertTitle>
+            <Refusal>{problem}</Refusal>
+          </AlertTitle>
+        </Alert>
+      )}
 
-      <div className="list-head">
-        <h2>Suppliers</h2>
+      <div className="mb-3 mt-6 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="m-0 text-foreground">Suppliers</h2>
         <AddButton
           onClick={() => {
             setOpen({ kind: 'supplier' })
@@ -149,10 +181,13 @@ function Products() {
       ) : suppliers.suppliers.length === 0 ? (
         <Empty>No Suppliers yet. A Product does not need one.</Empty>
       ) : (
-        <section>
-          <ul>
+        <section className="mb-4 rounded-lg border border-border bg-background p-4 sm:p-6">
+          <ul className="m-0 list-none p-0">
             {suppliers.suppliers.map((supplier) => (
-              <li key={supplier.id}>
+              <li
+                key={supplier.id}
+                className="border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0"
+              >
                 <strong>{supplier.name}</strong>
                 {supplier.url !== null && (
                   <>
@@ -168,8 +203,8 @@ function Products() {
         </section>
       )}
 
-      <div className="list-head">
-        <h2>The catalogue</h2>
+      <div className="mb-3 mt-6 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="m-0 text-foreground">The catalogue</h2>
         <AddButton
           onClick={() => {
             setOpen({ kind: 'product', productId: null })
@@ -199,21 +234,21 @@ function Products() {
           {shown.length === 0 ? (
             <Empty>No Product matches “{filter}”.</Empty>
           ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th scope="col">Name</th>
-                  <th scope="col">Kind</th>
-                  <th scope="col">Supplier</th>
-                  <th scope="col">Prescription</th>
-                  <th scope="col">Reorder point</th>
-                  <th scope="col" />
-                </tr>
-              </thead>
-              <tbody>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead scope="col">Name</TableHead>
+                  <TableHead scope="col">Kind</TableHead>
+                  <TableHead scope="col">Supplier</TableHead>
+                  <TableHead scope="col">Prescription</TableHead>
+                  <TableHead scope="col">Reorder point</TableHead>
+                  <TableHead scope="col" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {shown.map((product) => (
-                  <tr key={product.id}>
-                    <td>
+                  <TableRow key={product.id}>
+                    <TableCell>
                       {product.name}
                       {/* A Retired Product stays on this list, marked — the
                           same call `/admin/horses` makes for a Departed horse,
@@ -221,36 +256,37 @@ function Products() {
                       {product.retiredOn !== null && (
                         <>
                           {' '}
-                          <span className="badge">Retired {product.retiredOn}</span>
+                          <Badge>Retired {product.retiredOn}</Badge>
                         </>
                       )}
-                    </td>
-                    <td>
-                      <span className={`badge badge-${BADGE[product.kind]}`}>
-                        {KIND_LABEL[product.kind]}
-                      </span>
-                    </td>
-                    <td>{product.supplierName ?? 'None'}</td>
-                    <td>{product.prescription ? 'Yes' : 'No'}</td>
-                    <td>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={BADGE[product.kind]}>{KIND_LABEL[product.kind]}</Badge>
+                    </TableCell>
+                    <TableCell>{product.supplierName ?? 'None'}</TableCell>
+                    <TableCell>{product.prescription ? 'Yes' : 'No'}</TableCell>
+                    <TableCell>
                       {product.reorderPointDays === null
                         ? 'Not set'
                         : `${product.reorderPointDays} days`}
-                    </td>
-                    <td>
-                      <button
+                    </TableCell>
+                    <TableCell>
+                      <Button
                         type="button"
+                        variant="outline"
+                        size="sm"
                         onClick={() => {
                           setOpen({ kind: 'product', productId: product.id })
                         }}
                       >
+                        <Pencil aria-hidden="true" />
                         Edit
-                      </button>
-                    </td>
-                  </tr>
+                      </Button>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           )}
         </>
       )}
@@ -296,7 +332,7 @@ function Products() {
 }
 
 /** Which tint a kind wears wherever it is shown as a tag. */
-const BADGE: Record<ProductKind, string> = {
+const BADGE: Record<ProductKind, 'green' | 'purple' | 'orange' | 'blue'> = {
   feed: 'green',
   supplement: 'purple',
   medication: 'orange',
@@ -332,16 +368,14 @@ function SupplierForm({
     >
       <Fields>
         <Field label="Name" htmlFor="new-supplier-name">
-          <input id="new-supplier-name" name="name" required maxLength={200} autoFocus />
+          <Input id="new-supplier-name" name="name" required maxLength={200} autoFocus />
         </Field>
         <Field label="Web address" htmlFor="new-supplier-url" optional>
-          <input id="new-supplier-url" name="url" type="url" maxLength={2000} />
+          <Input id="new-supplier-url" name="url" type="url" maxLength={2000} />
         </Field>
-        <div className="field-wide">
-          <Field label="Note" htmlFor="new-supplier-note" optional>
-            <input id="new-supplier-note" name="note" maxLength={2000} />
-          </Field>
-        </div>
+        <WideField label="Note" htmlFor="new-supplier-note" optional>
+          <Input id="new-supplier-note" name="note" maxLength={2000} />
+        </WideField>
       </Fields>
       <Actions>
         <SaveButton pending={pending}>Add the Supplier</SaveButton>
@@ -361,6 +395,9 @@ function SupplierForm({
  * case with `product_in_use` from the same derivation, so the two cannot
  * disagree — this is the friendlier half of one rule, not a second one.
  */
+const DANGER =
+  'mt-5 rounded-md border border-destructive/30 border-l-3 border-l-destructive bg-destructive/4 p-4'
+
 function Retirement({
   product,
   act,
@@ -373,7 +410,7 @@ function Retirement({
   if (product.retiredOn !== null) {
     return (
       <form
-        className="danger"
+        className={DANGER}
         onSubmit={(event: FormEvent<HTMLFormElement>) => {
           event.preventDefault()
           void save(() =>
@@ -389,8 +426,8 @@ function Retirement({
           })
         }}
       >
-        <h3>Retired {product.retiredOn}</h3>
-        <p>
+        <h3 className="m-0 mb-1 text-base font-semibold">Retired {product.retiredOn}</h3>
+        <p className="m-0 mb-2 text-sm text-muted-foreground">
           The record stays either way, and so do its readings and its Reorders. This only corrects
           the date.
         </p>
@@ -404,9 +441,9 @@ function Retirement({
 
   if (product.onFeedSchedules > 0) {
     return (
-      <div className="danger">
-        <h3>Retirement</h3>
-        <p>
+      <div className={DANGER}>
+        <h3 className="m-0 mb-1 text-base font-semibold">Retirement</h3>
+        <p className="m-0 mb-2 text-sm text-muted-foreground">
           {product.name} is on {product.onFeedSchedules}{' '}
           {product.onFeedSchedules === 1 ? "horse's" : "horses'"} current Feed{' '}
           {product.onFeedSchedules === 1 ? 'Schedule' : 'Schedules'}. Take it off{' '}
@@ -419,7 +456,7 @@ function Retirement({
 
   return (
     <form
-      className="danger"
+      className={DANGER}
       onSubmit={(event: FormEvent<HTMLFormElement>) => {
         event.preventDefault()
         const data = new FormData(event.currentTarget)
@@ -436,18 +473,18 @@ function Retirement({
         })
       }}
     >
-      <h3>Retirement</h3>
-      <p>
+      <h3 className="m-0 mb-1 text-base font-semibold">Retirement</h3>
+      <p className="m-0 mb-2 text-sm text-muted-foreground">
         A date, never a delete. It stays on this list, marked, and the readings and Reorders it
         already carries stay with it. It stops being offered on a new Feed Schedule line, a new
         reading and a new Reorder.
       </p>
       <Fields>
         <Field label="Date" htmlFor="retired-on">
-          <input id="retired-on" name="retiredOn" type="date" required />
+          <Input id="retired-on" name="retiredOn" type="date" required />
         </Field>
         <Field label="Reason" htmlFor="retirement-reason" optional>
-          <input id="retirement-reason" name="reason" maxLength={500} />
+          <Input id="retirement-reason" name="reason" maxLength={500} />
         </Field>
       </Fields>
       <Actions>
@@ -478,22 +515,25 @@ function ProductForm({
   // The kind is state rather than an uncontrolled default because one other
   // field depends on it: a Topical has no prescription to ask about.
   const [kind, setKind] = useState<ProductKind>(product?.kind ?? 'feed')
+  // State rather than FormData reads, because Radix's Select and Checkbox
+  // carry no form name for a FormData read to find.
+  const [supplierId, setSupplierId] = useState(product?.supplierId ?? NO_SUPPLIER)
+  const [prescription, setPrescription] = useState(product?.prescription ?? false)
 
   return (
     <form
       onSubmit={(event: FormEvent<HTMLFormElement>) => {
         event.preventDefault()
         const data = new FormData(event.currentTarget)
-        const supplierId = String(data.get('supplierId') ?? '')
         const reorderPointDays = String(data.get('reorderPointDays') ?? '')
         const common = {
           name: String(data.get('name') ?? ''),
           kind,
-          supplierId: supplierId === '' ? null : supplierId,
+          supplierId: supplierId === NO_SUPPLIER ? null : supplierId,
           // A Topical is never a prescription — zinc oxide and fly spray are
           // bought off a shelf — so the question is not asked and the answer
           // is not carried over from whatever the kind was before (#58).
-          prescription: kind !== 'topical' && data.get('prescription') === 'on',
+          prescription: kind !== 'topical' && prescription,
           reorderPointDays: reorderPointDays === '' ? null : Number(reorderPointDays),
           orderingNote: String(data.get('orderingNote') ?? '') || null,
         }
@@ -514,7 +554,7 @@ function ProductForm({
     >
       <Fields>
         <Field label="Name" htmlFor="product-name">
-          <input
+          <Input
             id="product-name"
             name="name"
             defaultValue={product?.name}
@@ -525,16 +565,21 @@ function ProductForm({
           />
         </Field>
         <Field label="Supplier" htmlFor="product-supplier" optional>
-          <select id="product-supplier" name="supplierId" defaultValue={product?.supplierId ?? ''}>
-            <option value="">None</option>
-            {suppliers.map((supplier) => (
-              <option key={supplier.id} value={supplier.id}>
-                {supplier.name}
-              </option>
-            ))}
-          </select>
+          <Select value={supplierId} onValueChange={setSupplierId}>
+            <SelectTrigger id="product-supplier" aria-label="Supplier">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NO_SUPPLIER}>None</SelectItem>
+              {suppliers.map((supplier) => (
+                <SelectItem key={supplier.id} value={supplier.id}>
+                  {supplier.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </Field>
-        <div className="field-wide">
+        <div className="sm:col-span-2">
           <Choice
             legend="Kind"
             name="kind"
@@ -549,7 +594,7 @@ function ProductForm({
           optional
           hint="In days of supply. Below this, it is flagged to reorder."
         >
-          <input
+          <Input
             id="product-reorder"
             name="reorderPointDays"
             type="number"
@@ -560,7 +605,7 @@ function ProductForm({
           />
         </Field>
         <Field label="Ordering note" htmlFor="product-note" optional>
-          <input
+          <Input
             id="product-note"
             name="orderingNote"
             maxLength={2000}
@@ -568,34 +613,32 @@ function ProductForm({
           />
         </Field>
         {kind !== 'topical' && (
-          <div className="field-wide">
-            <label htmlFor="product-prescription">
-              <input
-                id="product-prescription"
-                name="prescription"
-                type="checkbox"
-                defaultChecked={product?.prescription}
+          <div className="sm:col-span-2">
+            <label className="mt-3 flex min-h-11 items-center gap-2 text-sm font-medium">
+              <Checkbox
+                checked={prescription}
+                onCheckedChange={(checked) => {
+                  setPrescription(checked === true)
+                }}
               />
               Needs a prescription
             </label>
           </div>
         )}
         {product !== null && (
-          <div className="field-wide">
-            <Field
-              label="Reason"
-              htmlFor="product-reason"
-              optional
-              hint="Why it changed. This is what the audit entry carries."
-            >
-              <input
-                id="product-reason"
-                name="reason"
-                maxLength={500}
-                aria-describedby="product-reason-hint"
-              />
-            </Field>
-          </div>
+          <WideField
+            label="Reason"
+            htmlFor="product-reason"
+            optional
+            hint="Why it changed. This is what the audit entry carries."
+          >
+            <Input
+              id="product-reason"
+              name="reason"
+              maxLength={500}
+              aria-describedby="product-reason-hint"
+            />
+          </WideField>
         )}
       </Fields>
 

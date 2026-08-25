@@ -216,6 +216,25 @@ export function staffingFacts(shift: {
 }
 
 /**
+ * How far out a volunteer is shown what a Shift is missing.
+ *
+ * ADR 0011: the gaps are computed across the whole horizon **for holders of
+ * `roster`**, and are "prominent to everyone else only inside roughly the next
+ * 48 hours". A fortnight of *no Lead* on a phone is a wall of red about Shifts
+ * nobody can do anything about yet, and a screen that shouts every day is a
+ * screen people stop reading — the same argument the four-gap list is shaped
+ * by, pointed at distance instead of at count. Beyond the window the Shift is
+ * still listed and still coverable; the headcount beside it still says how
+ * thin it is.
+ *
+ * Here rather than in `src/routes/shifts.tsx`, where it started, because #67
+ * gave it a second reader: the home screen's *shifts needing cover* is the
+ * same prominence decision seen from the dashboard, and two copies of the
+ * window is two answers to *is Thursday worth shouting about*.
+ */
+export const PROMINENT_DAYS = 2
+
+/**
  * Whether a gap is one the evening digest leads with (ADR 0011: "Unstaffed and
  * no-Lead first").
  *

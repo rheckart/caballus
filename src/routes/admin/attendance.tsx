@@ -17,6 +17,24 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
 
 import { Loading } from '../../components/forms'
+import { Refusal } from '../../components/refusal'
+import { Alert, AlertTitle } from '../../components/ui/alert'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../components/ui/select'
+import {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../../components/ui/table'
 import { client } from '../../shared/api-client'
 import {
   anneArundelReport,
@@ -80,8 +98,12 @@ function AttendanceReport() {
   if (problem !== null) {
     return (
       <main>
-        <h1>Volunteer hours</h1>
-        <p role="alert">{problem}</p>
+        <h1 className="text-foreground">Volunteer hours</h1>
+        <Alert variant="destructive" className="mb-4">
+          <AlertTitle>
+            <Refusal>{problem}</Refusal>
+          </AlertTitle>
+        </Alert>
       </main>
     )
   }
@@ -89,7 +111,7 @@ function AttendanceReport() {
   if (ledger === null) {
     return (
       <main>
-        <h1>Volunteer hours</h1>
+        <h1 className="text-foreground">Volunteer hours</h1>
         <Loading what="the ledger" />
       </main>
     )
@@ -97,21 +119,29 @@ function AttendanceReport() {
 
   return (
     <main>
-      <h1>Volunteer hours</h1>
-      <label htmlFor="county">County</label>
-      <select
-        id="county"
-        value={county}
-        onChange={(event) => {
-          setCounty(event.target.value as County)
-        }}
-      >
-        {COUNTIES.map((option) => (
-          <option key={option} value={option}>
-            {COUNTY_LABEL[option]}
-          </option>
-        ))}
-      </select>
+      <h1 className="text-foreground">Volunteer hours</h1>
+      <div className="mb-5 max-w-xs">
+        <label htmlFor="county" className="mb-1 block text-sm font-medium text-foreground">
+          County
+        </label>
+        <Select
+          value={county}
+          onValueChange={(next) => {
+            setCounty(next as County)
+          }}
+        >
+          <SelectTrigger id="county" aria-label="County">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {COUNTIES.map((option) => (
+              <SelectItem key={option} value={option}>
+                {COUNTY_LABEL[option]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
       {county === 'calvert' ? <CalvertTable rows={rows} /> : <AnneArundelTable rows={rows} />}
     </main>
@@ -122,38 +152,38 @@ function AttendanceReport() {
 function CalvertTable({ rows }: { rows: readonly LedgerRow[] }) {
   const report = calvertReport(rows)
   return (
-    <table>
-      <caption>One row per visit, for a signature each</caption>
-      <thead>
-        <tr>
-          <th scope="col">Volunteer</th>
-          <th scope="col">Date</th>
-          <th scope="col">Hours</th>
-          <th scope="col">Description of service</th>
-          <th scope="col">Supervisor</th>
-        </tr>
-      </thead>
-      <tbody>
+    <Table>
+      <TableCaption>One row per visit, for a signature each</TableCaption>
+      <TableHeader>
+        <TableRow>
+          <TableHead scope="col">Volunteer</TableHead>
+          <TableHead scope="col">Date</TableHead>
+          <TableHead scope="col">Hours</TableHead>
+          <TableHead scope="col">Description of service</TableHead>
+          <TableHead scope="col">Supervisor</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
         {report.map((row, index) => (
           // Calvert's own row carries no id: the visit's ledger row does, but
           // the report is a derived reshaping of it, so the tuple below —
           // unique within one rendered report — stands in for one.
-          <tr key={`${row.volunteerName}|${row.day}|${String(index)}`}>
-            <td>{row.volunteerName}</td>
-            <td>{row.day}</td>
-            <td>
+          <TableRow key={`${row.volunteerName}|${row.day}|${String(index)}`}>
+            <TableCell>{row.volunteerName}</TableCell>
+            <TableCell>{row.day}</TableCell>
+            <TableCell>
               {row.hours}
               {/* Flagged, never truncated: Calvert's cap of eight
                   service-learning hours per twenty-four is a report note, not
                   a fabrication in the record (ADR 0012). */}
               {row.overCap && <strong> — over the 8-hour cap for this day</strong>}
-            </td>
-            <td>{row.description}</td>
-            <td>{row.supervisorName ?? '—'}</td>
-          </tr>
+            </TableCell>
+            <TableCell>{row.description}</TableCell>
+            <TableCell>{row.supervisorName ?? '—'}</TableCell>
+          </TableRow>
         ))}
-      </tbody>
-    </table>
+      </TableBody>
+    </Table>
   )
 }
 
@@ -161,26 +191,26 @@ function CalvertTable({ rows }: { rows: readonly LedgerRow[] }) {
 function AnneArundelTable({ rows }: { rows: readonly LedgerRow[] }) {
   const report = anneArundelReport(rows)
   return (
-    <table>
-      <caption>Dates and a total, no line items</caption>
-      <thead>
-        <tr>
-          <th scope="col">Volunteer</th>
-          <th scope="col">Total hours</th>
-          <th scope="col">Visits</th>
-          <th scope="col">Dates</th>
-        </tr>
-      </thead>
-      <tbody>
+    <Table>
+      <TableCaption>Dates and a total, no line items</TableCaption>
+      <TableHeader>
+        <TableRow>
+          <TableHead scope="col">Volunteer</TableHead>
+          <TableHead scope="col">Total hours</TableHead>
+          <TableHead scope="col">Visits</TableHead>
+          <TableHead scope="col">Dates</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
         {report.map((total) => (
-          <tr key={total.volunteerName}>
-            <td>{total.volunteerName}</td>
-            <td>{total.totalHours}</td>
-            <td>{total.visits}</td>
-            <td>{total.days.join(', ')}</td>
-          </tr>
+          <TableRow key={total.volunteerName}>
+            <TableCell>{total.volunteerName}</TableCell>
+            <TableCell>{total.totalHours}</TableCell>
+            <TableCell>{total.visits}</TableCell>
+            <TableCell>{total.days.join(', ')}</TableCell>
+          </TableRow>
         ))}
-      </tbody>
-    </table>
+      </TableBody>
+    </Table>
   )
 }

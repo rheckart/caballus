@@ -27,7 +27,13 @@ function renderShifts() {
   return renderRoutes([{ path: '/shifts', component }], '/shifts')
 }
 
-const ME = { volunteerId: 'beth', name: 'Beth Ann', domainScopes: [] }
+const ME = {
+  volunteerId: 'beth',
+  name: 'Beth Ann',
+  email: 'someone@barn.test',
+  mobile: null,
+  domainScopes: [],
+}
 
 function member(
   volunteerId: string,

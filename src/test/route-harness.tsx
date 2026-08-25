@@ -16,7 +16,8 @@ import {
   createRouter,
   type RouteComponent,
 } from '@tanstack/react-router'
-import { render } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 
 export interface TestRoute {
   readonly path: string
@@ -40,4 +41,18 @@ export function renderRoutes(routes: readonly TestRoute[], at: string) {
 /** The common case: one route, nothing to navigate to from it. */
 export function renderRoute(path: string, component: RouteComponent) {
   return renderRoutes([{ path, component }], path)
+}
+
+/**
+ * Picks `optionText` from the dropdown labelled `label`, so no test has to
+ * know what a dropdown is made of (ADR 0025, #61): shadcn's Select is a Radix
+ * listbox — a button with `role="combobox"`, options in a portal — and
+ * `fireEvent.change` has nothing there to change.
+ */
+export async function chooseOption(label: string, optionText: string) {
+  const user = userEvent.setup()
+  const trigger = screen.getByRole('combobox', { name: label })
+  await user.click(trigger)
+  const listbox = await screen.findByRole('listbox')
+  await user.click(within(listbox).getByRole('option', { name: optionText }))
 }

@@ -18,6 +18,8 @@
  * it, and adopting one for membership while keeping roles in our own tables
  * would recreate the two-sources-of-truth problem inside a single process.
  */
+import { createHash, randomInt, timingSafeEqual } from 'node:crypto'
+
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { emailOTP } from 'better-auth/plugins'
@@ -57,6 +59,97 @@ export function codeEmail(email: string, otp: string): OutgoingEmail {
       'If you did not ask to sign in, nothing has happened and you can ignore this.',
     ].join('\n'),
   }
+}
+
+/**
+ * The address the code was sent to, when the code is for changing your own
+ * sign-in address (#68, ADR 0027).
+ *
+ * Deliberately **not** the message `codeEmail` sends. A volunteer who asked to
+ * sign in and a volunteer who asked to move their address need to be told
+ * different things by the message that arrives, and the second one has to say
+ * what will happen if they did not ask — because if they did not, somebody
+ * else is holding their session.
+ */
+export function emailChangeCodeEmail(email: string, otp: string): OutgoingEmail {
+  return {
+    to: email,
+    subject: `${otp} confirms your new Caballus address`,
+    text: [
+      `${otp} is your code for changing your Caballus sign-in address to ${email}.`,
+      '',
+      'It works for the next five minutes and only once.',
+      'Until you enter it, nothing has changed and you still sign in with your old address.',
+      'If you did not ask for this, ignore it — and tell a coordinator, because somebody',
+      'else may be signed in as you.',
+    ].join('\n'),
+  }
+}
+
+/**
+ * What the **old** address is told once the change has happened (ADR 0027).
+ *
+ * The only way a person losing their account finds out. Without it a stolen
+ * session becomes a stolen account silently and permanently.
+ */
+export function emailChangedNotice(oldEmail: string, newEmail: string): OutgoingEmail {
+  return {
+    to: oldEmail,
+    subject: 'Your Caballus sign-in address was changed',
+    text: [
+      `The address you sign in to Caballus with has been changed to ${newEmail}.`,
+      '',
+      `${oldEmail} no longer signs in, and every other device that was signed in has been`,
+      'signed out.',
+      '',
+      'If this was not you, tell a coordinator now: they can revoke the account that made',
+      'the change, which stops it being used while somebody sorts it out.',
+    ].join('\n'),
+  }
+}
+
+/**
+ * How a code is stored, and the one place this application knows.
+ *
+ * SHA-256, base64url, unpadded — byte for byte what Better Auth's own
+ * `storeOTP: 'hashed'` produces, so nothing about a code in flight changes.
+ * It is spelled here rather than left to the option because `/me/email`
+ * (#68, ADR 0027) has to verify a code Better Auth's own endpoints cannot:
+ * `checkVerificationOTP` refuses any address without a `user` row, and the
+ * whole point of a change-email code is that it is sent to an address that
+ * does not have one yet. Owning the hash is what keeps that verification from
+ * being a reimplementation of a library internal that could change under it.
+ */
+export async function hashCode(otp: string): Promise<string> {
+  return Promise.resolve(createHash('sha256').update(otp).digest('base64url'))
+}
+
+/**
+ * A fresh code: `CODE_LENGTH` digits, from the system's own randomness.
+ *
+ * Ours rather than Better Auth's `createVerificationOTP`, for `/me/email/code`
+ * alone (#68): that endpoint takes a second database connection from inside the
+ * transaction `mutation` already holds one from, which at ten concurrent
+ * changes is a deadlock rather than a slow path. The code is the same shape,
+ * hashed by the same function, in the same row — see
+ * `src/server/auth/email-change.ts` for the whole argument. Signing in still
+ * goes through the library.
+ */
+export function mintCode(): string {
+  let code = ''
+  for (let digit = 0; digit < CODE_LENGTH; digit += 1) code += String(randomInt(10))
+  return code
+}
+
+/** Whether `otp` is the code behind `stored`, compared in constant time. */
+export async function codeMatches(otp: string, stored: string): Promise<boolean> {
+  const offered = Buffer.from(await hashCode(otp))
+  const held = Buffer.from(stored)
+  // Lengths differing is itself an answer, and `timingSafeEqual` throws rather
+  // than answering it. Both sides are digests of a fixed width, so unequal
+  // lengths mean a malformed row rather than a guess.
+  if (offered.length !== held.length) return false
+  return timingSafeEqual(offered, held)
 }
 
 /**
@@ -145,8 +238,10 @@ function build() {
         allowedAttempts: CODE_ALLOWED_ATTEMPTS,
         // Hashed at rest: the table is in the same database as the care
         // record, and a five-minute credential sitting in plaintext beside it
-        // is a needless second thing to lose in one restore.
-        storeOTP: 'hashed',
+        // is a needless second thing to lose in one restore. Ours rather than
+        // `'hashed'`, and identical to it — see `hashCode` above for why
+        // owning the function matters to #68.
+        storeOTP: { hash: hashCode },
         // Not the path this application signs in through — `requestCode` in
         // `./sign-in.ts` mints the code and sends it itself, because a failure
         // here is swallowed and the volunteer is told a code is coming when

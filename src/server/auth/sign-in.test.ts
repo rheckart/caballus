@@ -11,7 +11,7 @@
  * Skipped, loudly, on a machine with no database: `docker compose up -d`, then
  * `psql -f scripts/provision-database.sql` and `npm run db:migrate`.
  */
-import { eq } from 'drizzle-orm'
+import { eq, inArray, like } from 'drizzle-orm'
 import postgres from 'postgres'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -51,6 +51,22 @@ describe.skipIf(!reachable)('email codes, sessions and revocation, against the d
     return currentOrgId()
   }
 
+  /**
+   * Better Auth's `user`, `session` and `verification` carry no `org_id` and no
+   * policy (ADR 0008), so `forOrg` does **not** scope them — which makes a bare
+   * `select().from(users)` a claim about every test file running in parallel
+   * rather than about this one. Both of these narrow it to this file's own
+   * rows: every address here ends in `example.invalid`, and a session of ours
+   * belongs to a `user` some Volunteer of this organisation has claimed.
+   */
+  const ours = like(users.email, '%example.invalid')
+
+  const mine = (db: Parameters<Parameters<ReturnType<typeof forOrg>['run']>[0]>[0]) =>
+    inArray(
+      sessions.userId,
+      db.select({ userId: volunteerAccounts.userId }).from(volunteerAccounts),
+    )
+
   beforeAll(async () => {
     process.env.APP_ORG_ID = FRONT_BARN
     await owner`delete from audit_entries where org_id = ${FRONT_BARN}`
@@ -83,9 +99,17 @@ describe.skipIf(!reachable)('email codes, sessions and revocation, against the d
     await owner`delete from volunteer_roles where org_id = ${FRONT_BARN}`
     await owner`delete from volunteer_accounts where org_id = ${FRONT_BARN}`
     await owner`delete from volunteers where org_id = ${FRONT_BARN}`
-    await owner`delete from "session"`
-    await owner`delete from "user"`
-    await owner`delete from verification`
+    // Better Auth's three tables carry no `org_id` (ADR 0008), so these are
+    // scoped by **address** instead. An unscoped delete here reaches into
+    // whatever `src/server/api/me.test.ts` is doing in the process next door,
+    // and vitest runs files in parallel: every address this file ever uses ends
+    // in `example.invalid`, and that is what makes the scope real.
+    await owner`
+      delete from "session"
+      where user_id in (select id from "user" where email like '%example.invalid')
+    `
+    await owner`delete from "user" where email like '%example.invalid'`
+    await owner`delete from verification where identifier like '%example.invalid'`
   })
 
   afterAll(async () => {
@@ -140,7 +164,7 @@ describe.skipIf(!reachable)('email codes, sessions and revocation, against the d
     it('makes the session a row, and the row is what the next request reads', async () => {
       const { volunteer, answered } = await signIn()
 
-      const rows = await forOrg(orgId()).run((db) => db.select().from(sessions))
+      const rows = await forOrg(orgId()).run((db) => db.select().from(sessions).where(mine(db)))
       expect(rows).toHaveLength(1)
 
       // Not a JWT anywhere: what the next request resolves is this row, which is
@@ -154,7 +178,7 @@ describe.skipIf(!reachable)('email codes, sessions and revocation, against the d
       expect(answered.signedIn).toBe(true)
 
       const [row] = await forOrg(orgId()).run((db) =>
-        db.select({ expiresAt: sessions.expiresAt }).from(sessions),
+        db.select({ expiresAt: sessions.expiresAt }).from(sessions).where(mine(db)),
       )
 
       // Not a number we were free to choose. RFC 6265bis caps a cookie's
@@ -198,7 +222,7 @@ describe.skipIf(!reachable)('email codes, sessions and revocation, against the d
       // or not Terry has ever logged in, and ADR 0006 runs the whole POC with no
       // volunteer accounts at all.
       const accounts = await forOrg(orgId()).run((db) => db.select().from(volunteerAccounts))
-      const identities = await forOrg(orgId()).run((db) => db.select().from(users))
+      const identities = await forOrg(orgId()).run((db) => db.select().from(users).where(ours))
       expect(accounts).toEqual([])
       expect(identities).toEqual([])
       expect(volunteer.id).toEqual(expect.any(String))
@@ -211,7 +235,7 @@ describe.skipIf(!reachable)('email codes, sessions and revocation, against the d
       })
 
       // Before: a Volunteer and nothing else.
-      expect(await forOrg(orgId()).run((db) => db.select().from(users))).toEqual([])
+      expect(await forOrg(orgId()).run((db) => db.select().from(users).where(ours))).toEqual([])
 
       await requestCode(orgId(), 'grace@example.invalid')
       const answered = await submitCode(orgId(), 'grace@example.invalid', codeFrom(posted[0]))
@@ -243,7 +267,7 @@ describe.skipIf(!reachable)('email codes, sessions and revocation, against the d
       expect(requested).toEqual({ sent: false, because: 'unrecognised-email' })
       expect(posted).toEqual([])
       // And Better Auth is never given the chance to sign somebody up.
-      expect(await forOrg(orgId()).run((db) => db.select().from(users))).toEqual([])
+      expect(await forOrg(orgId()).run((db) => db.select().from(users).where(ours))).toEqual([])
     })
 
     it('matches an address whatever case it was typed in', async () => {
@@ -378,7 +402,9 @@ describe.skipIf(!reachable)('email codes, sessions and revocation, against the d
       expect(revocation).toEqual({ revoked: true, sessionsEnded: 1 })
       // No staleness window at all: the same request, made again, is nobody.
       expect(await actorFrom(orgId(), request)).toBeNull()
-      expect(await forOrg(orgId()).run((db) => db.select().from(sessions))).toEqual([])
+      expect(await forOrg(orgId()).run((db) => db.select().from(sessions).where(mine(db)))).toEqual(
+        [],
+      )
     })
 
     it('leaves the Volunteer, their roles and their work behind', async () => {
@@ -435,7 +461,9 @@ describe.skipIf(!reachable)('email codes, sessions and revocation, against the d
 
       // Restored means *may sign in again*, never *is signed in*. Nothing in
       // this application hands somebody a session they did not authenticate for.
-      expect(await forOrg(orgId()).run((db) => db.select().from(sessions))).toEqual([])
+      expect(await forOrg(orgId()).run((db) => db.select().from(sessions).where(mine(db)))).toEqual(
+        [],
+      )
       expect(await requestCode(orgId(), 'grace@example.invalid')).toEqual({ sent: true })
     })
 
@@ -478,6 +506,10 @@ describe.skipIf(!reachable)('email codes, sessions and revocation, against the d
       expect(body).toEqual({
         volunteerId: volunteer.id,
         name: 'Grace Whittaker',
+        // Your own contact details, which #68 added: the redaction ADR 0017
+        // asks for protects other people's, never your own.
+        email: 'grace@example.invalid',
+        mobile: null,
         domainScopes: ['roster'],
       })
     })

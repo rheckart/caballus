@@ -14,7 +14,7 @@ import { stubApi } from '../test/api-stub'
 import { renderRoutes } from '../test/route-harness'
 import { BOARD_TOKEN_HEADER } from '../shared/board'
 import { PRODUCT_KINDS } from '../shared/products'
-import Board from './board'
+import Board, { KIND_TEXT_CLASS } from './board'
 import HorseProfile from './horses/$horseId'
 
 afterEach(() => {
@@ -278,20 +278,23 @@ describe('the Board', () => {
     expect(screen.getByText('New')).toBeTruthy()
   })
 
-  it('paints every Product kind on purpose, in both schemes', async () => {
+  it('paints every Product kind on purpose', async () => {
     // A kind with no rule inherits body text, which reads as "we forgot"
     // because the others are coloured deliberately (ADR 0022). Asserted
     // against `PRODUCT_KINDS` rather than a list here, so a fifth kind fails
-    // this test rather than shipping colourless (#58).
+    // this test rather than shipping colourless (#58) — and `KIND_TEXT_CLASS`
+    // is a total Record besides, so it fails to compile first. One scheme
+    // only now: the Board is pinned light in every combination (#61, #63),
+    // so the dusk reading a tablet's OS used to pick left with the
+    // migration.
     stubApi({ '/board': GRID })
-    const { container } = renderBoard()
+    renderBoard()
     await screen.findByText('Main barn')
 
-    const stylesheet = container.ownerDocument.querySelector('style')?.textContent ?? ''
-    const [light = '', dark = ''] = stylesheet.split('@media (prefers-color-scheme: dark)')
+    // The component paints each line from this same Record, so a colour here
+    // is a colour on the wall.
     for (const kind of PRODUCT_KINDS) {
-      expect(light).toContain(`.board-lines li[data-kind='${kind}']`)
-      expect(dark).toContain(`.board-lines li[data-kind='${kind}']`)
+      expect(KIND_TEXT_CLASS[kind]).toMatch(/text-/)
     }
   })
 

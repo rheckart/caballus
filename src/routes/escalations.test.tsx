@@ -44,7 +44,13 @@ const OPEN_ESCALATION = {
 describe('the Escalations screen', () => {
   it('shows an open Escalation addressed to a Scope the reader holds, in its own section', async () => {
     stubApi({
-      '/me': { volunteerId: 'welfare', name: 'Head Welfare', domainScopes: ['horse_care'] },
+      '/me': {
+        volunteerId: 'welfare',
+        name: 'Head Welfare',
+        email: 'someone@barn.test',
+        mobile: null,
+        domainScopes: ['horse_care'],
+      },
       '/escalations': { escalations: [OPEN_ESCALATION] },
     })
     renderEscalations()
@@ -55,7 +61,13 @@ describe('the Escalations screen', () => {
 
   it('does not offer a close form to a reader who does not hold the addressed Scope', async () => {
     stubApi({
-      '/me': { volunteerId: 'beth', name: 'Beth Ann', domainScopes: [] },
+      '/me': {
+        volunteerId: 'beth',
+        name: 'Beth Ann',
+        email: 'someone@barn.test',
+        mobile: null,
+        domainScopes: [],
+      },
       '/escalations': { escalations: [OPEN_ESCALATION] },
     })
     renderEscalations()
@@ -69,7 +81,13 @@ describe('the Escalations screen', () => {
   it('closes with a note, for a holder of the addressed Scope', async () => {
     let closed: unknown = null
     stubApi({
-      '/me': { volunteerId: 'welfare', name: 'Head Welfare', domainScopes: ['horse_care'] },
+      '/me': {
+        volunteerId: 'welfare',
+        name: 'Head Welfare',
+        email: 'someone@barn.test',
+        mobile: null,
+        domainScopes: ['horse_care'],
+      },
       '/escalations': { escalations: [OPEN_ESCALATION] },
       '/escalations/close': (init: RequestInit) => {
         closed = JSON.parse(String(init.body))
@@ -91,7 +109,13 @@ describe('the Escalations screen', () => {
   it('appends a thread comment for anyone, whether or not they hold the Scope', async () => {
     let commented: unknown = null
     stubApi({
-      '/me': { volunteerId: 'beth', name: 'Beth Ann', domainScopes: [] },
+      '/me': {
+        volunteerId: 'beth',
+        name: 'Beth Ann',
+        email: 'someone@barn.test',
+        mobile: null,
+        domainScopes: [],
+      },
       '/escalations': {
         escalations: [
           {
