@@ -44,13 +44,13 @@ anyone else gets `403 user should be the owner of the repo` from the API.
 | `REGISTRY_TOKEN` | That user's access token, with package read and write.         |
 | `VPS_SSH_KEY`    | The private half of the deploy key described below.            |
 
-**A token may only write packages under its own user's namespace.** The `claude`
-token logs in fine and gets `401` pushing to `rob/caballus`, while pushing to
-`claude/caballus` succeeds — so the first image was published there, and
-`/docker/caballus/.env` carries `REGISTRY_IMAGE=git.heckart.me/claude/caballus`
-to say so. `deploy.sh` reads that line rather than fixing the repository in the
-script. When the owner's token is an Actions secret, the line becomes
-`git.heckart.me/rob/caballus` and nothing else changes.
+**A token may only write packages under its own user's namespace.** Before
+`REGISTRY_TOKEN` existed the `claude` token logged in fine and got `401` pushing
+to `rob/caballus`, while `claude/caballus` succeeded — so the first images were
+published there. `deploy.sh` reads `REGISTRY_IMAGE` out of `.env` rather than
+fixing the repository in the script, which is what made moving to
+`git.heckart.me/rob/caballus` one line on the box once the owner's token was a
+secret.
 
 The built-in `secrets.GITHUB_TOKEN` was tried first and **does not work**: it
 logs in to the registry and then gets `401 Unauthorized` on the first blob
@@ -165,6 +165,32 @@ must succeed, starts the application, and then polls `https://caballus.tech/heal
 from outside — so a green answer proves Traefik, the certificate and the
 database as well as the process. If health never comes, it puts the previous
 image back and says which one failed.
+
+## Two things about this runner, learned by running into them
+
+**`ci.yml` is not dispatchable, on purpose.** It carried `workflow_dispatch` and
+the button could not work: a dispatched run failed to plan the workflow at all —
+*'runs-on' key not defined in ci/verify*, before a step executed — and skipped
+`publish` on a `github.ref` it evaluated differently from a push. `deploy.yml`
+dispatches correctly, and the difference is shape: one job, no `needs`, no `if`.
+So `ci.yml` answers a push and nothing else, and the broken button is gone
+rather than documented.
+
+**The push retries, because the registry is behind a home tunnel.** Publishing
+failed once with every layer uploaded and then `failed commit on ref
+"layer-sha256:…": net/http: timeout awaiting response headers` — the blob commit
+took longer than the client's thirty-second wait. The heavy layer is
+`node_modules`; the runtime stage now installs `--omit=dev` fresh instead of
+copying the build stage's tree, which took the image from 751 MB to 676 MB, and
+`drizzle-kit` and `jiti` moved to `dependencies` because a migration and the
+bootstrap are production acts run from this image.
+
+676 MB is less of a saving than it looks like it should be: `better-auth`
+depends on `vitest` and `@tanstack/react-start` on `prettier`, so both are
+genuinely in the production tree. The rest is a five-attempt retry, which
+resumes against blobs the registry already holds. It bites at most once per
+dependency change — a push that does not move `package-lock.json` never sends
+that layer again.
 
 ## Rolling back
 
