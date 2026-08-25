@@ -1,0 +1,36 @@
+# What must never reach the build context. The `.env` line is the one that
+# matters: secrets live in 1Password and are rendered onto the box at deploy
+# time (ADR 0006), and a secret baked into an image layer is a secret that
+# survives every later attempt to rotate it.
+.env
+.env.*
+!.env.example
+
+node_modules/
+dist/
+.output/
+.nitro/
+.tanstack/
+
+.git/
+.github/
+.forgejo/
+.husky/
+
+# Whiteboard photographs: large binaries carrying volunteers' names and
+# personal phone numbers, kept out of git for that reason and out of an image
+# for the same one.
+fhhr-whiteboard/
+
+prototypes/
+lint-fixtures/
+docs/
+*.md
+!README.md
+
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/

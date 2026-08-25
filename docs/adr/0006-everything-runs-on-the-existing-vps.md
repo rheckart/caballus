@@ -1,10 +1,13 @@
 ---
 status: accepted
+amended-by: the first deploy, on where Forgejo actually runs
 ---
 
 # Everything runs on the existing VPS, and the backups are ours to write
 
-App and Postgres both run in Docker on the Hostinger VPS that already hosts Forgejo. There is no managed database, no managed application platform, and no second server. Durability comes from `pg_dump` every fifteen minutes to offsite object storage, not from the host.
+> **Amended on the co-location, which this ADR got wrong.** "the Hostinger VPS that already hosts Forgejo" is not true and never was: **Forgejo runs on the OMV8 box at home**, behind a Cloudflare tunnel, alongside its Postgres and its Actions runner. The VPS held Traefik and nothing else until Caballus arrived. So "Caballus shares a kernel and a disk with the git host", listed below as an accepted risk and something to re-decide when the POC ends, **is not a risk that exists** — there is nothing to isolate Caballus from, and the second-VPS question is now only about blast radius between Caballus and itself. Everything else stands: one box, no managed database, backups ours to write. The runbook is `docs/deploy.md`.
+
+App and Postgres both run in Docker on the Hostinger VPS. There is no managed database, no managed application platform, and no second server. Durability comes from `pg_dump` every fifteen minutes to offsite object storage, not from the host.
 
 This is a **proof of concept**, and the decision is scoped to that. The tripwire that ends it, and what it re-opens, is recorded below.
 

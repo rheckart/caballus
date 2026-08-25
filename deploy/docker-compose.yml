@@ -1,0 +1,57 @@
+# Caballus on the VPS of ADR 0006: the application and its Postgres, behind the
+# Traefik that already runs on this box.
+#
+# `/docker/<stack>/` is this machine's own convention — Traefik lives at
+# /docker/traefik — and following it is worth more than the tidiness of /opt.
+name: caballus
+
+services:
+  postgres:
+    # ADR 0007 pins Postgres 18 everywhere. No port is published: the only
+    # thing that needs to reach this database is the container next to it, and
+    # a published port on a box with a public address is a database on the
+    # internet.
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: caballus
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: caballus
+    volumes:
+      # One mount at /var/lib/postgresql, which is what the 18 image wants: it
+      # puts the cluster in a version-named subdirectory so a later
+      # `pg_upgrade --link` does not straddle a mount point.
+      - postgres:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U caballus']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  app:
+    # Named by commit rather than by `latest`, and rewritten by deploy.sh, so
+    # this file is also the record of what is actually running.
+    image: ${CABALLUS_IMAGE}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: .env
+    labels:
+      # Traefik on this box runs with host networking and the Docker provider,
+      # with exposedbydefault off — so a container is routed only when it says
+      # so here.
+      - traefik.enable=true
+      - traefik.http.routers.caballus.rule=Host(`caballus.tech`) || Host(`www.caballus.tech`)
+      - traefik.http.routers.caballus.entrypoints=websecure
+      - traefik.http.routers.caballus.tls.certresolver=letsencrypt
+      - traefik.http.services.caballus.loadbalancer.server.port=3000
+      # www goes to the apex rather than serving the same app twice: one origin
+      # keeps the session cookie's idea of where it is (APP_URL) true.
+      - traefik.http.routers.caballus.middlewares=caballus-www@docker
+      - traefik.http.middlewares.caballus-www.redirectregex.regex=^https?://www\.caballus\.tech/(.*)
+      - traefik.http.middlewares.caballus-www.redirectregex.replacement=https://caballus.tech/$${1}
+      - traefik.http.middlewares.caballus-www.redirectregex.permanent=true
+
+volumes:
+  postgres:

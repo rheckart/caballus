@@ -269,9 +269,20 @@ export default [
   ...tseslint.configs.recommended,
   {
     // The verify scripts and the hook run on Node, outside the bundle.
+    // `Response`, `URL` and `fetch` are Node's own since 18 and are what
+    // `serve.mjs` answers `/health` with — declared here, the way `public/sw.js`
+    // declares the worker's, rather than the file being exempted from a rule it
+    // does not actually break.
     files: ['scripts/**/*.mjs'],
     languageOptions: {
-      globals: { process: 'readonly', Buffer: 'readonly', console: 'readonly' },
+      globals: {
+        process: 'readonly',
+        Buffer: 'readonly',
+        console: 'readonly',
+        Response: 'readonly',
+        URL: 'readonly',
+        fetch: 'readonly',
+      },
     },
   },
   {

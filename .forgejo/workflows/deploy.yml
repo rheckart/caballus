@@ -1,0 +1,45 @@
+# Taking traffic, which is a person's act and not a push's.
+#
+# ADR 0007 makes migrations an explicit one-shot step before the new container
+# takes traffic, because an entrypoint migration turns the 6am restart ADR 0006
+# already puts on the critical path into a boot that can hang on a lock while a
+# Lead is waiting for the medication list. So this workflow is dispatched by
+# hand, names the image it is deploying, and does nothing else.
+#
+# The runbook is `docs/deploy.md`. The script this calls lives on the box, at
+# /docker/caballus/deploy.sh, because a deploy must stay runnable over SSH when
+# CI is the thing that is broken.
+name: deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The image tag to deploy: a twelve-character commit, or latest'
+        required: true
+        default: latest
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: An SSH client
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq openssh-client
+
+      - name: The key and the host it is allowed to reach
+        # The host key is written here rather than kept as a secret: a public
+        # key is public, and pinning it means a box that was silently recreated
+        # fails the deploy loudly instead of trusting whatever answers.
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          printf '%s\n' 'caballus.tech ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFmqBk0JB3APW/JJMtwtcVFioO9Rx1Do6Rd1H/f7Uin/' > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Deploy
+        run: |
+          ssh -i ~/.ssh/id_deploy -o BatchMode=yes root@caballus.tech \
+            /docker/caballus/deploy.sh '${{ inputs.tag }}'
