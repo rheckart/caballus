@@ -124,9 +124,30 @@ jobs:
         # Two tags for one image: the commit, which is what a deploy names and
         # what a rollback comes back to, and `latest`, which is only ever a
         # convenience for a human typing the deploy form.
+        #
+        # The push retries, and that is not superstition. This registry sits
+        # behind a Cloudflare tunnel to a machine at home, and committing a
+        # large blob has already exceeded the client's thirty-second wait for
+        # response headers once — `failed commit on ref "layer-sha256:…":
+        # net/http: timeout awaiting response headers`, after every layer had
+        # uploaded. A retry resumes against blobs the registry already holds,
+        # so it costs seconds when it is not needed. It bites at most once per
+        # dependency change: the heavy layer is `node_modules`, and a push that
+        # does not change `package-lock.json` never sends it again.
         run: |
           TAG="${GITHUB_SHA:0:12}"
           docker build -t "$IMAGE:$TAG" -t "$IMAGE:latest" .
-          docker push "$IMAGE:$TAG"
-          docker push "$IMAGE:latest"
+
+          push() {
+            for attempt in 1 2 3 4 5; do
+              if docker push "$1"; then return 0; fi
+              echo "push of $1 failed (attempt $attempt) — retrying in 15s"
+              sleep 15
+            done
+            echo "push of $1 failed five times"
+            return 1
+          }
+
+          push "$IMAGE:$TAG"
+          push "$IMAGE:latest"
           echo "pushed $IMAGE:$TAG"

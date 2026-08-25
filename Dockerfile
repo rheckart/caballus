@@ -2,13 +2,20 @@
 # digest rather than by tag — a tag moves, and a base image that moved under a
 # deploy is the one variable nobody thinks to check at 6am.
 #
-# The runtime stage deliberately keeps `src/`, `drizzle.config.ts` and the
-# development dependencies. Two acts on this image are not the server: the
-# migration step (`drizzle-kit`, reading `src/db/migrations` and `schema.ts`)
-# and the one-time bootstrap (`jiti`, reading TypeScript straight out of
-# `src/`). Splitting them into a second image is the alternative, and it buys a
-# smaller image at the price of two artefacts that can disagree about which
-# commit they are — which is the failure this ADR spends a digest to avoid.
+# The runtime stage keeps `src/` and `drizzle.config.ts`, because two acts on
+# this image are not the server: the migration step (`drizzle-kit`, reading
+# `src/db/migrations` and `schema.ts`) and the one-time bootstrap (`jiti`,
+# reading TypeScript straight out of `src/`). Both tools are `dependencies` for
+# exactly that reason — running a migration is a production act here, and
+# calling them development-only would be a lie the deploy depends on.
+#
+# It installs those production dependencies **fresh** rather than copying the
+# build stage's `node_modules`, and that is not tidiness. The full tree is
+# 430 MB in one layer, and pushing one layer that size to a registry behind a
+# home Cloudflare tunnel timed out awaiting response headers on the blob commit
+# — a deploy that fails on the size of its own artefact. Splitting the image is
+# still refused: it buys a smaller artefact at the price of two that can
+# disagree about which commit they are.
 
 FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS build
 
@@ -30,11 +37,19 @@ LABEL org.opencontainers.image.description="Operations for a horse rescue."
 ENV NODE_ENV=production
 WORKDIR /app
 
-COPY --from=build /app/node_modules ./node_modules
+COPY package.json package-lock.json ./
+# `prepare` runs husky, which is a development dependency and therefore absent
+# here — the hook it installs belongs to a working copy, not to a container.
+# Dropped from this image's copy of the manifest rather than skipping scripts
+# wholesale, because drizzle-kit's own esbuild still needs its install script.
+RUN npm pkg delete scripts.prepare \
+  && npm ci --omit=dev \
+  && npm cache clean --force
+
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/src ./src
 COPY --from=build /app/scripts ./scripts
-COPY --from=build /app/package.json /app/package-lock.json /app/tsconfig.json /app/drizzle.config.ts ./
+COPY tsconfig.json drizzle.config.ts ./
 
 EXPOSE 3000
 
