@@ -95,7 +95,7 @@ _Avoid_: notice, bulletin, post, memo, broadcast
 ### Shifts
 
 **Shift Pattern**:
-A recurring commitment to work — a day of week, a time of day and a type, from which dated Shifts are generated.
+A recurring commitment to work — a day of week, a time of day and a type, from which dated Shifts are generated. One weekday each, and at most one live Pattern per weekday and Shift Type: two Monday mornings is a barn with a morning it does not have. A retired one is kept, so the same weekday and Shift Type may be committed to again.
 _Avoid_: schedule, template, recurring shift, shift definition
 
 **Shift**:

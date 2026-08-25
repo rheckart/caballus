@@ -9,6 +9,14 @@
  * the old roster. So every edit here carries the answer, and the screen says
  * which way it went.
  *
+ * **Adding is bulk by default.** The rescue runs AM, Lunch and PM seven days a
+ * week and only the start time and the headcount vary, so the composer is one
+ * Shift Type across the days it runs on rather than one Pattern at a time —
+ * twenty-one trips through a four-field form was the same schedule spelled the
+ * long way. Ticking a single weekday is the old form, so nothing was lost, and
+ * a day that already has a live Pattern of that Shift Type is skipped and named
+ * back rather than refused (#69).
+ *
  * **Generation is a button.** It must never run at boot and there is no
  * scheduler yet, so the hand that fills the horizon is the Coordinator's, and
  * pressing it twice is safe by construction.
@@ -112,6 +120,27 @@ const GAP_LABEL: Record<RosterGap, string> = {
   no_consent: 'no parental consent',
 }
 
+/**
+ * What each Shift Type generally starts at and wants.
+ *
+ * The rescue runs one AM, one Lunch and one PM every day and only these two
+ * numbers vary, so the composer opens on the barn's own week rather than on a
+ * blank form. Presentation and never a rule: nothing on the server reads this,
+ * every field is overwritable, and a Saturday that starts later is refined on
+ * that Pattern afterwards.
+ */
+const GENERIC_PATTERN: Record<ShiftType, { startTime: string; targetHeadcount: number }> = {
+  feed_am: { startTime: '06:30', targetHeadcount: 3 },
+  feed_pm: { startTime: '17:00', targetHeadcount: 3 },
+  lunch: { startTime: '12:00', targetHeadcount: 1 },
+}
+
+/** *Monday*, *Monday and Tuesday*, *Monday, Tuesday and Wednesday*. */
+function listed(names: readonly string[]): string {
+  if (names.length <= 1) return names.join('')
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1] ?? ''}`
+}
+
 /** A card section, now that a `<section>` is no longer one by element rule. */
 const CARD = 'mb-4 rounded-lg border border-border bg-background p-4 sm:p-6'
 
@@ -128,7 +157,6 @@ function ShiftPatterns() {
   const [problem, setProblem] = useState<string | null>(null)
   const [said, setSaid] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [newWeekday, setNewWeekday] = useState<Weekday>('monday')
 
   const load = useCallback(async () => {
     const [listedPatterns, listedShifts, listedPeople] = await Promise.all([
@@ -418,80 +446,153 @@ function ShiftPatterns() {
           <PatternCard key={pattern.id} pattern={pattern} people={people} act={act} />
         ))}
 
-        <form
-          className={COMPOSER}
-          onSubmit={(event: FormEvent<HTMLFormElement>) => {
-            event.preventDefault()
-            const form = event.currentTarget
-            const data = new FormData(form)
-            void act(() =>
-              client.post('/shift-patterns', {
-                weekday: newWeekday,
-                shiftType: data.get('shiftType') as ShiftType,
-                startTime: String(data.get('startTime') ?? ''),
-                targetHeadcount: Number(data.get('targetHeadcount') ?? ''),
-              }),
-            ).then((landed) => {
-              if (landed) {
-                form.reset()
-                setNewWeekday('monday')
-              }
-            })
-          }}
-        >
-          <h3 className="m-0 mb-1 text-base font-semibold text-foreground">Add a Pattern</h3>
-          <Fields>
-            <Field label="Day of the week" htmlFor="new-weekday">
-              <Select
-                value={newWeekday}
-                onValueChange={(weekday) => {
-                  setNewWeekday(weekday as Weekday)
-                }}
-              >
-                <SelectTrigger id="new-weekday" aria-label="Day of the week">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {WEEKDAYS.map((weekday) => (
-                    <SelectItem key={weekday} value={weekday}>
-                      {WEEKDAY_LABEL[weekday]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="Starts" htmlFor="new-start">
-              <Input id="new-start" name="startTime" type="time" required defaultValue="06:30" />
-            </Field>
-            <div className="sm:col-span-2">
-              <Choice
-                legend="Shift"
-                name="shiftType"
-                defaultValue="feed_am"
-                options={SHIFT_TYPES.map((shiftType) => ({
-                  value: shiftType,
-                  label: SHIFT_TYPE_LABEL[shiftType],
-                }))}
-              />
-            </div>
-            <Field label="People wanted" htmlFor="new-headcount">
-              <Input
-                id="new-headcount"
-                name="targetHeadcount"
-                type="number"
-                inputMode="numeric"
-                min="1"
-                required
-                defaultValue="3"
-              />
-            </Field>
-          </Fields>
-          <Actions>
-            <Button type="submit">Add</Button>
-          </Actions>
-        </form>
+        <AddPatterns act={act} busy={busy} />
       </section>
     </main>
+  )
+}
+
+/**
+ * One Shift Type across the days it runs on, in one act (#69).
+ *
+ * This replaces the single-add form rather than sitting beside it: ticking one
+ * weekday **is** the old form, and two ways to make a Pattern is one way too
+ * many. The rescue's real schedule is AM, Lunch and PM seven days a week, so
+ * the composer that matters is *this Shift Type, on these days* — three passes
+ * instead of twenty-one.
+ *
+ * **The ticks survive a submit.** That is the flow the screen is for: tick the
+ * week once, then AM, submit, Lunch, submit, PM, submit. Pressing it twice is
+ * safe by construction — a weekday already held is skipped and named — so
+ * there is nothing for a reset to protect.
+ */
+function AddPatterns({
+  act,
+  busy,
+}: {
+  act: (work: () => Promise<unknown>, saying?: (answer: unknown) => string) => Promise<boolean>
+  busy: boolean
+}) {
+  const [shiftType, setShiftType] = useState<ShiftType>('feed_am')
+  const [weekdays, setWeekdays] = useState<readonly Weekday[]>([])
+  const [startTime, setStartTime] = useState(GENERIC_PATTERN.feed_am.startTime)
+  const [targetHeadcount, setTargetHeadcount] = useState(
+    String(GENERIC_PATTERN.feed_am.targetHeadcount),
+  )
+
+  const chose = (chosen: ShiftType) => {
+    setShiftType(chosen)
+    // The generic times the rescue actually runs, so picking Lunch does not
+    // mean retyping 12:00 and 1 every time. Overwritable, and overwriting is
+    // the point — what varies between a weekday and a Saturday is exactly
+    // this, and a Pattern's own *Change it* form is where that is refined.
+    setStartTime(GENERIC_PATTERN[chosen].startTime)
+    setTargetHeadcount(String(GENERIC_PATTERN[chosen].targetHeadcount))
+  }
+
+  return (
+    <form
+      className={COMPOSER}
+      onSubmit={(event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
+        void act(
+          () =>
+            client.post('/shift-patterns/batch', {
+              shiftType,
+              weekdays: [...weekdays],
+              startTime,
+              targetHeadcount: Number(targetHeadcount),
+            }),
+          (answer) => {
+            const { shiftPatternIds, skipped } = answer as {
+              shiftPatternIds: string[]
+              skipped: Weekday[]
+            }
+            const added =
+              shiftPatternIds.length === 0
+                ? 'Added nothing.'
+                : `Added ${String(shiftPatternIds.length)} Pattern${
+                    shiftPatternIds.length === 1 ? '' : 's'
+                  }.`
+            // The skipped days are said by name rather than counted: *2
+            // skipped* leaves a Coordinator counting ticks to work out which
+            // two, and the whole reason to skip is that they already have one.
+            if (skipped.length === 0) return added
+            return `${added} ${listed(skipped.map((weekday) => WEEKDAY_LABEL[weekday]))} already ${
+              skipped.length === 1 ? 'has' : 'have'
+            } a ${SHIFT_TYPE_LABEL[shiftType]} Pattern.`
+          },
+        )
+      }}
+    >
+      <h3 className="m-0 mb-1 text-base font-semibold text-foreground">Add Patterns</h3>
+      <p className="mt-0 text-sm text-muted-foreground">
+        One Shift Type across the days it runs on. A day that already has one is left alone.
+      </p>
+      <Choice
+        legend="Shift"
+        name="shiftType"
+        value={shiftType}
+        onChange={chose}
+        options={SHIFT_TYPES.map((type) => ({ value: type, label: SHIFT_TYPE_LABEL[type] }))}
+      />
+      <fieldset className="mt-3 min-w-0 border-0 p-0">
+        <legend className="mb-1 block p-0 text-sm font-medium text-foreground">Days</legend>
+        <div className="flex flex-wrap gap-x-4">
+          {WEEKDAYS.map((weekday) => (
+            <label key={weekday} htmlFor={`add-${weekday}`} className={CHECK_LABEL}>
+              <Checkbox
+                id={`add-${weekday}`}
+                checked={weekdays.includes(weekday)}
+                onCheckedChange={(checked) => {
+                  setWeekdays((held) =>
+                    checked === true
+                      ? // Kept in WEEKDAYS order rather than tick order, so the
+                        // request and anything reading it back run Monday first.
+                        WEEKDAYS.filter((day) => day === weekday || held.includes(day))
+                      : held.filter((day) => day !== weekday),
+                  )
+                }}
+              />
+              {WEEKDAY_LABEL[weekday]}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <Fields>
+        <Field label="Starts" htmlFor="add-start">
+          <Input
+            id="add-start"
+            type="time"
+            required
+            value={startTime}
+            onChange={(event) => {
+              setStartTime(event.target.value)
+            }}
+          />
+        </Field>
+        <Field label="People wanted" htmlFor="add-headcount">
+          <Input
+            id="add-headcount"
+            type="number"
+            inputMode="numeric"
+            min="1"
+            required
+            value={targetHeadcount}
+            onChange={(event) => {
+              setTargetHeadcount(event.target.value)
+            }}
+          />
+        </Field>
+      </Fields>
+      <Actions>
+        {/* Disabled with no day ticked because the request would be refused by
+            the contract rather than by anything a person could read. */}
+        <Button type="submit" disabled={busy || weekdays.length === 0}>
+          Add
+        </Button>
+      </Actions>
+    </form>
   )
 }
 

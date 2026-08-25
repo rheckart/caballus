@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "shift_patterns_live_occurrence" ON "shift_patterns" USING btree ("org_id","weekday","shift_type") WHERE retired_at is null;

@@ -375,6 +375,166 @@ describe.skipIf(!reachable)('Shift Patterns and Shifts, through the API', () => 
     })
   })
 
+  describe('a week of Patterns in one act', () => {
+    it('creates one Pattern per weekday sent', async () => {
+      const desk = await coordinator()
+
+      const added = await post(desk.api, '/shift-patterns/batch', {
+        shiftType: 'feed_am',
+        weekdays: ['monday', 'tuesday', 'wednesday'],
+        startTime: '06:30',
+        targetHeadcount: 3,
+      })
+
+      expect(added.status).toBe(201)
+      expect((added.body.shiftPatternIds as string[]).length).toBe(3)
+      expect(added.body.skipped).toEqual([])
+
+      const listed = shiftPatternList.parse((await get(desk.api, '/shift-patterns')).body)
+      expect(listed.patterns.map((pattern) => pattern.weekday).sort()).toEqual([
+        'monday',
+        'tuesday',
+        'wednesday',
+      ])
+      // The whole point of the composer: the time and the headcount are the
+      // one thing that does not vary within a Shift Type.
+      expect(listed.patterns.every((pattern) => pattern.startTime === '06:30')).toBe(true)
+      expect(listed.patterns.every((pattern) => pattern.targetHeadcount === 3)).toBe(true)
+    })
+
+    it('is safe to press twice — the second run creates nothing and names every day', async () => {
+      const desk = await coordinator()
+      const week = {
+        shiftType: 'feed_am',
+        weekdays: ['monday', 'tuesday'],
+        startTime: '06:30',
+        targetHeadcount: 3,
+      }
+
+      await post(desk.api, '/shift-patterns/batch', week)
+      // A fresh idempotency key, so this is the *skip* rule holding rather
+      // than ADR 0020's replay: pressing the button again a week later must
+      // behave the same as pressing it twice in a minute.
+      const again = await post(desk.api, '/shift-patterns/batch', week)
+
+      expect(again.body.shiftPatternIds).toEqual([])
+      expect(again.body.skipped).toEqual(['monday', 'tuesday'])
+
+      const listed = shiftPatternList.parse((await get(desk.api, '/shift-patterns')).body)
+      expect(listed.patterns.length).toBe(2)
+    })
+
+    it('creates the days that are missing and leaves the held one exactly as it was', async () => {
+      const desk = await coordinator()
+      await patternOn(desk.api, 'monday', { startTime: '07:15', targetHeadcount: 5 })
+
+      const added = await post(desk.api, '/shift-patterns/batch', {
+        shiftType: 'feed_am',
+        weekdays: ['monday', 'tuesday', 'wednesday'],
+        startTime: '06:30',
+        targetHeadcount: 3,
+      })
+
+      expect((added.body.shiftPatternIds as string[]).length).toBe(2)
+      expect(added.body.skipped).toEqual(['monday'])
+
+      const listed = shiftPatternList.parse((await get(desk.api, '/shift-patterns')).body)
+      const monday = listed.patterns.find((pattern) => pattern.weekday === 'monday')
+      // Skipped means left alone: this write creates, and moving an existing
+      // Pattern is `/shift-patterns/edit`'s act with its own prompt (ADR 0001).
+      expect(monday?.startTime).toBe('07:15')
+      expect(monday?.targetHeadcount).toBe(5)
+    })
+
+    it('does not skip a weekday whose only Pattern of that type is retired', async () => {
+      const desk = await coordinator()
+      const stopped = await patternOn(desk.api, 'monday')
+      await post(desk.api, '/shift-patterns/retirement', {
+        shiftPatternId: stopped,
+        retired: true,
+      })
+
+      const added = await post(desk.api, '/shift-patterns/batch', {
+        shiftType: 'feed_am',
+        weekdays: ['monday'],
+        startTime: '06:30',
+        targetHeadcount: 3,
+      })
+
+      // Retirement means *make a new one if you need one*, as it does for a
+      // Product and a Space; un-retiring is a person's own deliberate act and
+      // a bulk add must not do it behind their back.
+      expect((added.body.shiftPatternIds as string[]).length).toBe(1)
+      expect(added.body.skipped).toEqual([])
+
+      const listed = shiftPatternList.parse((await get(desk.api, '/shift-patterns')).body)
+      expect(listed.patterns.filter((pattern) => pattern.retired).length).toBe(1)
+      expect(listed.patterns.filter((pattern) => !pattern.retired).length).toBe(1)
+    })
+
+    it('does not skip a weekday held only by a different Shift Type', async () => {
+      const desk = await coordinator()
+      await patternOn(desk.api, 'monday')
+
+      const added = await post(desk.api, '/shift-patterns/batch', {
+        shiftType: 'lunch',
+        weekdays: ['monday'],
+        startTime: '12:00',
+        targetHeadcount: 1,
+      })
+
+      expect(added.body.skipped).toEqual([])
+      expect((added.body.shiftPatternIds as string[]).length).toBe(1)
+    })
+
+    it('records one audit entry per created Pattern and no batch record', async () => {
+      const desk = await coordinator()
+
+      await post(desk.api, '/shift-patterns/batch', {
+        shiftType: 'feed_am',
+        weekdays: ['monday', 'tuesday', 'wednesday'],
+        startTime: '06:30',
+        targetHeadcount: 3,
+      })
+
+      const entries = await owner`
+        select entity from audit_entries
+        where org_id = ${FIELD_BARN} and entity = 'shift_pattern'
+      `
+      // The created records are the log (#59). Three Patterns, three entries,
+      // and nothing that would become a fifth hand-rolled table (ADR 0019).
+      expect(entries.length).toBe(3)
+    })
+
+    it('refuses a plain Volunteer, like every other Pattern write', async () => {
+      const plain = await rosterableVolunteer('Sam Okafor')
+
+      const refused = await post(apiAs(plain, []), '/shift-patterns/batch', {
+        shiftType: 'feed_am',
+        weekdays: ['monday'],
+        startTime: '06:30',
+        targetHeadcount: 3,
+      })
+
+      expect(refused.status).toBe(403)
+    })
+
+    it('refuses a second live Pattern for the same weekday and Shift Type at the table', async () => {
+      const desk = await coordinator()
+      await patternOn(desk.api, 'monday')
+
+      // The index rather than the batch: the single-add door has always allowed
+      // this by accident, and two Monday mornings is a Board showing the barn a
+      // morning it does not have.
+      await expect(
+        owner`
+          insert into shift_patterns (id, org_id, weekday, shift_type, start_time, target_headcount)
+          values (gen_random_uuid(), ${FIELD_BARN}, 'monday', 'feed_am', '06:30', 3)
+        `,
+      ).rejects.toThrow()
+    })
+  })
+
   describe('generation', () => {
     it('fills the horizon, copying the roster and the start time', async () => {
       const desk = await coordinator()

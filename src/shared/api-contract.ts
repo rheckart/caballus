@@ -1844,6 +1844,36 @@ export const contract = {
       }),
       answers: z.object({ scheduledTouched: z.number() }),
     },
+    /**
+     * A Shift Type across several weekdays at once — the rescue's actual
+     * schedule is AM, Lunch and PM seven days a week, and adding it one Pattern
+     * at a time is twenty-one trips through a four-field form (#69).
+     *
+     * One key and one transaction for the whole run (ADR 0020), the shape
+     * `/spaces/batch` already holds, and a weekday that already has a **live**
+     * Pattern of this Shift Type is **skipped rather than refused** — a
+     * Coordinator who added Monday AM last week and then asks for the week
+     * means the six that are missing. A retired one does not block: retirement
+     * means *make a new one if you need one*, and un-retiring is a person's own
+     * deliberate act.
+     *
+     * No `MOST_AT_ONCE` constant, unlike `/spaces/batch`: `weekdays` is an
+     * array over a seven-value enum, so the cap is the vocabulary rather than a
+     * number somebody picked.
+     */
+    '/shift-patterns/batch': {
+      accepts: z.object({
+        shiftType,
+        weekdays: z.array(weekday).min(1),
+        startTime: timeOfDay,
+        targetHeadcount: z.number().int().positive(),
+      }),
+      answers: z.object({
+        shiftPatternIds: z.array(z.string()),
+        /** The weekdays that already held a live Pattern of this Shift Type. */
+        skipped: z.array(weekday),
+      }),
+    },
     /** Somebody onto a Standing Roster — the first door the #34 gates stand at. */
     '/shift-patterns/roster': {
       accepts: z.object({

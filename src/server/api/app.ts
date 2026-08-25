@@ -95,6 +95,7 @@ import { patternList, shiftList } from '../shifts/list'
 import {
   assignToStandingRoster,
   createPattern,
+  createPatterns,
   editPattern,
   removeFromStandingRoster,
   retirePattern,
@@ -1451,6 +1452,22 @@ export function buildApi(
     const outcome = await createPattern(db, context.orgId, actor.volunteerId, input)
     if (!outcome.ok) return shiftRefusal(outcome.because)
     return json({ shiftPatternId: outcome.value.id }, 201)
+  })
+
+  /**
+   * A Shift Type across several weekdays at once (#69).
+   *
+   * The same Scope and the same `createPattern` the single add uses — this is a
+   * composer, not a second way to make a Pattern — so the trail is one audit
+   * entry per created Pattern and there is no batch record. A weekday already
+   * holding a live Pattern of this Shift Type is skipped and named back, which
+   * is what makes the button safe to press twice (`/spaces/batch`, ADR 0020).
+   */
+  api.mutation('/shift-patterns/batch', domainScope('roster'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await createPatterns(db, context.orgId, actor.volunteerId, input)
+    if (!outcome.ok) return shiftRefusal(outcome.because)
+    return json({ shiftPatternIds: outcome.value.ids, skipped: outcome.value.skipped }, 201)
   })
 
   /**
