@@ -10,9 +10,15 @@
 # path of a Lead waiting for the medication list.
 name: ci
 
+# Push alone. `workflow_dispatch` was declared here and is removed: on a
+# dispatched run this runner fails to plan the workflow at all — *'runs-on' key
+# not defined in ci/verify*, before a step executes — and skips `publish` on a
+# `github.ref` it evaluates differently from a push. A button that cannot work
+# is worse than no button, and this workflow has no reason to be pressed: it
+# answers a push. `deploy.yml` is the one a person presses, it has one job with
+# no `needs` and no `if`, and it dispatches correctly.
 on:
   push:
-  workflow_dispatch:
 
 env:
   IMAGE: git.heckart.me/rob/caballus
