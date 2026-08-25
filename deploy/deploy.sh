@@ -10,8 +10,14 @@
 set -euo pipefail
 
 STACK=/docker/caballus
-REGISTRY_IMAGE=git.heckart.me/rob/caballus
 TAG="${1:-latest}"
+
+# Which repository in the registry the tag names. Read from .env rather than
+# fixed here, because a Forgejo access token may only write packages under its
+# own user's namespace: until the owner's token is an Actions secret, the
+# images live under `claude/` and this is the one line that says so.
+REGISTRY_IMAGE=$(grep -E '^REGISTRY_IMAGE=' "$STACK/.env" | cut -d= -f2-)
+REGISTRY_IMAGE="${REGISTRY_IMAGE:-git.heckart.me/rob/caballus}"
 
 # A tag reaches this script from a workflow input, so it is checked rather than
 # trusted. Anything outside a tag's own alphabet is refused before it becomes

@@ -44,6 +44,14 @@ anyone else gets `403 user should be the owner of the repo` from the API.
 | `REGISTRY_TOKEN` | That user's access token, with package read and write.         |
 | `VPS_SSH_KEY`    | The private half of the deploy key described below.            |
 
+**A token may only write packages under its own user's namespace.** The `claude`
+token logs in fine and gets `401` pushing to `rob/caballus`, while pushing to
+`claude/caballus` succeeds — so the first image was published there, and
+`/docker/caballus/.env` carries `REGISTRY_IMAGE=git.heckart.me/claude/caballus`
+to say so. `deploy.sh` reads that line rather than fixing the repository in the
+script. When the owner's token is an Actions secret, the line becomes
+`git.heckart.me/rob/caballus` and nothing else changes.
+
 The built-in `secrets.GITHUB_TOKEN` was tried first and **does not work**: it
 logs in to the registry and then gets `401 Unauthorized` on the first blob
 upload. It has no package-write scope, so a real token is required.
@@ -92,15 +100,30 @@ APP_PW=$(grep '^DATABASE_URL=' .env | sed -E 's|.*caballus_app:([^@]+)@.*|\1|')
 docker compose exec -T postgres psql -U caballus -d caballus \
   -v app_password="$APP_PW" -f - < provision-database.sql
 
-# Then the schema, and then the first President — each once.
+# Then the schema.
 docker compose run --rm -T app npm run db:migrate
+
+# Bootstrap does not mint an organisation id — it requires APP_ORG_ID to
+# already be set, and refuses with a fresh one printed to stderr when it is
+# not. So it is run twice: once to be told an id, and once for real.
 docker compose run --rm -T app npm run bootstrap -- \
   "Freedom Hill Horse Rescue" America/New_York "Rob Heckart" rob@heckart.me
+# -> APP_ORG_ID is not set. A fresh one: 01a03af7-…
+sed -i 's|^APP_ORG_ID=.*|APP_ORG_ID=01a03af7-…|' .env
+docker compose run --rm -T app npm run bootstrap -- \
+  "Freedom Hill Horse Rescue" America/New_York "Rob Heckart" rob@heckart.me
+# -> Created Freedom Hill Horse Rescue and its first President, Rob Heckart.
+#    They sign in with a code like anybody else; nothing here made them an
+#    account.
 
-# bootstrap prints an organisation id. It goes into .env as APP_ORG_ID, and
-# nothing works until it does.
 docker compose up -d app
 ```
+
+Traefik took about a minute to get a certificate, and served its own default
+one until it did — so a browser opened straight after the first `up` shows a
+warning that is not a misconfiguration. `acme.json` also carried four failed
+challenges for `caballus.tech` from 2026-08-18, before any of this existed;
+they are old and did not block the issue.
 
 ## A routine deploy
 
