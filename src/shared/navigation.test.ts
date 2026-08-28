@@ -4,7 +4,7 @@
  * The first is a screen added without an entry, which ADR 0026 says must fail
  * the build rather than appear for everybody — so the table below is read off
  * the filesystem rather than written out a second time. A route file is a
- * Destination unless it is one of the four kinds that cannot be one, and each
+ * Destination unless it is one of the five kinds that cannot be one, and each
  * exclusion is named.
  *
  * The second is `navigationFor` offering something it should not, or hiding a
@@ -23,7 +23,7 @@ const ROUTES = 'src/routes'
 /**
  * Every route file in the application, as the path the router serves it at.
  *
- * Four kinds are dropped, and none of them is a Destination:
+ * Five kinds are dropped, and none of them is a Destination:
  *
  * - **`__root` and `api.$`** are not screens at all — the shell itself, and
  *   the catch-all that hands `/api/v1` to Hono.
@@ -31,6 +31,12 @@ const ROUTES = 'src/routes'
  *   `/shifts/$shiftId` — reached *from* a Destination and never listed as one.
  * - **`/login`** is the screen you reach by not being signed in, and the shell
  *   stays off it (ADR 0022's other half).
+ * - **`/privacy` and `/terms`** are the public legal pages a carrier's vetting
+ *   reviewer reads with no session (#80, ADR 0028). They are routes only
+ *   because a 10DLC campaign form takes a URL and a section of `/` is not one;
+ *   offering a privacy policy in a volunteer's sidebar is the marketing-page
+ *   failure `landing.tsx` is in `src/components/` to avoid. They are reached
+ *   from the public page's own footer, and the shell stays off them.
  * - **`.test.tsx`** is a test beside the screen it tests.
  */
 function screensOnDisk(directory = ROUTES, prefix = ''): readonly string[] {
@@ -44,7 +50,7 @@ function screensOnDisk(directory = ROUTES, prefix = ''): readonly string[] {
 
     const path = name === 'index' ? prefix || '/' : `${prefix}/${name.replaceAll('.', '/')}`
     if (path.includes('$')) return []
-    if (path === '/login') return []
+    if (path === '/login' || path === '/privacy' || path === '/terms') return []
     return [path]
   })
 }

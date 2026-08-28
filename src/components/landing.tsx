@@ -9,12 +9,14 @@
  * what the application does **today**: no roadmap, no marketing claim, and no
  * term that is not already in `CONTEXT.md`.
  *
- * It lives in `src/components/` and not in `src/routes/`, deliberately. Every
- * file under `src/routes/` is a Destination the sidebar has to offer
- * (`src/shared/navigation.test.ts` reads them off disk and fails the build on
- * one that is missing), and a marketing page in a signed-in volunteer's
- * navigation is wrong on its face. `src/routes/index.tsx` renders this in the
- * one state it belongs in: `signed-out`.
+ * It lives in `src/components/` and not in `src/routes/`, deliberately. A route
+ * file is a Destination the sidebar has to offer unless
+ * `src/shared/navigation.test.ts` names it as an exclusion, and a marketing
+ * page in a signed-in volunteer's navigation is wrong on its face — where
+ * `/privacy` and `/terms` (#80) had no choice, because a campaign form takes a
+ * URL and a section of this page is not one. `src/routes/index.tsx` renders
+ * this in the one state it belongs in: `signed-out`, and links the other two
+ * at the foot.
  *
  * **The shell is already off.** #66 made a visitor with no session the third
  * bare case beside `/login` and `/board`, so there is no navigation chrome
@@ -31,17 +33,8 @@
  */
 import { Link } from '@tanstack/react-router'
 
+import { CONTACT, LEAD, RATES, SECTION } from './public'
 import { Button } from './ui/button'
-
-/**
- * Who to write to. The maintainer's own address, because there is no support
- * alias and inventing one that reaches nobody is worse than a personal one
- * that does — the page has to give a reviewer somewhere to write.
- */
-const CONTACT = 'rob@heckart.me'
-
-const SECTION = 'mb-4 rounded-lg border border-border bg-background p-5 sm:p-6'
-const LEAD = 'm-0 max-w-[52ch] text-base text-on-dark-muted'
 
 export function Landing() {
   return (
@@ -108,7 +101,7 @@ export function Landing() {
         </p>
         <p className="m-0 mt-3 text-sm text-muted-foreground">
           Message frequency varies and is low; there is a hard limit on how many the app will send
-          in a day. Message and data rates may apply.
+          in a day. {RATES}
         </p>
       </section>
 
@@ -132,6 +125,15 @@ export function Landing() {
           record, or about anything else here.
         </p>
       </section>
+
+      {/* The two documents a carrier's vetting reviewer needs a link to (#80).
+          They are pages of their own rather than sections here, because the
+          campaign form takes a URL and a heading on this page is not one. */}
+      <nav className={SECTION} aria-label="The rest of the public pages">
+        <p className="m-0 text-sm">
+          <Link to="/privacy">Privacy policy</Link> · <Link to="/terms">Terms and conditions</Link>
+        </p>
+      </nav>
     </main>
   )
 }
