@@ -93,6 +93,7 @@ import { refusalText } from '../../shared/refusals'
 import type { Answers, contract } from '../../shared/api-contract'
 import { SPACE_KINDS, type SpaceKind } from '../../shared/spaces'
 import { dayString } from '../../shared/time'
+import { SHIFT_TYPE_LABEL } from '../../shared/shifts'
 
 export const Route = createFileRoute('/admin/horses')({
   component: Horses,
@@ -116,11 +117,6 @@ const KIND_LABEL: Record<SpaceKind, string> = {
   pasture: 'Pasture',
   paddock: 'Paddock',
   barn: 'Barn',
-}
-const SHIFT_TYPE_LABEL: Record<ShiftType, string> = {
-  feed_am: 'Feed AM',
-  feed_pm: 'Feed PM',
-  lunch: 'Lunch',
 }
 /** The screen says *How it's given*; the model keeps Route (`CONTEXT.md`). */
 const ROUTE_LABEL: Record<FeedRoute, string> = {

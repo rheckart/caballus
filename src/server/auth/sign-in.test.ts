@@ -21,6 +21,7 @@ import { API_BASE } from '../../shared/api-client'
 import { me } from '../../shared/api-contract'
 import { sessions, users, volunteerAccounts, volunteerRoles, volunteers } from '../../db/schema'
 import { setEmailTransport, type OutgoingEmail } from '../email'
+import { setVerifier, type VerifyPurpose } from './verify'
 import { currentOrgId } from '../request-context'
 import { actorForUser, actorFrom } from './actor'
 import { revokeAccount, restoreAccount } from './revoke'
@@ -45,6 +46,12 @@ describe.skipIf(!reachable)('email codes, sessions and revocation, against the d
 
   /** Every message the run sent, so a test can read a code the way a volunteer does. */
   let posted: OutgoingEmail[] = []
+
+  /** Every verification the run started: the number it went to, and which door. */
+  let texted: { to: string; purpose: VerifyPurpose }[] = []
+
+  /** What the fake verifier accepts. Verify owns the code, so a test picks one. */
+  const STANDING_CODE = '424242'
 
   function orgId(): OrgId {
     process.env.APP_ORG_ID = FRONT_BARN
@@ -82,16 +89,27 @@ describe.skipIf(!reachable)('email codes, sessions and revocation, against the d
 
   beforeEach(() => {
     posted = []
+    texted = []
     forgetCodeRequestsForTest()
     setEmailTransport((message) => {
       posted.push(message)
       return Promise.resolve()
+    })
+    // **No test makes a paid call** (#78). The fake stands in for Twilio Verify
+    // and hands out a fixed code, which is the whole of what a handset does.
+    setVerifier({
+      start: (to, purpose) => {
+        texted.push({ to, purpose })
+        return Promise.resolve()
+      },
+      check: (_to, code) => Promise.resolve(code === STANDING_CODE),
     })
     vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
   })
 
   afterEach(async () => {
     setEmailTransport(null)
+    setVerifier(null)
     vi.restoreAllMocks()
     // First, because every grant and removal below now writes one and it
     // references both the volunteer and the org (ADR 0010).
@@ -148,6 +166,124 @@ describe.skipIf(!reachable)('email codes, sessions and revocation, against the d
     if (!answered.signedIn) throw new Error(`Not signed in: ${answered.because}`)
     return { volunteer, answered }
   }
+
+  /**
+   * **The second door** (#78, ADR 0029): a code by text, to a number the
+   * rescue already knows.
+   *
+   * What is claimed here is the whole of ADR 0029. The number is a second way
+   * in and never a replacement — the address still works, the Account claimed
+   * is the same row, and the session is the same year-long session. An
+   * unrecognised number is refused exactly as an unrecognised address is. And
+   * **login is never gated on SMS Consent**: a volunteer who replied STOP to a
+   * staffing text can still sign in, which is the separation ADR 0028's opt-out
+   * would otherwise break.
+   */
+  describe('the second door: a code by text', () => {
+    async function invitedWithMobile(mobile: string, email = 'joy@example.invalid') {
+      return createVolunteer(orgId(), { name: 'Joy Marsden', email, mobile })
+    }
+
+    it('texts a code to a number the rescue knows, and hands over a session', async () => {
+      const volunteer = await invitedWithMobile('+14105550134')
+
+      expect(await requestCode(orgId(), '410-555-0134')).toEqual({ sent: true })
+      // Twilio Verify, not the messaging campaign: no email left the building.
+      expect(texted).toEqual([{ to: '+14105550134', purpose: 'sign-in' }])
+      expect(posted).toEqual([])
+
+      const answered = await submitCode(orgId(), '(410) 555-0134', STANDING_CODE)
+      if (!answered.signedIn) throw new Error(`Not signed in: ${answered.because}`)
+      expect(answered.volunteerId).toBe(volunteer.id)
+
+      // The same Account, claimed the same way. A second identity path would be
+      // a second thing to keep in step with the first.
+      const [claimed] = await forOrg(orgId()).run((db) =>
+        db
+          .select({ volunteerId: volunteerAccounts.volunteerId })
+          .from(volunteerAccounts)
+          .where(eq(volunteerAccounts.volunteerId, volunteer.id)),
+      )
+      expect(claimed?.volunteerId).toBe(volunteer.id)
+    })
+
+    it('reads the ways the barn writes a number, because the stored one is E.164', async () => {
+      await invitedWithMobile('+14105550134')
+
+      for (const written of ['4105550134', '410-555-0134', '+1 (410) 555-0134']) {
+        forgetCodeRequestsForTest()
+        expect(await requestCode(orgId(), written)).toEqual({ sent: true })
+      }
+    })
+
+    it('refuses a number nobody holds, the way it refuses an unknown address', async () => {
+      await invitedWithMobile('+14105550134')
+
+      expect(await requestCode(orgId(), '410-555-9999')).toEqual({
+        sent: false,
+        because: 'unrecognised-mobile',
+      })
+      // And something that is not a number at all lands in the same place: both
+      // send somebody to look for a typo.
+      expect(await requestCode(orgId(), '4105')).toEqual({
+        sent: false,
+        because: 'unrecognised-mobile',
+      })
+      expect(texted).toEqual([])
+    })
+
+    it('tells a volunteer who has left apart from a number nobody has', async () => {
+      const volunteer = await invitedWithMobile('+14105550134')
+      await removeVolunteer(orgId(), volunteer.id)
+
+      expect(await requestCode(orgId(), '410-555-0134')).toEqual({
+        sent: false,
+        because: 'volunteer-removed',
+      })
+    })
+
+    it('still signs in somebody who replied STOP to the staffing texts', async () => {
+      const volunteer = await invitedWithMobile('+14105550134')
+      // The exact case ADR 0029 separates: a STOP is about the notification
+      // campaign, and Verify is a different path. Conflating them means an
+      // opt-out is also a lockout.
+      await owner`update volunteers set sms_stopped_at = now() where id = ${volunteer.id}`
+
+      expect(await requestCode(orgId(), '410-555-0134')).toEqual({ sent: true })
+      const answered = await submitCode(orgId(), '410-555-0134', STANDING_CODE)
+      expect(answered.signedIn).toBe(true)
+    })
+
+    it('refuses a code that is not the one Verify holds', async () => {
+      await invitedWithMobile('+14105550134')
+      await requestCode(orgId(), '410-555-0134')
+
+      expect(await submitCode(orgId(), '410-555-0134', '000000')).toEqual({
+        signedIn: false,
+        because: 'wrong-code',
+      })
+    })
+
+    it('says nothing is coming when there is no verification service at all', async () => {
+      setVerifier(null)
+      await invitedWithMobile('+14105550134')
+
+      // Refused rather than silently dropped: a volunteer standing in a barn
+      // needs to be told nothing is coming, which is different from the app
+      // being broken.
+      expect(await requestCode(orgId(), '410-555-0134')).toEqual({
+        sent: false,
+        because: 'sms-not-sent',
+      })
+    })
+
+    it('leaves the address door exactly as it was', async () => {
+      // ADR 0029: a second door, never a replacement.
+      const { answered } = await signIn()
+      expect(answered.signedIn).toBe(true)
+      expect(texted).toEqual([])
+    })
+  })
 
   describe('a code, a session, and who it makes you', () => {
     it('mails a code, takes it back, and hands over a session', async () => {

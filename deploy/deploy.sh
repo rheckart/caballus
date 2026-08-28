@@ -12,26 +12,44 @@ set -euo pipefail
 STACK=/docker/caballus
 TAG="${1:-latest}"
 
-# Which repository in the registry the tag names. Read from .env rather than
-# fixed here, because a Forgejo access token may only write packages under its
-# own user's namespace: until the owner's token is an Actions secret, the
-# images live under `claude/` and this is the one line that says so.
-REGISTRY_IMAGE=$(grep -E '^REGISTRY_IMAGE=' "$STACK/.env" | cut -d= -f2-)
-REGISTRY_IMAGE="${REGISTRY_IMAGE:-git.heckart.me/rob/caballus}"
+say() { printf '==> %s\n' "$*"; }
 
 # A tag reaches this script from a workflow input, so it is checked rather than
 # trusted. Anything outside a tag's own alphabet is refused before it becomes
-# part of a command.
+# part of a command — and before anything on the box is touched.
 if ! printf '%s' "$TAG" | grep -Eq '^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$'; then
   echo "deploy: refusing tag '$TAG'" >&2
   exit 2
 fi
 
 cd "$STACK"
+
+# ADR 0006's secrets step, and the first thing this script does: `.env` is
+# rendered from `.env.tpl` through a 1Password service account, so a secret
+# changed in the vault reaches the box by being deployed rather than by being
+# typed into a file over SSH. It happens before the pull, so a token that
+# expired overnight fails with the running container untouched.
+#
+# CABALLUS_SKIP_ENV_RENDER=1 is the escape hatch for the morning 1Password is
+# the broken thing. It is not reachable from CI — the deploy key's forced
+# command passes a tag and nothing else — so it is root's own act, at a real
+# shell, and it says so in the log rather than being silent.
+if [ "${CABALLUS_SKIP_ENV_RENDER:-}" = "1" ]; then
+  say "SKIPPING the 1Password render — .env is whatever is already on this box"
+else
+  ./render-env.sh
+fi
+
+# Which repository in the registry the tag names, read from the file that was
+# just rendered. It was box-local configuration until the template carried it,
+# because a Forgejo access token may only write packages under its own user's
+# namespace and the images lived under `claude/` until the owner's token was an
+# Actions secret. The fallback stays for a box rendered by an older template.
+REGISTRY_IMAGE=$(grep -E '^REGISTRY_IMAGE=' .env | cut -d= -f2-)
+REGISTRY_IMAGE="${REGISTRY_IMAGE:-git.heckart.me/rob/caballus}"
+
 IMAGE="$REGISTRY_IMAGE:$TAG"
 PREVIOUS=$(grep -E '^CABALLUS_IMAGE=' .env | cut -d= -f2-)
-
-say() { printf '==> %s\n' "$*"; }
 
 say "pulling $IMAGE"
 docker pull "$IMAGE"
@@ -49,6 +67,8 @@ say "migrating"
 if ! docker compose run --rm -T app npm run db:migrate; then
   say "migration failed — nothing has been swapped, the old container is still serving"
   sed -i "s|^CABALLUS_IMAGE=.*|CABALLUS_IMAGE=$PREVIOUS|" .env
+  say "note: the tag is put back, the secrets are not. This deploy re-rendered .env;"
+  say "      the file it replaced is at $STACK/.env.previous if a secret is the suspect."
   exit 1
 fi
 
@@ -69,7 +89,13 @@ for attempt in $(seq 1 30); do
 done
 
 say "did not become healthy — rolling back to $PREVIOUS"
+# The tag, and deliberately not the secrets. A rollback has always been about
+# which image is running; silently reverting .env as well would undo the very
+# secret somebody just deployed in order to fix this. The previous file is kept
+# rather than restored, so putting it back is a decision with a command.
 sed -i "s|^CABALLUS_IMAGE=.*|CABALLUS_IMAGE=$PREVIOUS|" .env
 docker compose up -d app
 say "rolled back. The failed image was $IMAGE"
+say "note: the secrets were not rolled back. If one is the suspect, the file this"
+say "      deploy replaced is at $STACK/.env.previous."
 exit 1

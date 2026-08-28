@@ -68,11 +68,12 @@ const profile = {
   ],
   measurements: { weights: [], bodyConditions: [] },
   endedAlerts: [],
+  timeline: [],
 }
 
 function stubDesk(extra: Record<string, unknown | ((init: RequestInit) => unknown)> = {}) {
   stubApi({
-    '/horses': { horses: [maple] },
+    '/horses': { horses: [maple], attention: [] },
     '/spaces': { spaces },
     '/products': { products: [] },
     '/horses/h1': profile,

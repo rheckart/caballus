@@ -58,16 +58,18 @@ function bodyOf(init: RequestInit): Record<string, unknown> {
 }
 
 describe('the Your details screen', () => {
-  it('shows your name, your mobile and the address you sign in at', async () => {
+  it('shows your name, your number and the address you sign in at', async () => {
     stubApi({ '/me': me() })
     renderMe()
 
     expect(await screen.findByLabelText('Name')).toHaveProperty('value', 'Beth Ann')
-    expect(screen.getByLabelText('Mobile')).toHaveProperty('value', '410-555-0100')
     expect(screen.getByText('beth@barn.test')).toBeTruthy()
+    // The number is shown rather than sitting in an editable box beside the
+    // name: since #78 it is a credential, and moving it takes a code.
+    expect(screen.getByText(/Your number is 410-555-0100/)).toBeTruthy()
   })
 
-  it('saves name and mobile with no volunteerId and no reason on the wire', async () => {
+  it('saves the name with no volunteerId and no reason on the wire', async () => {
     let posted: Record<string, unknown> | null = null
     stubApi({
       '/me': me(),
@@ -79,35 +81,99 @@ describe('the Your details screen', () => {
     renderMe()
 
     fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Beth Kelly' } })
-    fireEvent.change(screen.getByLabelText('Mobile'), { target: { value: '410-555-0199' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     await waitFor(() => {
-      expect(posted).toMatchObject({ name: 'Beth Kelly', mobile: '410-555-0199' })
+      expect(posted).toMatchObject({ name: 'Beth Kelly' })
     })
     // The point of the test: no field on the wire could name another person,
-    // and none could carry an explanation of a decision about one.
-    expect(Object.keys(posted ?? {}).sort()).toEqual(['idempotencyKey', 'mobile', 'name'])
+    // and none could carry an explanation of a decision about one. The mobile
+    // left this write with #78 — an unverified move is the lockout ADR 0027
+    // built the address flow to prevent.
+    expect(Object.keys(posted ?? {}).sort()).toEqual(['idempotencyKey', 'name'])
   })
+})
 
-  it('sends a cleared mobile as null rather than as an empty string', async () => {
+/**
+ * Changing the number you sign in with (#78, ADR 0029) — the shape the address
+ * already had, for the field that became a credential.
+ */
+describe('changing the number you sign in with', () => {
+  it('asks for a code at the new number and changes nothing yet', async () => {
     let posted: Record<string, unknown> | null = null
     stubApi({
       '/me': me(),
-      '/me/contact-details': (init: RequestInit) => {
+      '/me/mobile/code': (init: RequestInit) => {
         posted = bodyOf(init)
         return answeredNothing()
       },
     })
     renderMe()
 
-    fireEvent.change(await screen.findByLabelText('Mobile'), { target: { value: '  ' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    fireEvent.change(await screen.findByLabelText('New number'), {
+      target: { value: '410-555-0199' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Text me a code' }))
 
+    await waitFor(() => {
+      expect(posted).toMatchObject({ mobile: '410-555-0199' })
+    })
+    // Nothing has moved: the screen still shows the old number.
+    expect(screen.getByText(/Your number is 410-555-0100/)).toBeTruthy()
+  })
+
+  it('moves the number only when the code comes back', async () => {
+    let posted: Record<string, unknown> | null = null
+    stubApi({
+      '/me': me(),
+      '/me/mobile/code': () => answeredNothing(),
+      '/me/mobile': (init: RequestInit) => {
+        posted = bodyOf(init)
+        return answeredNothing()
+      },
+    })
+    renderMe()
+
+    fireEvent.change(await screen.findByLabelText('New number'), {
+      target: { value: '410-555-0199' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Text me a code' }))
+
+    fireEvent.change(await screen.findByLabelText('Code'), { target: { value: '481920' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Change my number' }))
+
+    await waitFor(() => {
+      expect(posted).toMatchObject({ mobile: '410-555-0199', code: '481920' })
+    })
+  })
+
+  it('gives the number up with no code at all', async () => {
+    let posted: Record<string, unknown> | null = null
+    stubApi({
+      '/me': me(),
+      '/me/mobile/removal': (init: RequestInit) => {
+        posted = bodyOf(init)
+        return answeredNothing()
+      },
+    })
+    renderMe()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove my number' }))
+
+    // Verification exists to stop somebody being locked out by a number they
+    // cannot receive at; giving one up cannot lock anybody out.
     await waitFor(() => {
       expect(posted).not.toBeNull()
     })
-    expect(posted).toMatchObject({ mobile: null })
+    expect(Object.keys(posted ?? {})).toEqual(['idempotencyKey'])
+  })
+
+  it('offers nothing to remove when there is no number on file', async () => {
+    stubApi({ '/me': me({ mobile: null }) })
+    renderMe()
+
+    await screen.findByText(/You have no number on file/)
+    expect(screen.queryByRole('button', { name: 'Remove my number' })).toBeNull()
   })
 })
 

@@ -117,8 +117,8 @@ function RootComponent() {
  * - `signed-out` — an explicit 401, which ADR 0010 makes a status rather than
  *   an empty body. **No chrome**: a menu of fourteen Destinations in front of
  *   somebody with no session is fourteen ways to be refused, and the only two
- *   screens that mean anything signed out — the hero on `/` and `/login` — both
- *   say *sign in* on their own.
+ *   screens that mean anything signed out — the public page on `/` (#75) and
+ *   `/login` — both say *sign in* on their own.
  * - `unknown` — the request did not arrive at all. **The chrome stays**, at its
  *   floor. A volunteer whose signal dropped in a barn must not also lose the
  *   way back to Shifts, and none of this is a boundary anyway (ADR 0026): the

@@ -38,11 +38,11 @@ obvious:
 Actions secrets must be set by the repository **owner**; a token belonging to
 anyone else gets `403 user should be the owner of the repo` from the API.
 
-| Secret           | What it is                                                    |
-| ---------------- | ------------------------------------------------------------- |
-| `REGISTRY_USER`  | A Forgejo username that may write packages under `rob/`.       |
-| `REGISTRY_TOKEN` | That user's access token, with package read and write.         |
-| `VPS_SSH_KEY`    | The private half of the deploy key described below.            |
+| Secret           | What it is                                               |
+| ---------------- | -------------------------------------------------------- |
+| `REGISTRY_USER`  | A Forgejo username that may write packages under `rob/`. |
+| `REGISTRY_TOKEN` | That user's access token, with package read and write.   |
+| `VPS_SSH_KEY`    | The private half of the deploy key described below.      |
 
 **A token may only write packages under its own user's namespace.** Before
 `REGISTRY_TOKEN` existed the `claude` token logged in fine and got `401` pushing
@@ -80,6 +80,170 @@ One trap, met the hard way: **the file had no trailing newline**, so appending a
 key with `echo >>` concatenated it onto the end of the previous line, where
 sshd read it as that key's comment. It looked installed and was not. Append
 with `printf '%s\n'` and check with `awk '{print NR}'`, not `grep`.
+
+## Secrets are rendered from 1Password
+
+> **The render has run against the box; a deploy through it has not.** The vault
+> exists, the service account reads it, and `render-env.sh` has written a real
+> `.env` on the VPS — so everything up to and including _Prove the first render_
+> is the record this file promises. What is still procedure is the last step:
+> no `deploy.sh` run has yet gone render → pull → migrate → health with the new
+> first step in front of it. The first one that does closes the gap, and the
+> rollback note under _Rolling back_ is the part to read before it.
+
+ADR 0006: _"A service account renders a real `.env` onto the box with `op inject`
+at deploy time."_ `deploy/render-env.sh` is that, and `deploy.sh` calls it as its
+first step — before the pull, so a token that expired overnight fails with the
+running container untouched.
+
+**1Password is never in the startup path.** What the render produces is a plain
+file, and the container reads it with no 1Password dependency of its own.
+Starting under `op run` would make a 6am restart depend on somebody else's API
+at the exact hour that matters.
+
+`deploy/.env.tpl` is the template, and it is in the repository because it holds
+references rather than values. The split is one rule: **the repository decides
+what is a literal, and 1Password holds what only the deployment knows.**
+`APP_URL` is a literal. A password, a token, the barn's coordinates and the
+`APP_ORG_ID` that `bootstrap` minted on the box are references — none of them
+can be read off a checkout, and a box rebuilt from scratch has to get them from
+somewhere.
+
+### What the vault has to contain
+
+One vault, `Caballus`, five items, and every reference in the template must
+resolve or the render fails — `op inject` errors on one it cannot find, and the
+deploy stops there with `.env` untouched.
+
+| Item         | Fields                                                                                        |
+| ------------ | --------------------------------------------------------------------------------------------- |
+| `postgres`   | `password` (the owner), `app-password` (the `caballus_app` role)                              |
+| `app`        | `org-id`, `better-auth-secret`, `board-token`, `barn-latitude`, `barn-longitude`              |
+| `smtp`       | `url`                                                                                         |
+| `openrouter` | `api-key`                                                                                     |
+| `twilio`     | `account-sid`, `auth-token`, `from-number`, `verify-service-sid`, `verify-change-service-sid` |
+
+The values come out of the `.env` already on the box, which is the only place
+some of them exist. Copy them in **before** touching anything else — a
+`BETTER_AUTH_SECRET` that is lost signs out every volunteer at once, and ADR
+0004 made sessions effectively permanent so that never happens.
+
+**A reference is for a value that exists. A value that does not exist yet stays
+a literal empty line.** `op inject` fails on a field it cannot find, and it
+fails the whole render, so one reference written ahead of the thing it names
+takes the deploy down for every variable rather than just its own.
+
+`SENTRY_DSN` is the settled case: there is no Sentry project, its unset state is
+already the right default, and so it is two empty lines in the template rather
+than a reference to nothing.
+
+**The five `TWILIO_*` entries are the live case, and they are references
+today.** The campaign and the Verify Services are paperwork against Twilio's
+console (#76), and until each one exists its field has to exist in the vault
+too — so either create all five fields before the first render, or turn the
+ones that are still pending back into literal empty lines and make them
+references as they land. Do **not** paper over it with a placeholder value:
+`src/server/sms.ts` refuses in words when a variable is unset, and a
+made-up SID turns that clean refusal into a failure at send time, which is the
+one thing the Urgent Send cannot afford.
+
+### Setting it up
+
+Two things about service accounts that decide the shape of this. **Vault access
+is immutable** — a service account's vaults are fixed when it is created and
+cannot be added to afterwards, so the vault has to exist first and be granted at
+creation. And **a service account cannot be given the Personal or Private
+vault** at all, which is why `Caballus` is a vault of its own rather than a
+folder in an existing one. Read-only is enough; nothing here writes back.
+
+```bash
+# On a workstation with `op` signed in, not on the box.
+op vault create Caballus
+# … create the five items above, by hand, from the box's current .env …
+op service-account create caballus-deploy --vault Caballus:read_items
+# -> prints the token, once. Put it in 1Password too, in a vault this service
+#    account cannot read.
+#
+# Deliberately no --expires-in. The flag exists, and a token that expires on a
+# date nobody wrote down is exactly the 6am failure ADR 0006 names. Rotation
+# here is a person's act, and it is listed below as not built.
+```
+
+Then the box, as root:
+
+```bash
+# The 1Password CLI, from 1Password's own apt repository.
+curl -sS https://downloads.1password.com/linux/keys/1password.asc \
+  | gpg --dearmor --output /usr/share/keyrings/1password-archive-keyring.gpg
+printf '%s\n' 'deb [arch=amd64 signed-by=/usr/share/keyrings/1password-archive-keyring.gpg] https://downloads.1password.com/linux/debian/amd64 stable main' \
+  > /etc/apt/sources.list.d/1password.list
+apt-get update && apt-get install -y 1password-cli
+
+# The token, which is the one secret 1Password cannot hold for us.
+umask 077
+printf '%s\n' 'ops_…' > /docker/caballus/op-token
+chmod 600 /docker/caballus/op-token
+
+# And the two new files from deploy/ in the repository.
+# scp .env.tpl render-env.sh root@caballus.tech:/docker/caballus/
+chmod 755 /docker/caballus/render-env.sh
+```
+
+### One trap, met the hard way
+
+**`op inject` scans the whole file for the reference scheme, not just the
+moustaches** — comments included. A line explaining that a value is an
+`op`-colon-slash-slash reference is itself parsed as a reference, and one with
+no vault, item or field fails the render before it starts:
+
+```
+[ERROR] invalid secret reference 'op://': too few '/': secret references
+        should have at least vault, item and field specified
+```
+
+The message names no line, which is what makes it slow to find. So `.env.tpl`
+never writes the bare scheme outside a moustache, and says so in its own header
+so the next person adding a variable does not reintroduce it. Checking a
+template without resolving it — the parse alone — is one command, and stdout
+goes to `/dev/null` so a template that _does_ resolve never prints a secret to a
+terminal:
+
+```bash
+op inject -i deploy/.env.tpl >/dev/null
+```
+
+A complaint about the vault rather than about a reference means every reference
+is well-formed, which is the whole of what this check is for.
+
+### Prove the first render before trusting it
+
+Run the render on its own and compare what it produced against what it
+replaced. The first one should change **nothing but the formatting** — if a
+value moved, a vault field is wrong, and finding that out now is much cheaper
+than finding it out from a container that will not start.
+
+```bash
+cd /docker/caballus
+./render-env.sh
+diff <(grep -vE '^\s*(#|$)' .env.previous | sort) <(grep -vE '^\s*(#|$)' .env | sort)
+```
+
+`render-env.sh` refuses rather than guesses, and each refusal leaves the working
+`.env` exactly where it was: no `op` installed, no token, a token file that is
+not `chmod 600`, an `op inject` that could not resolve a reference, a required
+variable that rendered empty, or a `DATABASE_URL` that did not come out in the
+shape the box expects. The file it replaced is kept at `.env.previous`.
+
+### When 1Password is the broken thing
+
+```bash
+CABALLUS_SKIP_ENV_RENDER=1 /docker/caballus/deploy.sh <tag>
+```
+
+The deploy then runs against whatever `.env` is already on the box, and says so
+loudly in its output. It is **not reachable from CI** — the deploy key's forced
+command passes a tag and nothing else — so it is root's own act at a real
+shell, which is the right shape for a decision to skip a safety step.
 
 ## First boot, as it actually ran
 
@@ -170,7 +334,7 @@ image back and says which one failed.
 
 **`ci.yml` is not dispatchable, on purpose.** It carried `workflow_dispatch` and
 the button could not work: a dispatched run failed to plan the workflow at all —
-*'runs-on' key not defined in ci/verify*, before a step executed — and skipped
+_'runs-on' key not defined in ci/verify_, before a step executed — and skipped
 `publish` on a `github.ref` it evaluated differently from a push. `deploy.yml`
 dispatches correctly, and the difference is shape: one job, no `needs`, no `if`.
 So `ci.yml` answers a push and nothing else, and the broken button is gone
@@ -192,6 +356,51 @@ resumes against blobs the registry already holds. It bites at most once per
 dependency change — a push that does not move `package-lock.json` never sends
 that layer again.
 
+## Changing a secret
+
+**Change it in 1Password, then deploy.** That is the whole procedure, and it is
+the reason the render exists: a value edited in the vault reaches the box on the
+next deploy, and a box rebuilt from nothing gets the same value back.
+
+```
+# 1Password: Caballus / openrouter / api-key  ->  the new key
+# Then: Actions -> deploy -> Run workflow, with the tag already running.
+```
+
+Deploying the tag that is already running is a normal thing to do here. `pull`
+is a no-op, the migration re-runs against a schema it has already applied, and
+the container is recreated — which is what picks the new value up.
+
+Nothing about a secret is edited into `/docker/caballus/.env` by hand any more.
+That file is **rendered output**: an edit to it survives exactly until the next
+deploy and then vanishes, which is worse than not working, because it works for
+a week first. If a value has to change without a deploy, change it in the vault
+and render:
+
+```bash
+ssh root@caballus.tech
+cd /docker/caballus && ./render-env.sh && docker compose up -d app
+```
+
+`up -d` rather than `restart`, and this is the trap worth knowing on its own: a
+container reads `env_file` when it is **created**, and carries that environment
+until it is replaced. `docker compose restart app` stops and starts the
+container that is already there — so the file changes and the application does
+not. `up -d` builds a new one.
+
+**Adding a variable is three files, not one.** `.env.example` in the repository
+root, so a developer's machine knows about it; `deploy/.env.tpl`, as a literal
+or an `op://` reference by the rule above; and then the template has to be
+copied to the box, because nothing keeps the two in step yet.
+
+Several variables refuse in words rather than obscurely when they are unset,
+which is what makes a missing one findable at all: `SMTP_URL`, where no
+transport means nobody can sign in by email (ADR 0009); `OPENROUTER_API_KEY`,
+where `/admin/whiteboard-read` answers _Nobody has told this deployment how to
+read a whiteboard_ (ADR 0023); and the five `TWILIO_*` variables, where every
+Urgent Send answers `sms_not_configured` and a sign-in by text says plainly that
+nothing is coming (ADR 0028, ADR 0029).
+
 ## Rolling back
 
 Deploy the previous tag. `grep CABALLUS_IMAGE /docker/caballus/.env` says what
@@ -200,6 +409,14 @@ is running now; the registry holds every commit that was ever published.
 A rollback across a migration is **not** automatic and never will be by this
 script: Drizzle's migrations are forward-only, and a schema the old image does
 not understand is a decision, not a button.
+
+**A rollback puts the tag back and not the secrets.** It always was about which
+image is running, and now that every deploy re-renders `.env`, that distinction
+has to be said out loud: reverting the secrets too would undo the very value
+somebody just deployed in order to fix the outage. The file the render replaced
+is kept at `/docker/caballus/.env.previous` — restoring it is
+`cp .env.previous .env && docker compose up -d app`, which is a decision with a
+command rather than something the script does behind you.
 
 ## `/health`
 
@@ -218,6 +435,81 @@ why; the reason goes to stdout.
 of what ADR 0006 asks of it. That lands with the backup job, because a field
 reporting on a job that does not exist would report a reassuring nothing.
 
+## Texting: what has to exist before a message can leave
+
+**Two Twilio products behind one account, and they are not interchangeable**
+(ADR 0028, ADR 0029). The messaging campaign carries the **Urgent Send** — a
+Shift declared Short, and an Announcement whose news will not keep, and nothing
+else ever. **Verify** carries sign-in codes, and sits outside A2P brand and
+campaign registration entirely. That separation is what keeps a volunteer who
+replied STOP to a staffing text able to sign in, and it is what stops the
+Urgent Send's kill switch or daily cap from locking the roster out of the app.
+
+**None of this blocks a deploy.** All five variables are absent from
+`render-env.sh`'s required list on purpose: the brand and the campaign take
+days to approve, and until they are approved every send refuses in words
+(`sms_not_configured`) rather than dropping quietly.
+
+### The sole-proprietor limits, which the next person will otherwise rediscover
+
+The brand ADR 0028 registers is **Sole Proprietor**, registered to the
+maintainer personally, and it is capped:
+
+- **One campaign.** There is no second one to put anything else on. This is
+  survivable only because login lives on Verify (ADR 0029); ADR 0008 needed two
+  campaigns and that is where its bill doubled.
+- **One number.** Volunteers who save the contact will see it change on the day
+  the rescue registers its own brand against its own EIN — the tripwire ADR
+  0028 writes down. Annoying, survivable, and cheaper than a board conversation
+  blocking the build.
+- **About 1,000 messages a day, 15 a minute.** `src/server/sms.ts` caps itself
+  at **120** in a rolling twenty-four hours, which is two full sends to sixty
+  people. Tripping the app's cap means something is wrong; the carrier's is not
+  reachable from normal use.
+
+Registration wants a legal name matching government ID, a mobile that receives
+a PIN **within 24 hours or the process restarts**, a physical address with no PO
+box, and a public URL — which is why `caballus.tech` serves a real page (#75)
+rather than a login form. Roughly $4 one-time, $15 campaign vetting and $2 a
+month, plus a number at about $1.15 and messages at about $0.008 plus carrier
+pass-through. **Campaign approval runs 3–7 business days.** Confirm the
+no-EIN rule at the form before paying anything: one secondary source claims 2026
+changed it, the vendor's own guide wins, and thirty seconds at the form beats a
+rejected brand.
+
+### Two Verify Services, not one
+
+`TWILIO_VERIFY_SERVICE_SID` is the login door and
+`TWILIO_VERIFY_CHANGE_SERVICE_SID` is `/me/mobile`. A code issued against one
+cannot be checked against the other **at the vendor**, which is Verify's
+spelling of the `change-email-otp-` separation ADR 0027 built for the address.
+Creating the second Service in the console is free and takes a minute. Both are
+required together: falling back to one for both purposes would fail on the day
+somebody changed their number rather than at boot, which is the quietly-wrong
+shape the pair exists to prevent.
+
+### What is not done here, and cannot be
+
+Everything above is paperwork against Twilio's console (#76) and none of it is
+in this repository. What **is** here is the plumbing: the five variables in
+`.env.example` and `deploy/.env.tpl`, the vault item above, and code that
+refuses in words when they are unset. Adding a variable is still three files
+(_Changing a secret_ above), and `deploy/.env.tpl` still has to be copied to the
+box by hand.
+
+**The canary is a person's job.** Once the campaign is approved, send one real
+text from production and confirm it by eye on a real handset, then record it
+here beside the restore rehearsal. Nothing automated can do that: unregistered
+US A2P traffic is _silently filtered_ rather than rejected, so a
+successful-looking send proves nothing at all.
+
+**There is no inbound webhook, and that is deliberate.** Twilio honours STOP
+itself and refuses the message; the application learns about it from the
+refusal's own error code and stamps `volunteers.sms_stopped_at`, so the next
+_this reaches 47 of 60_ is right. An endpoint for a stranger's POST is a real
+surface, and ADR 0016 requires every one to be declared in the contract with an
+authorization.
+
 ## What is deliberately not built yet
 
 **Backups.** ADR 0006 wants `pg_dump` every fifteen minutes and a nightly full
@@ -228,11 +520,17 @@ ticket has somewhere to start. Until it lands, the only durability is
 Hostinger's weekly snapshot, which ADR 0006 already names as a floor to fall
 back on rather than a plan.
 
-**1Password.** ADR 0006 wants `.env` rendered by `op inject` at deploy time.
-For the first cut it is a file placed by hand, `chmod 600`. Swapping it in is a
-deploy-script change, not a redesign, and 1Password stays out of the startup
-path either way: a 6am restart must not depend on a service-account token that
-quietly expired.
+**1Password, past the first render.** The render itself is built — see
+_Secrets are rendered from 1Password_ above — and two things around it are not.
+The template on the box is a hand-copied file, so a variable added to
+`deploy/.env.tpl` in the repository is not live until somebody `scp`s it; that
+is the same gap `deploy/README.md` already names for the compose file and the
+scripts, now with one more file behind it. And **the service-account token has no
+rotation**. `op service-account create` takes `--expires-in` and this one was
+created without it, on purpose — an expiry is a deploy that stops working on a
+date nobody wrote down. The cost of that choice is a token that lives forever
+until somebody replaces it by hand, and nothing reminds them to. The render
+fails loudly rather than silently, which is the part that had to be true first.
 
 **Outgoing mail.** `SMTP_URL` is empty, which means no transport at all and a
 sign-in that fails loudly rather than appearing to work. **Nobody can sign in

@@ -1,8 +1,18 @@
 /**
- * The horse list — the phone's directory. Departed horses are left out here:
- * hiding one from a work surface is this screen's job, never the read's
- * (#32, ADR 0002) — the profile a Departed horse's row would link to still
- * answers, at `/horses/$horseId`.
+ * The horse list — the phone's directory, and beside it the horses with
+ * something going on (#74).
+ *
+ * Departed horses are left out of the directory here: hiding one from a work
+ * surface is this screen's job, never the read's (#32, ADR 0002) — the profile
+ * a Departed horse's row would link to still answers, at `/horses/$horseId`.
+ *
+ * **The second tab is the half that replaces the Facebook scroll.** A horse is
+ * on it because she has an open Escalation or a standing Alert, with the newest
+ * sentence against her name; the server derives it on every read, so closing
+ * the one or ending the other drops her out. It is a **tab and not a badge on
+ * every row** — #60 decided deliberately that the directory carries no Alerts,
+ * and *horses with something going on* is a different promise from a warning
+ * beside sixty names.
  */
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
@@ -10,6 +20,7 @@ import { useEffect, useState } from 'react'
 import { Empty, Loading } from '../../components/forms'
 import { Refusal } from '../../components/refusal'
 import { Alert, AlertTitle } from '../../components/ui/alert'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs'
 import { client } from '../../shared/api-client'
 import { refusalText } from '../../shared/refusals'
 import type { Answers, contract } from '../../shared/api-contract'
@@ -23,6 +34,10 @@ type Horses = Answers<typeof contract, '/horses'>
 function HorseList() {
   const [horses, setHorses] = useState<Horses | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
+  // The directory opens first, deliberately: the common errand is *find
+  // Storm*, and a screen that opens on the exceptions makes the ordinary
+  // case one tap longer every single time.
+  const [tab, setTab] = useState('all')
 
   useEffect(() => {
     let current = true
@@ -62,41 +77,80 @@ function HorseList() {
   }
 
   const here = horses.horses.filter((horse) => horse.departedOn === null)
+  const attention = horses.attention
 
   return (
     <main>
       <h1>Horses</h1>
-      {here.length === 0 ? (
-        <Empty>No horses yet.</Empty>
-      ) : (
-        <section className="mb-4 rounded-lg border border-border bg-background p-4 sm:p-6">
-          <ul className="m-0 list-none p-0">
-            {here.map((horse) => (
-              <li
-                key={horse.id}
-                className="border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0"
-              >
-                <Link to="/horses/$horseId" params={{ horseId: horse.id }}>
-                  {horse.photoUrl !== null && (
-                    <img
-                      src={horse.photoUrl}
-                      alt=""
-                      width={48}
-                      height={48}
-                      className="mr-3 inline-block rounded-md object-cover align-middle"
-                    />
-                  )}
-                  {horse.name}
-                  {horse.spaces.stall !== null && ` — ${horse.spaces.stall.name}`}
-                  {horse.spaces.pasture !== null && ` — ${horse.spaces.pasture.name}`}
-                  {horse.spaces.paddock !== null && ` — ${horse.spaces.paddock.name}`}
-                  {horse.spaces.barn !== null && ` — ${horse.spaces.barn.name}`}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      <Tabs value={tab} onValueChange={setTab}>
+        <TabsList className="w-full">
+          <TabsTrigger value="all">All horses</TabsTrigger>
+          {/* The count is on the tab rather than beside a name: it is the one
+              place a number answers a question somebody actually has, which is
+              *is there anything to look at*. */}
+          <TabsTrigger value="attention">
+            Something going on{attention.length > 0 && ` (${String(attention.length)})`}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="all">
+          {here.length === 0 ? (
+            <Empty>No horses yet.</Empty>
+          ) : (
+            <section className="mb-4 rounded-lg border border-border bg-background p-4 sm:p-6">
+              <ul className="m-0 list-none p-0">
+                {here.map((horse) => (
+                  <li
+                    key={horse.id}
+                    className="border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0"
+                  >
+                    <Link to="/horses/$horseId" params={{ horseId: horse.id }}>
+                      {horse.photoUrl !== null && (
+                        <img
+                          src={horse.photoUrl}
+                          alt=""
+                          width={48}
+                          height={48}
+                          className="mr-3 inline-block rounded-md object-cover align-middle"
+                        />
+                      )}
+                      {horse.name}
+                      {horse.spaces.stall !== null && ` — ${horse.spaces.stall.name}`}
+                      {horse.spaces.pasture !== null && ` — ${horse.spaces.pasture.name}`}
+                      {horse.spaces.paddock !== null && ` — ${horse.spaces.paddock.name}`}
+                      {horse.spaces.barn !== null && ` — ${horse.spaces.barn.name}`}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </TabsContent>
+
+        <TabsContent value="attention">
+          {attention.length === 0 ? (
+            <Empty>Nothing going on with anybody right now.</Empty>
+          ) : (
+            <section className="mb-4 rounded-lg border border-border bg-background p-4 sm:p-6">
+              <ul className="m-0 list-none p-0">
+                {attention.map((one) => (
+                  <li
+                    key={one.horseId}
+                    className="border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0"
+                  >
+                    <Link to="/horses/$horseId" params={{ horseId: one.horseId }}>
+                      {one.horseName}
+                    </Link>
+                    <span className="block text-sm text-muted-foreground">
+                      {`${one.because === 'alert' ? 'Standing alert' : 'Open report'} — ${one.text}`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </TabsContent>
+      </Tabs>
     </main>
   )
 }

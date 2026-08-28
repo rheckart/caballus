@@ -1,0 +1,1 @@
+CREATE INDEX "observations_subject" ON "observations" USING btree ("org_id","subject_kind","subject_id");

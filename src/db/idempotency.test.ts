@@ -83,11 +83,23 @@ describe.skipIf(!reachable)('idempotency, against the database', () => {
     // Created here rather than in a migration, and with the same two things
     // every table in this application carries: the org, and a policy that
     // fails closed without it (ADR 0007).
+    //
+    // **`org_id` carries no foreign key, and that is deliberate — do not add
+    // one back.** It had one, and it deadlocked CI. A real `references
+    // orgs(id)` couples this file's DDL to every other suite's teardown in
+    // both directions: `drop table` has to take an AccessExclusiveLock on
+    // `orgs` to remove the constraint, and every other suite's own
+    // `delete from orgs` has to take a RowShareLock on *this* table to check
+    // the constraint. Twenty suites run in parallel against one database, so
+    // the two eventually meet as `40P01 deadlock detected` in whichever
+    // teardown lost. Nothing here tests referential integrity — what is under
+    // test is the wrapper, the key and the policy, and the policy is a
+    // `current_setting` comparison that never consults `orgs`.
     await owner`drop table if exists checklist_ticks`
     await owner`
       create table checklist_ticks (
         id uuid primary key,
-        org_id uuid not null references orgs(id),
+        org_id uuid not null,
         item text not null
       )
     `

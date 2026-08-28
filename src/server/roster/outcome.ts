@@ -17,6 +17,10 @@
 export type Refusal =
   | 'volunteer_not_found'
   | 'email_taken'
+  /** A number two live Volunteers would then share — it is a credential now. */
+  | 'mobile_taken'
+  /** Something that could not be read as a phone number at all (#78). */
+  | 'mobile_invalid'
   | 'date_of_birth_not_established'
   | 'already_oriented'
   | 'not_a_minor'

@@ -18,6 +18,13 @@ dist/
 .env.*
 !.env.example
 
+# The VPS template is the exception, and it is not one: it holds `op://`
+# references rather than values, and it is in the repository because ADR 0006
+# makes 1Password the source of truth and this file the record of which
+# variables come from it. `render-env.sh` turns it into a real `.env` on the
+# box, and that file is covered by the rule above like any other.
+!deploy/.env.tpl
+
 # OS and editor noise
 .DS_Store
 Thumbs.db

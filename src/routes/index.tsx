@@ -26,13 +26,21 @@
  *
  * Sign out moved to the sidebar's footer with #66, so nothing is orphaned by
  * this screen having almost nothing on it some mornings.
+ *
+ * **A visitor with no session gets a different screen entirely** (#75): the
+ * public page in `src/components/landing.tsx`, which describes the application
+ * and what it sends by text — a requirement of 10DLC campaign vetting (ADR
+ * 0028) rather than decoration. It is the `signed-out` branch and nothing else
+ * changes; the shell is already off for that reader (#66).
  */
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { Pencil } from 'lucide-react'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 
 import { Actions, Field, Fields, WideField } from '../components/forms'
+import { Landing } from '../components/landing'
 import { Refusal } from '../components/refusal'
+import { UrgentSend } from '../components/urgent-send'
 import { Alert, AlertTitle } from '../components/ui/alert'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
@@ -43,6 +51,7 @@ import { refusalText } from '../shared/refusals'
 import { staffingFact } from '../shared/staffing'
 import { dayString, daysBetween } from '../shared/time'
 import type { Answers, contract } from '../shared/api-contract'
+import { SHIFT_TYPE_LABEL } from '../shared/shifts'
 
 export const Route = createFileRoute('/')({
   component: Home,
@@ -53,13 +62,6 @@ type Announcement = HomePage['announcements'][number]
 type NextShift = NonNullable<HomePage['nextShift']>
 type CoverableShift = HomePage['cover'][number]
 type OpenEscalation = HomePage['escalations'][number]
-
-const SHIFT_TYPE_LABEL: Record<NextShift['shiftType'], string> = {
-  feed_am: 'Feed AM',
-  feed_pm: 'Feed PM',
-  lunch: 'Lunch',
-  pop_up: 'Pop-up',
-}
 
 /**
  * What the one read answered, or why it did not.
@@ -251,6 +253,13 @@ function Home() {
     page.cover.length === 0 &&
     page.escalations.length === 0
 
+  // The public page, and the whole of what a visitor with no session sees
+  // (#75, ADR 0028). Not a variation on the dashboard — a different screen,
+  // because the reader is a carrier's vetting reviewer as often as it is
+  // somebody the rescue has just told about the app, and neither of them has
+  // any use for four empty sections.
+  if (state.state === 'signed-out') return <Landing />
+
   return (
     <main>
       {/* The hero band: navy, one line of who you are, and nothing to press
@@ -258,14 +267,6 @@ function Home() {
       <div className="mb-5 rounded-lg bg-brand-navy px-5 py-8 min-[600px]:px-8 min-[600px]:py-12">
         <h1 className="mb-2 text-4xl text-on-dark min-[600px]:text-5xl">Caballus</h1>
         {state.state === 'asking' && <p className={HERO_LINE}>One moment…</p>}
-        {state.state === 'signed-out' && (
-          <p className={HERO_LINE}>
-            <Link to="/login" className="text-on-dark underline">
-              Sign in
-            </Link>{' '}
-            to get started.
-          </p>
-        )}
         {state.state === 'broken' && (
           <p role="alert" className="m-0 max-w-[46ch] text-base text-on-dark">
             Something is wrong: {state.because}
@@ -334,18 +335,37 @@ function Home() {
                             ` (last edited by ${announcement.lastEditedByName})`}
                         </span>
                         {page.me.domainScopes.length > 0 && (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="flex-none"
-                            onClick={() => {
-                              setEditing(announcement.id)
-                            }}
-                          >
-                            <Pencil aria-hidden="true" />
-                            Edit
-                          </Button>
+                          <span className="flex flex-none flex-wrap items-center gap-2">
+                            {/* The Urgent Send (#77), which amends ADR 0018:
+                                posting still sends nothing, and a second
+                                deliberate act may put one in front of people.
+                                Once — an Announcement is posted once, an edit
+                                does not re-open it, and the control is gone
+                                after rather than offering a send the server
+                                would refuse. */}
+                            {announcement.urgentSentAt === null && (
+                              <UrgentSend
+                                audience={{ kind: 'everyone' }}
+                                label="Text everyone"
+                                onSend={() =>
+                                  client.post('/announcements/text', {
+                                    announcementId: announcement.id,
+                                  })
+                                }
+                              />
+                            )}
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setEditing(announcement.id)
+                              }}
+                            >
+                              <Pencil aria-hidden="true" />
+                              Edit
+                            </Button>
+                          </span>
                         )}
                       </li>
                     ),

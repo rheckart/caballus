@@ -27,17 +27,22 @@ import { requestCode, signOut, submitCode } from './sign-in'
 
 /**
  * Shapes checked at the boundary, because a server function's input is
- * whatever the browser posted. Loose on the address on purpose — `z.email()`
+ * whatever the browser posted. Loose on the credential on purpose — `z.email()`
  * would refuse before the gate could say *we do not know that address*, which
- * is the answer ADR 0008 chose to give a volunteer who mistyped.
+ * is the answer ADR 0008 chose to give a volunteer who mistyped, and since #78
+ * it would refuse a mobile number outright.
+ *
+ * `identifier` rather than `email`, because what arrives is one or the other
+ * and `src/server/auth/sign-in.ts` is the one place that decides which
+ * (ADR 0029).
  */
-const asked = z.object({ email: z.string().min(1).max(320) })
+const asked = z.object({ identifier: z.string().min(1).max(320) })
 const answered = asked.extend({ code: z.string().min(1).max(16) })
 
 /** Asks for a code. Answers whether one is coming, and if not, why not. */
 export const requestSignInCode = createServerFn({ method: 'POST' })
   .validator((data: unknown) => asked.parse(data))
-  .handler(({ data }) => requestCode(currentOrgId(), data.email))
+  .handler(({ data }) => requestCode(currentOrgId(), data.identifier))
 
 /**
  * Exchanges a code for a session.
@@ -50,7 +55,7 @@ export const requestSignInCode = createServerFn({ method: 'POST' })
 export const submitSignInCode = createServerFn({ method: 'POST' })
   .validator((data: unknown) => answered.parse(data))
   .handler(async ({ data }) => {
-    const result = await submitCode(currentOrgId(), data.email, data.code)
+    const result = await submitCode(currentOrgId(), data.identifier, data.code)
     if (!result.signedIn) {
       return Response.json({ signedIn: false, because: result.because }, { status: 200 })
     }

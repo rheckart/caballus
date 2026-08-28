@@ -42,6 +42,7 @@ import { refusalText } from '../shared/refusals'
 import { closeBlockers, type CloseBlockerKind } from '../shared/shift-close'
 import { resolveTickStore } from '../shared/tick-store.browser'
 import { TickQueue, type TickDenial } from '../shared/tick-queue'
+import { SHIFT_TYPE_LABEL } from '../shared/shifts'
 
 export const Route = createFileRoute('/shifts/$shiftId')({
   component: ShiftChecklist,
@@ -50,12 +51,6 @@ export const Route = createFileRoute('/shifts/$shiftId')({
 type Checklist = Answers<typeof contract, '/shifts/:shiftId'>
 type Item = Checklist['items'][number]
 type Alert = Checklist['alerts'][number]
-
-const SHIFT_TYPE_LABEL: Record<Checklist['shiftType'], string> = {
-  feed_am: 'Feed AM',
-  feed_pm: 'Feed PM',
-  lunch: 'Lunch',
-}
 
 const KIND_LABEL: Record<Item['kind'], string> = {
   feed: 'Feed',

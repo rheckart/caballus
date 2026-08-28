@@ -43,6 +43,7 @@ export interface Volunteer {
 export { normaliseEmail } from '../roster/records'
 
 import { normaliseEmail } from '../roster/records'
+import { normaliseMobile } from '../../shared/mobile'
 
 export interface NewVolunteer {
   readonly name: string
@@ -124,6 +125,55 @@ export async function hasLeftTheRescue(orgId: OrgId, rawEmail: string): Promise<
       .select({ id: volunteers.id })
       .from(volunteers)
       .where(and(eq(volunteers.email, email), isNotNull(volunteers.removedAt)))
+      .limit(1),
+  )
+  return gone !== undefined
+}
+
+/**
+ * The Volunteer at this number, or `null` — the twin of `volunteerByEmail`
+ * (#78, ADR 0029).
+ *
+ * The same gate and the same candour: an unrecognised number is told it is
+ * unrecognised, for ADR 0008's own reason. A number that cannot be read as one
+ * at all is `null` here too, and the screen says the same thing about it —
+ * *check it for a typo* is the right sentence for both.
+ */
+export async function volunteerByMobile(
+  orgId: OrgId,
+  rawMobile: string,
+): Promise<Volunteer | null> {
+  const mobile = normaliseMobile(rawMobile)
+  if (mobile === null) return null
+
+  const [found] = await forOrg(orgId).run((db) =>
+    db
+      .select()
+      .from(volunteers)
+      // The live one, matching `volunteers_mobile_in_org`: a number may be
+      // reused across the years, and only one row is the person signing in.
+      .where(and(eq(volunteers.mobile, mobile), isNull(volunteers.removedAt)))
+      .limit(1),
+  )
+  if (found === undefined) return null
+  return {
+    id: found.id,
+    name: found.name,
+    email: found.email,
+    mobile: found.mobile,
+  }
+}
+
+/** Whether this number belongs to somebody who has left the rescue. */
+export async function hasLeftTheRescueByMobile(orgId: OrgId, rawMobile: string): Promise<boolean> {
+  const mobile = normaliseMobile(rawMobile)
+  if (mobile === null) return false
+
+  const [gone] = await forOrg(orgId).run((db) =>
+    db
+      .select({ id: volunteers.id })
+      .from(volunteers)
+      .where(and(eq(volunteers.mobile, mobile), isNotNull(volunteers.removedAt)))
       .limit(1),
   )
   return gone !== undefined

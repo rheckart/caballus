@@ -34,8 +34,10 @@ import { ALERT_KIND_LABEL, type AlertKind } from '../../shared/alerts'
 import { client } from '../../shared/api-client'
 import { MEASUREMENT_METHODS, type MeasurementKind } from '../../shared/measurements'
 import { refusalText } from '../../shared/refusals'
+import { TIMELINE_KIND_LABEL } from '../../shared/timeline'
 import type { Answers, contract } from '../../shared/api-contract'
 import { dayString } from '../../shared/time'
+import { SHIFT_TYPE_LABEL } from '../../shared/shifts'
 
 export const Route = createFileRoute('/horses/$horseId')({
   component: HorseProfile,
@@ -43,12 +45,6 @@ export const Route = createFileRoute('/horses/$horseId')({
 
 type Horse = Answers<typeof contract, '/horses/:horseId'>
 type FeedSchedule = Horse['feedSchedules'][number]
-
-const SHIFT_TYPE_LABEL: Record<FeedSchedule['shiftType'], string> = {
-  feed_am: 'Feed AM',
-  feed_pm: 'Feed PM',
-  lunch: 'Lunch',
-}
 
 const ROUTE_LABEL: Record<FeedSchedule['lines'][number]['route'], string> = {
   in_feed: 'in feed',
@@ -298,9 +294,128 @@ function HorseProfile() {
         </>
       )}
 
+      <Timeline entries={horse.timeline} />
+
       <RecordMeasurement onRecord={recordMeasurement} />
     </main>
   )
+}
+
+/**
+ * Everything that has happened to this horse, newest first (#74).
+ *
+ * **Nothing here is writable.** It is a composition of records that already
+ * exist, and a record reached through it is the same record reached anywhere
+ * else — the Escalations under an Observation link to `/escalations`, which is
+ * where a report is read and answered.
+ *
+ * Empty is said in words rather than as a blank heading. A horse with no
+ * Timeline is a real horse — an intake from Tuesday — and *nothing recorded
+ * yet* is a different sentence from a section that failed to load.
+ */
+function Timeline({ entries }: { entries: Horse['timeline'] }) {
+  return (
+    <>
+      <h2>Timeline</h2>
+      {entries.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Nothing recorded for her yet.</p>
+      ) : (
+        <section className="mb-4 rounded-lg border border-border bg-background p-4 sm:p-6">
+          <ul className="m-0 list-none p-0">
+            {entries.map((entry) => (
+              <li
+                key={entry.id}
+                className="border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0"
+              >
+                <p className="m-0 flex flex-wrap items-baseline gap-x-2 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+                  <span>{TIMELINE_KIND_LABEL[entry.kind]}</span>
+                  <span className="font-normal normal-case tracking-normal">{entry.on}</span>
+                  {/* Who, always — a Timeline entry nobody's name is against is
+                      the confident anonymity the paper system already has. */}
+                  {entry.byName !== null && (
+                    <span className="font-normal normal-case tracking-normal">
+                      — {entry.byName}
+                    </span>
+                  )}
+                </p>
+                <TimelineBody entry={entry} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </>
+  )
+}
+
+/** What one entry says, which is a different sentence for each of the five kinds. */
+function TimelineBody({ entry }: { entry: Horse['timeline'][number] }) {
+  switch (entry.kind) {
+    case 'observation':
+      return (
+        <>
+          <p className="m-0">{entry.text}</p>
+          {/* Under the Observation they framed, never as a second entry (#74).
+              The thread itself is not here: `/escalations` is where a report is
+              read, and two places to read one conversation is one too many. */}
+          {entry.escalations.map((escalation) => (
+            <p key={escalation.id} className="m-0 mt-1 text-sm text-muted-foreground">
+              <Link to="/escalations">Escalated to {escalation.scope}</Link>
+              {escalation.closedAt === null ? ' — open' : ' — closed'}
+              {escalation.commentCount > 0 && ` — ${String(escalation.commentCount)} in the thread`}
+              <span className="block">{escalation.framing}</span>
+            </p>
+          ))}
+        </>
+      )
+
+    case 'alert_raised':
+      return (
+        <p className="m-0">
+          <strong className="mr-1 text-[13px] uppercase tracking-wide">
+            {ALERT_KIND_LABEL[entry.alertKind]}
+          </strong>
+          {entry.text}
+        </p>
+      )
+
+    case 'alert_ended':
+      return (
+        <p className="m-0">
+          <strong className="mr-1 text-[13px] uppercase tracking-wide">
+            {ALERT_KIND_LABEL[entry.alertKind]}
+          </strong>
+          {entry.text}
+          {/* The reason, always. The audit entry answers who and when; only
+              this answers why the biting Alert is gone (ADR 0024). */}
+          <span className="block text-sm text-muted-foreground">
+            Ended: {entry.reason ?? 'no reason recorded'}
+          </span>
+        </p>
+      )
+
+    case 'measurement':
+      return (
+        <p className="m-0">
+          {entry.measurementKind === 'weight'
+            ? `${String(entry.value)} lb`
+            : `Body condition ${String(entry.value)}`}
+          {entry.method !== null && ` (${entry.method})`}
+          {/* Taken on, beside recorded on above: a weight taken on the 1st and
+              written down on the 5th is two facts and the barn wants both. */}
+          {entry.takenOn !== entry.on && (
+            <span className="text-muted-foreground"> — taken {entry.takenOn}</span>
+          )}
+        </p>
+      )
+
+    case 'feed_schedule':
+      return (
+        <p className="m-0">
+          {SHIFT_TYPE_LABEL[entry.shiftType]} feeding changed, from {entry.validFrom}
+        </p>
+      )
+  }
 }
 
 /** Radix's Select cannot carry an empty-string item, so *not recorded* is a word. */

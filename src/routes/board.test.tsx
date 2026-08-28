@@ -322,6 +322,7 @@ describe('the Board', () => {
             lastEditedBy: null,
             lastEditedByName: null,
             lastEditedAt: null,
+            urgentSentAt: null,
           },
         ],
       },
@@ -357,6 +358,7 @@ describe('the Board', () => {
         feedSchedules: [],
         measurements: { weights: [], bodyConditions: [] },
         endedAlerts: [],
+        timeline: [],
       },
     })
     renderRoutes(

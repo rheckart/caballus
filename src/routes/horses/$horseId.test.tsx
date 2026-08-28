@@ -32,6 +32,7 @@ const PROFILE = {
   feedSchedules: [],
   measurements: { weights: [], bodyConditions: [] },
   endedAlerts: [],
+  timeline: [],
 }
 
 describe('the horse profile', () => {
@@ -138,6 +139,7 @@ describe('the horse profile', () => {
             },
           },
         ],
+        attention: [],
       },
       '/horses/apollo-1': PROFILE,
     })
@@ -206,6 +208,124 @@ describe('the horse profile', () => {
 
     expect(await screen.findByText('No feed schedule recorded.')).toBeTruthy()
     expect(screen.queryByRole('heading', { name: 'Lunch' })).toBeNull()
+  })
+
+  it('gathers the Timeline onto the horse, with who and when against every entry', async () => {
+    stubApi({
+      '/horses/apollo-1': {
+        ...PROFILE,
+        timeline: [
+          {
+            id: 'alert_ended:a1',
+            kind: 'alert_ended',
+            at: 1_772_000_000_000,
+            on: '2026-03-14',
+            by: 'kate',
+            byName: 'Kate',
+            alertKind: 'prohibition',
+            text: 'No treats by hand — she bites.',
+            reason: 'She has been fine on the ground for a season.',
+          },
+          {
+            id: 'observation:o1',
+            kind: 'observation',
+            at: 1_771_000_000_000,
+            on: '2026-03-02',
+            by: 'joy',
+            byName: 'Joy',
+            text: 'Favouring the near hind.',
+            subjectLabel: 'Apollo',
+            escalations: [
+              {
+                id: 'e1',
+                scope: 'horse_care',
+                framing: 'She needs the farrier this week.',
+                escalatedBy: 'kate',
+                escalatedByName: 'Kate',
+                escalatedAt: 1_771_000_100_000,
+                closedAt: null,
+                closedByName: null,
+                closingNote: null,
+                commentCount: 2,
+              },
+            ],
+          },
+          {
+            id: 'measurement:m1',
+            kind: 'measurement',
+            at: 1_770_000_000_000,
+            on: '2026-02-19',
+            by: 'joy',
+            byName: 'Joy',
+            measurementKind: 'weight',
+            value: 1040,
+            method: 'tape',
+            takenOn: '2026-02-18',
+          },
+          {
+            id: 'feed_schedule:f1',
+            kind: 'feed_schedule',
+            at: 1_769_000_000_000,
+            on: '2026-02-07',
+            by: 'priya',
+            byName: 'Priya',
+            shiftType: 'feed_am',
+            validFrom: '2026-02-08',
+          },
+        ],
+      },
+    })
+    renderProfileAt('apollo-1')
+
+    expect(await screen.findByText('Timeline')).toBeTruthy()
+    // The ended Alert's reason, which is the only thing that answers *why the
+    // biting alert is gone* (ADR 0024).
+    expect(screen.getByText('Ended: She has been fine on the ground for a season.')).toBeTruthy()
+    // The Escalation is under the Observation it framed, with its state and
+    // its comment count — never the thread itself (#74).
+    expect(screen.getByText('Favouring the near hind.')).toBeTruthy()
+    expect(screen.getByText(/Escalated to horse_care/)).toBeTruthy()
+    expect(screen.getByText(/2 in the thread/)).toBeTruthy()
+    // Recorded on, and taken on beside it where they differ.
+    expect(screen.getByText(/taken 2026-02-18/)).toBeTruthy()
+    expect(screen.getByText(/Feed AM feeding changed, from 2026-02-08/)).toBeTruthy()
+    // Every entry names somebody.
+    for (const who of ['Kate', 'Joy', 'Priya']) {
+      expect(screen.getAllByText(new RegExp(who)).length).toBeGreaterThan(0)
+    }
+  })
+
+  it('says a horse with no Timeline has none, rather than showing a blank heading', async () => {
+    stubApi({ '/horses/apollo-1': PROFILE })
+    renderProfileAt('apollo-1')
+
+    expect(await screen.findByText('Nothing recorded for her yet.')).toBeTruthy()
+  })
+
+  it('offers nothing to press on the Timeline — it is a read (#74)', async () => {
+    stubApi({
+      '/horses/apollo-1': {
+        ...PROFILE,
+        timeline: [
+          {
+            id: 'alert_raised:a1',
+            kind: 'alert_raised',
+            at: 1_772_000_000_000,
+            on: '2026-03-14',
+            by: 'kate',
+            byName: 'Kate',
+            alertKind: 'care',
+            text: 'Left eye drops',
+          },
+        ],
+      },
+    })
+    renderProfileAt('apollo-1')
+
+    await screen.findByText('Timeline')
+    // The one write on this screen is the measurement form, which predates the
+    // Timeline and is not part of it.
+    expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual(['Record'])
   })
 
   it('renders the weight and body-condition series', async () => {

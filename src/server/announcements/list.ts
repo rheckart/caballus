@@ -25,6 +25,12 @@ export interface Announcement {
   readonly lastEditedByName: string | null
   /** Epoch milliseconds, or null before the first edit. */
   readonly lastEditedAt: number | null
+  /**
+   * When somebody put this in front of people by text, or null (#77). Carried
+   * so the screen does not offer a send `already_sent` would refuse — *nobody
+   * is told twice* has to be visible and not only enforced.
+   */
+  readonly urgentSentAt: number | null
 }
 
 /** Every Announcement still posted on `today`, most recently posted first. */
@@ -42,6 +48,7 @@ export async function currentAnnouncements(
       authoredAt: announcements.authoredAt,
       lastEditedBy: announcements.lastEditedBy,
       lastEditedAt: announcements.lastEditedAt,
+      urgentSentAt: announcements.urgentSentAt,
     })
     .from(announcements)
     .innerJoin(volunteers, eq(volunteers.id, announcements.authoredBy))
@@ -75,6 +82,7 @@ export async function currentAnnouncements(
       lastEditedByName:
         row.lastEditedBy === null ? null : (editorNameById.get(row.lastEditedBy) ?? null),
       lastEditedAt: row.lastEditedAt === null ? null : row.lastEditedAt.getTime(),
+      urgentSentAt: row.urgentSentAt === null ? null : row.urgentSentAt.getTime(),
     })),
     today,
   )

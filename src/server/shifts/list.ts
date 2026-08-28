@@ -145,6 +145,13 @@ export interface ShiftRosterMember extends StandingRosterMember {
 export interface DeclaredShort {
   readonly declaredAt: Instant
   readonly declaredBy: string | null
+  /**
+   * When **this** declaration was put in front of people by text (#77), or
+   * null. Carried on the declaration rather than beside it, because that is
+   * what makes a Shift called short a second time offerable again: the new
+   * `declaredAt` is later than the old send, and nothing had to be reset.
+   */
+  readonly urgentSentAt: Instant | null
 }
 
 /** What the app derives about a Shift's staffing — displayed, never announced. */
@@ -216,6 +223,7 @@ export async function shiftList(
         staffingMode: shifts.staffingMode,
         purpose: shifts.purpose,
         shortDeclaredAt: shifts.shortDeclaredAt,
+        urgentSentAt: shifts.urgentSentAt,
         shortDeclaredBy: shifts.shortDeclaredBy,
         shortClearedAt: shifts.shortClearedAt,
       })
@@ -324,6 +332,12 @@ export async function shiftList(
             : {
                 declaredAt: instantOfTimestamp(row.shortDeclaredAt),
                 declaredBy: row.shortDeclaredBy,
+                // Only a send made **against this declaration** counts: an
+                // older one belongs to a shortage somebody already cleared.
+                urgentSentAt:
+                  row.urgentSentAt === null || row.urgentSentAt < row.shortDeclaredAt
+                    ? null
+                    : instantOfTimestamp(row.urgentSentAt),
               },
         attendance: attendanceBy.get(row.id) ?? [],
       }

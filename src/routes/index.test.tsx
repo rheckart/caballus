@@ -74,6 +74,7 @@ function announcement(overrides: Record<string, unknown> = {}) {
     lastEditedBy: null,
     lastEditedByName: null,
     lastEditedAt: null,
+    urgentSentAt: null,
     ...overrides,
   }
 }
@@ -207,6 +208,66 @@ describe('the Home screen', () => {
 
     expect(await screen.findByRole('link', { name: 'Sign in' })).toBeTruthy()
     expect(screen.queryByText(/Something is wrong/)).toBeNull()
+  })
+
+  /**
+   * The public page (#75, ADR 0028). It is `/`'s signed-out branch, and what
+   * it has to carry is decided by a carrier's vetting reviewer rather than by
+   * taste: the two SMS cases and no others, how somebody opted in, how to
+   * stop, and somewhere to write.
+   */
+  describe('the public page a visitor with no session gets', () => {
+    function renderSignedOut() {
+      stubApi({ '/home': refused('not_authorized', 401) })
+      renderHome()
+    }
+
+    it('names the two cases a text carries, and says there are no others', async () => {
+      renderSignedOut()
+
+      expect(await screen.findByText('What we send by text')).toBeTruthy()
+      expect(screen.getByText(/Two things, and nothing else, ever/)).toBeTruthy()
+      expect(screen.getByText(/shift you could work is short of people/)).toBeTruthy()
+      expect(screen.getByText(/Rescue news that will not keep/)).toBeTruthy()
+      // The things that stay on email, said out loud — a reviewer comparing
+      // this page against the campaign's samples is the reader who matters.
+      expect(screen.getByText(/your sign-in code — goes by email/)).toBeTruthy()
+    })
+
+    it('says how somebody opted in, which is the other half vetting asks for', async () => {
+      renderSignedOut()
+
+      expect(await screen.findByText(/There is no public sign-up/)).toBeTruthy()
+      expect(screen.getAllByText(/Volunteer Coordinator/).length).toBeGreaterThan(0)
+      expect(screen.getByText(/asked whether Caballus may text you/)).toBeTruthy()
+    })
+
+    it('says how to stop, and that stopping never locks anybody out', async () => {
+      renderSignedOut()
+
+      expect(await screen.findByText('How to stop')).toBeTruthy()
+      expect(screen.getByText('STOP')).toBeTruthy()
+      // ADR 0029's separation, stated where the person affected reads it: a
+      // volunteer who replied STOP to a staffing text must still be able to
+      // sign in.
+      expect(screen.getByText(/never locks you out of the app/)).toBeTruthy()
+    })
+
+    it('gives somewhere to write', async () => {
+      renderSignedOut()
+
+      const contact = await screen.findByRole('link', { name: 'rob@heckart.me' })
+      expect(contact.getAttribute('href')).toBe('mailto:rob@heckart.me')
+    })
+
+    it('shows a signed-in volunteer none of it', async () => {
+      stubApi({ '/home': page() })
+      renderHome()
+
+      await screen.findByText('Signed in as Beth Ann.')
+      expect(screen.queryByText('What we send by text')).toBeNull()
+      expect(screen.queryByText('How to stop')).toBeNull()
+    })
   })
 
   it('carries none of the tile grid #66 replaced with navigation', async () => {

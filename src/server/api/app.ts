@@ -28,6 +28,7 @@ import { orgs, volunteers } from '../../db/schema'
 import type { contract } from '../../shared/api-contract'
 import { type DayString } from '../../shared/time'
 import {
+  DOMAIN_SCOPES,
   anyDomainScope,
   anyScopeHolder,
   board,
@@ -50,6 +51,7 @@ import {
   recordDateOfBirth,
   recordOrientation,
   recordOwnContactDetails,
+  recordSmsConsent,
   removeVolunteerIn,
   type Refusal,
 } from '../roster/records'
@@ -75,6 +77,7 @@ import {
   type Alert,
 } from '../horses/alerts'
 import { horseById, horseList, spaceList } from '../horses/list'
+import { horseTimeline, horsesNeedingAttention } from '../horses/timeline'
 import {
   assignHorseSpace,
   createHorse,
@@ -110,6 +113,16 @@ import {
   removeFromShift,
 } from '../shifts/roster'
 import { declareShort } from '../shifts/short'
+import { reachFor, sendAnnouncementText, sendShortText } from '../urgent/send'
+import type { Refusal as UrgentRefusal } from '../urgent/outcome'
+import { sendText } from '../sms'
+import {
+  applyMobileChange,
+  checkMobileChange,
+  removeOwnMobile,
+  type MobileRefusal,
+} from '../auth/mobile-change'
+import { sendVerification } from '../auth/verify'
 import { sendStaffingDigest } from '../shifts/digest'
 import { closeCountsFor, closeShift } from '../shifts/close'
 import { addShiftNote, shiftNotesFor } from '../shifts/notes'
@@ -365,6 +378,29 @@ export function buildApi(
   }
 
   /** An Announcement's one refusal — a thing that is not there. */
+  /**
+   * An Urgent Send's refusals, as statuses (#77).
+   *
+   * `sms_not_configured` is a **503** rather than a 409: it is a fact about the
+   * deployment and not about this Shift, and it is the one the operator has to
+   * see rather than the sender.
+   */
+  function urgentRefusal(because: UrgentRefusal) {
+    if (because === 'shift_not_found' || because === 'announcement_not_found') {
+      return json({ error: because }, 404)
+    }
+    if (because === 'sms_not_configured') return json({ error: because }, 503)
+    return json({ error: because }, 409)
+  }
+
+  /** A mobile change's refusals (#78) — the shape `contactDetailsRefusal` holds. */
+  function mobileRefusal(because: MobileRefusal | 'too_many_codes') {
+    if (because === 'volunteer_not_found') return json({ error: because }, 404)
+    if (because === 'sms_not_sent') return json({ error: because }, 503)
+    if (because === 'too_many_codes') return json({ error: because }, 429)
+    return json({ error: because }, 409)
+  }
+
   function announcementRefusal(because: AnnouncementRefusalKind) {
     return json({ error: because }, 404)
   }
@@ -500,6 +536,31 @@ export function buildApi(
    * only for a holder of `roster`, and as `null` rather than as an empty object
    * for everybody else.
    */
+  /**
+   * Who an Urgent Send would reach (#77, ADR 0028).
+   *
+   * Shown to the sender **before** they confirm, because a sender who believes
+   * they told everyone and did not is the failure the whole ticket exists to
+   * fix — reproducing it inside the app would be it failing at its own purpose.
+   *
+   * `readEverything()`, and the reason is worth stating: this answers counts
+   * and never a number. ADR 0010's two carve-outs from the floor are the
+   * contact details themselves and the audit log, and neither is here. It has
+   * to be on the floor rather than behind a Scope, besides, because whoever
+   * holds Shift Authority over a Shift may send about it and may hold no Scope
+   * at all — and a read cannot declare Shift Authority (ADR 0016).
+   */
+  api.route('GET', '/reach', readEverything(), async ({ context }) => {
+    return forOrg(context.orgId).run(async (db) => {
+      const clock = await clockHere(db)
+      const report = await reachFor(db, clock.today, clock.timeZone)
+      return json({
+        everyone: { ...report.everyone },
+        shifts: report.shifts.map((one) => ({ shiftId: one.shiftId, reach: { ...one.reach } })),
+      })
+    })
+  })
+
   api.route('GET', '/volunteers', readEverything(), async ({ context }) => {
     const actor = actorOf(context)
     const seesRoster = actor.domainScopes.includes('roster')
@@ -560,7 +621,6 @@ export function buildApi(
       const actor = actorOf(context)
       const outcome = await recordOwnContactDetails(db, context.orgId, actor.volunteerId, {
         name: input.name,
-        mobile: input.mobile,
       })
       // `refusal` rather than `contactDetailsRefusal`: the only thing this can
       // refuse is a Volunteer the policies cannot see, which is the roster
@@ -645,15 +705,120 @@ export function buildApi(
     },
   )
 
+  /**
+   * A code to a **new** mobile number (#78, ADR 0029).
+   *
+   * The shape `/me/email/code` established, for the field ADR 0027 left
+   * unverified because it was not yet a credential. Nothing changes here: the
+   * number moves only when the code comes back to `/me/mobile` below, and until
+   * then the volunteer signs in with the old one.
+   *
+   * The budget is counted **after** the domain refusals, exactly as the email
+   * path counts it: *that number is already somebody\'s* has to keep being said
+   * rather than turning into *slow down* on the fourth attempt.
+   */
+  api.mutation(
+    '/me/mobile/code',
+    floor('edit-your-own-contact-details'),
+    async (input, { context, db }) => {
+      const actor = actorOf(context)
+      const wanted = await checkMobileChange(db, actor.volunteerId, input.mobile)
+      if (!wanted.ok) return mobileRefusal(wanted.because)
+
+      // Counted **before** the send and after the refusals, which is the whole
+      // of what the budget is for here: this endpoint takes an arbitrary number
+      // from any signed-in volunteer, and a send above a spent budget is a
+      // paid message that left before the 429 came back.
+      if (askedTooOften(wanted.mobile)) return mobileRefusal('too_many_codes')
+
+      try {
+        await sendVerification(wanted.mobile, 'change-mobile')
+      } catch {
+        log('error', 'mobile_change_code_not_sent', { volunteerId: actor.volunteerId })
+        return mobileRefusal('sms_not_sent')
+      }
+      return noContent()
+    },
+  )
+
+  /**
+   * Moves your number, once the code proves the handset (#78, ADR 0029).
+   *
+   * **The old number is told**, and a failure there is logged rather than
+   * thrown — `/me/email`\'s own precedent, and the reason is the same: refusing
+   * a completed credential change over an undeliverable notice would leave
+   * somebody with a number they cannot sign in at.
+   *
+   * The notice is the one thing this application texts that is not an Urgent
+   * Send (ADR 0028). It is addressed to one person about their own credential
+   * rather than broadcast to the roster, and the person who can no longer sign
+   * in at that handset is the one who most needs telling.
+   */
+  api.mutation(
+    '/me/mobile',
+    floor('edit-your-own-contact-details'),
+    async (input, { context, db }) => {
+      const actor = actorOf(context)
+      const changed = await applyMobileChange(
+        db,
+        context.orgId,
+        actor.volunteerId,
+        input.mobile,
+        input.code,
+      )
+      if (!changed.ok) return mobileRefusal(changed.because)
+
+      if (changed.value.from !== null) {
+        try {
+          await sendText({
+            to: changed.value.from,
+            text: 'Caballus: the mobile number on your volunteer record has been changed. If that was not you, tell a coordinator.',
+          })
+        } catch {
+          log('warn', 'mobile_change_notice_not_sent', { volunteerId: actor.volunteerId })
+        }
+      }
+
+      return noContent()
+    },
+  )
+
+  /** Giving the number up, with no code — see the contract for why (#78). */
+  api.mutation(
+    '/me/mobile/removal',
+    floor('edit-your-own-contact-details'),
+    async (_input, { context, db }) => {
+      const actor = actorOf(context)
+      const removed = await removeOwnMobile(db, context.orgId, actor.volunteerId)
+      return removed.ok ? noContent() : mobileRefusal(removed.because)
+    },
+  )
+
   api.mutation('/volunteers', domainScope('roster'), async (input, { context, db }) => {
     const actor = actorOf(context)
     const outcome = await createVolunteerIn(db, context.orgId, actor.volunteerId, {
       name: input.name,
       email: input.email,
       mobile: input.mobile ?? null,
+      smsConsent: input.smsConsent,
     })
     if (!outcome.ok) return refusal(outcome.because)
     return json({ volunteerId: outcome.value.id }, 201)
+  })
+
+  /**
+   * SMS Consent, recorded or withdrawn afterwards (#77, ADR 0028).
+   *
+   * `roster`, with the rest of what a Coordinator says about somebody else —
+   * and never the volunteer\'s own act, which is what a STOP to the carrier is.
+   */
+  api.mutation('/volunteers/sms-consent', domainScope('roster'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await recordSmsConsent(db, context.orgId, actor.volunteerId, {
+      volunteerId: input.volunteerId,
+      consented: input.consented,
+    })
+    return outcome.ok ? noContent() : refusal(outcome.because)
   })
 
   api.mutation(
@@ -792,10 +957,24 @@ export function buildApi(
     })
   })
 
-  /** Every horse, current or Departed — hiding a Departed one is the phone's concern, not this read's (#32). */
+  /**
+   * Every horse, current or Departed — hiding a Departed one is the phone's
+   * concern, not this read's (#32) — and beside them the horses with something
+   * going on (#74).
+   *
+   * The second list rides here rather than on a read of its own, on
+   * `/horses/:horseId`'s own argument: a tab that fills a beat after the
+   * directory beside it is two ways for one screen to be half-answered.
+   */
   api.route('GET', '/horses', readEverything(), async ({ context }) => {
-    const listed = await forOrg(context.orgId).run((db) => horseList(db))
-    return json({ horses: listed.map((horse) => ({ ...horse })) })
+    const answered = await forOrg(context.orgId).run(async (db) => {
+      const [listed, attention] = await Promise.all([horseList(db), horsesNeedingAttention(db)])
+      return { listed, attention }
+    })
+    return json({
+      horses: answered.listed.map((horse) => ({ ...horse })),
+      attention: answered.attention.map((one) => ({ ...one })),
+    })
   })
 
   /**
@@ -805,10 +984,26 @@ export function buildApi(
    * (#36).
    */
   api.route('GET', '/horses/:horseId', readEverything(), async ({ context, params }) => {
-    const found = await forOrg(context.orgId).run(async (db) => {
-      const on = await dayHere(db)
-      return horseById(db, params.horseId ?? '', on)
+    const horseId = params.horseId ?? ''
+    const answered = await forOrg(context.orgId).run(async (db) => {
+      const clock = await clockHere(db)
+      const found = await horseById(db, horseId, clock.today)
+      // The Timeline is only read once the horse is: a profile that 404s must
+      // not have paid for four joins against an id nothing matched.
+      return {
+        found,
+        timeline:
+          found === null
+            ? []
+            : await horseTimeline(db, horseId, clock.timeZone, {
+                // Handed in rather than read again: `horseById` has just
+                // fetched both lists for the profile's own sections.
+                standing: found.alerts,
+                ended: found.endedAlerts,
+              }),
+      }
     })
+    const found = answered.found
     if (found === null) return json({ error: 'horse_not_found' }, 404)
     return json({
       ...found,
@@ -822,6 +1017,11 @@ export function buildApi(
         weights: [...found.measurements.weights],
         bodyConditions: [...found.measurements.bodyConditions],
       },
+      timeline: answered.timeline.map((entry) =>
+        entry.kind === 'observation'
+          ? { ...entry, escalations: entry.escalations.map((one) => ({ ...one })) }
+          : { ...entry },
+      ),
     })
   })
 
@@ -1420,6 +1620,22 @@ export function buildApi(
    * holder, which is the same check as posting: ADR 0010 has no authorship
    * axis for this to lean on instead (ADR 0018).
    */
+  /**
+   * The Urgent Send for an Announcement (#77), amending ADR 0018.
+   *
+   * `anyScopeHolder()`, the same check posting one declares: ADR 0010 has no
+   * authorship axis for *the author may also send it* to lean on, and any Scope
+   * holder is the whole of the check here as it is there.
+   */
+  api.mutation('/announcements/text', anyScopeHolder(), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await sendAnnouncementText(db, actor.volunteerId, {
+      announcementId: input.announcementId,
+      today: await dayHere(db),
+    })
+    return outcome.ok ? json(outcome.value) : urgentRefusal(outcome.because)
+  })
+
   api.mutation('/announcements/edit', anyScopeHolder(), async (input, { context, db }) => {
     const actor = actorOf(context)
     const outcome = await editAnnouncement(db, context.orgId, actor.volunteerId, {
@@ -1666,6 +1882,32 @@ export function buildApi(
    * The app is on neither side of the judgement. It does not declare Short and
    * it does not withdraw it — not even when a third volunteer Covers.
    */
+  /**
+   * The Urgent Send for a Short Shift (#77, ADR 0028).
+   *
+   * **Shift Authority, or any Domain Scope**, which is #77's own sentence. The
+   * `alsoScopes` list is `DOMAIN_SCOPES` itself rather than an enumeration —
+   * derived from the constant, so a Scope the rescue adds later reaches this
+   * without anybody remembering to widen a list, which is exactly the drift
+   * `anyScopeHolder` exists to prevent (ADR 0018). It cannot be spelled as
+   * `anyScopeHolder()` here because the Shift half is a join `mutation` runs
+   * against the payload, and only `shiftAuthority` carries that.
+   */
+  api.mutation(
+    '/shifts/short/text',
+    shiftAuthority(DOMAIN_SCOPES),
+    async (input, { context, db }) => {
+      const actor = actorOf(context)
+      const clock = await clockHere(db)
+      const outcome = await sendShortText(db, actor.volunteerId, {
+        shiftId: input.shiftId,
+        today: clock.today,
+        timeZone: clock.timeZone,
+      })
+      return outcome.ok ? json(outcome.value) : urgentRefusal(outcome.because)
+    },
+  )
+
   api.mutation('/shifts/short', shiftAuthority(['roster']), async (input, { context, db }) => {
     const actor = actorOf(context)
     const outcome = await declareShort(db, actor.volunteerId, {

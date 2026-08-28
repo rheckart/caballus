@@ -245,6 +245,14 @@ export const person = z.object({
     .object({
       email: z.string(),
       mobile: z.string().nullable(),
+      /**
+       * **SMS Consent** and the STOP against it, in epoch milliseconds (ADR
+       * 0028, #77). Behind `roster` with the rest of the contact details: both
+       * are facts about how to reach one person, and *when did she agree to
+       * this* is the question the record exists to answer.
+       */
+      smsConsentAt: z.number().nullable(),
+      smsStoppedAt: z.number().nullable(),
       dateOfBirth: dayOfTheOrganisation.nullable(),
       dateOfBirthProvenance: z.string().nullable(),
       age: z.number().nullable(),
@@ -263,6 +271,41 @@ export const person = z.object({
       ),
     })
     .nullable(),
+})
+
+/**
+ * How many of how many an Urgent Send would actually reach (#77, ADR 0028).
+ *
+ * Shown **before** the send and never after it. A sender who believes they
+ * told everyone and did not is the failure this exists to fix, and the
+ * shortfall is the number that changes somebody's mind.
+ */
+const reach = z.object({ reachable: z.number(), total: z.number() })
+
+export const reachReport = z.object({
+  /** Everybody at the rescue, which is an Announcement's audience. */
+  everyone: reach,
+  /**
+   * Per Shift, which is *who could cover it* rather than everybody — the
+   * people already standing on it are not the audience for *we are short*.
+   * Carried whole rather than asked for a Shift at a time, because the Shifts
+   * screen shows a row per Shift and would otherwise fire a request per row.
+   */
+  shifts: z.array(z.object({ shiftId: z.string(), reach })),
+})
+
+/**
+ * What an Urgent Send answers with: how many it was meant to reach, how many
+ * it did, and how many it could not reach at all.
+ *
+ * `sent` against `recipients` rather than a bare success, for
+ * `/shifts/digest`'s own reason: a half-delivered send has to be visible
+ * instead of looking like it worked.
+ */
+export const urgentSent = z.object({
+  recipients: z.number(),
+  sent: z.number(),
+  unreachable: z.number(),
 })
 
 export const people = z.object({
@@ -576,7 +619,131 @@ export const horse = z.object({
   }),
 })
 
-export const horseList = z.object({ horses: z.array(horse) })
+/**
+ * An Escalation as a horse's Timeline carries it: its state and how big the
+ * thread is, and **not the thread** (#74). `/escalations` is where a report is
+ * read; this is where somebody notices it happened and where it got to.
+ */
+const horseEscalation = z.object({
+  id: z.string(),
+  scope: z.enum(DOMAIN_SCOPES),
+  framing: z.string(),
+  escalatedBy: z.string(),
+  escalatedByName: z.string(),
+  /** Epoch milliseconds, like every other moment on the Timeline. */
+  escalatedAt: z.number(),
+  closedAt: z.number().nullable(),
+  closedByName: z.string().nullable(),
+  closingNote: z.string().nullable(),
+  commentCount: z.number(),
+})
+
+/**
+ * What every Timeline entry carries whatever kind it is (#74).
+ *
+ * `at` is when the record was **written down**, never the date it is about — a
+ * weight taken on the 1st and recorded on the 5th sits on the 5th, and
+ * `takenOn` travels beside it. One rule for five kinds; `src/shared/timeline.ts`
+ * is where it is argued and where the ordering lives.
+ */
+const timelineEntryBase = {
+  /** Unique across the whole Timeline: one Alert produces two entries. */
+  id: z.string(),
+  at: z.number(),
+  /**
+   * The same moment as a day the **server** resolved in the organisation's
+   * timezone (ADR 0007, ADR 0016). `at` is what the order is decided by and
+   * this is what a person reads: a browser deriving its own day off epoch
+   * milliseconds is right for most of the year and wrong at the edges, and
+   * the calendar lives in two modules neither of which is a screen.
+   */
+  on: dayOfTheOrganisation,
+  by: z.string().nullable(),
+  byName: z.string().nullable(),
+}
+
+/**
+ * One thing that happened to a horse (#74).
+ *
+ * A discriminated union rather than a flattened row of nullable columns,
+ * because the five kinds genuinely carry different things and a shape where
+ * `value` and `framing` are both optional is a shape a renderer has to guess
+ * at. The discriminant is `TIMELINE_KINDS` in `src/shared/timeline.ts`, and a
+ * sixth is a deploy on both sides.
+ */
+const timelineEntry = z.discriminatedUnion('kind', [
+  z.object({
+    ...timelineEntryBase,
+    kind: z.literal('observation'),
+    text: z.string(),
+    subjectLabel: z.string().nullable(),
+    /** Under the Observation they framed, never as a second entry (#74). */
+    escalations: z.array(horseEscalation),
+  }),
+  z.object({
+    ...timelineEntryBase,
+    kind: z.literal('alert_raised'),
+    alertKind,
+    text: z.string(),
+  }),
+  z.object({
+    ...timelineEntryBase,
+    kind: z.literal('alert_ended'),
+    alertKind,
+    text: z.string(),
+    /** Required at the door (ADR 0024): only this answers *why it is gone*. */
+    reason: z.string().nullable(),
+  }),
+  z.object({
+    ...timelineEntryBase,
+    kind: z.literal('measurement'),
+    measurementKind: z.enum(MEASUREMENT_KINDS),
+    value: z.number(),
+    method: z.string().nullable(),
+    /** The day it was taken, which is not the day it was written down. */
+    takenOn: dayOfTheOrganisation,
+  }),
+  z.object({
+    ...timelineEntryBase,
+    kind: z.literal('feed_schedule'),
+    shiftType: z.enum(SHIFT_TYPES),
+    validFrom: dayOfTheOrganisation,
+  }),
+])
+
+/**
+ * A horse with something going on, and the newest sentence against her name
+ * (#74).
+ *
+ * Derived on every read from an open Escalation or a standing Alert — there is
+ * no `has_issues` column and no `watching` table, so closing the one or ending
+ * the other drops her out with nothing to remember to clear.
+ */
+const horseAttention = z.object({
+  horseId: z.string(),
+  horseName: z.string(),
+  /** Which of the two facts produced the sentence, so the screen can say. */
+  because: z.enum(['alert', 'escalation']),
+  text: z.string(),
+  at: z.number(),
+})
+
+/**
+ * The directory, and beside it the horses with something going on.
+ *
+ * The second list rides on this read rather than one of its own, on
+ * `horseProfile`'s own argument: two calls is two ways for the screen to be
+ * half-answered, and the tab would sit there empty on barn signal while the
+ * directory beside it was full.
+ *
+ * **The rows themselves still carry no Alerts** — #60 decided that
+ * deliberately, and a list of horses *with something going on* is a different
+ * promise from an alert badge on every row.
+ */
+export const horseList = z.object({
+  horses: z.array(horse),
+  attention: z.array(horseAttention),
+})
 
 /**
  * The single-horse read, carrying what the list does not: the current Feed
@@ -604,6 +771,16 @@ export const horseProfile = horse.extend({
    * reads everything of.
    */
   endedAlerts: z.array(alert),
+  /**
+   * Everything that has happened to this horse, newest first (#74).
+   *
+   * Composed server-side and carried on this read for the reason `alerts`
+   * already is: a second call fired alongside the rest leaves the horse
+   * looking eventless whenever it is slow. **A Departed horse keeps hers in
+   * full** — the profile stays reachable so the history never goes with the
+   * horse leaving (#35).
+   */
+  timeline: z.array(timelineEntry),
 })
 
 /**
@@ -767,6 +944,12 @@ export const announcement = z.object({
   lastEditedByName: z.string().nullable(),
   /** Epoch milliseconds, or null before the first edit. */
   lastEditedAt: z.number().nullable(),
+  /**
+   * When somebody put this in front of people by text, or null (#77, ADR
+   * 0028). Carried so the screen does not offer a send that `already_sent`
+   * would refuse — *nobody is told twice* has to be visible, not only enforced.
+   */
+  urgentSentAt: z.number().nullable(),
 })
 
 export const announcementList = z.object({
@@ -898,6 +1081,15 @@ const declaredShort = z.object({
   /** Epoch milliseconds. A day belongs to the organisation, and this is not one. */
   declaredAt: z.number(),
   declaredBy: z.string().nullable(),
+  /**
+   * When this declaration was put in front of people by text, or null (#77).
+   *
+   * On the declaration rather than beside it, because that is what makes it
+   * answerable: a Shift cleared and called short again is a **new**
+   * `declaredAt` with nothing sent against it, and the screen offers the send
+   * again without any column having been reset.
+   */
+  urgentSentAt: z.number().nullable(),
 })
 
 /**
@@ -1398,6 +1590,12 @@ export const contract = {
     /** The barn's dashboard: what is happening today, composed by the server (#67). */
     '/home': { answers: homePage },
     '/volunteers': { answers: people },
+    /**
+     * Who an Urgent Send would reach (#77). On the read-everything floor: it
+     * is a count and never a contact detail, and the two carve-outs ADR 0010
+     * makes from the floor are the details themselves and the audit log.
+     */
+    '/reach': { answers: reachReport },
     '/release-versions': { answers: releaseVersionList },
     '/audit': { answers: auditLog },
     '/spaces': { answers: spaceList },
@@ -1456,9 +1654,54 @@ export const contract = {
         // string — blanking the person across the roster, the Board and every
         // Shift screen, with no `roster` door to put it back through.
         name: z.string().trim().min(1).max(200),
-        mobile: z.string().max(60).nullable(),
       }),
       answers: z.void(),
+    },
+    /**
+     * A code to a **new** mobile number (#78, ADR 0029).
+     *
+     * **The mobile left the endpoint above when it became a credential.** ADR
+     * 0027 gave a Volunteer three fields — name, mobile and email — and moved
+     * only the email through a verification, because only the email could lock
+     * somebody out. ADR 0029 makes that true of the number too, so it takes the
+     * same shape: a code to the **new** number, of a type structurally
+     * unreachable from the login screen, and nothing moves until it comes back.
+     *
+     * `neverQueued`, like the email pair, and for a second reason besides: the
+     * code is Twilio Verify's and lives ten minutes, so a request replayed from
+     * a pocket on Thursday would text a stranger about nothing.
+     */
+    '/me/mobile/code': {
+      accepts: z.object({ mobile: z.string().min(1).max(60) }),
+      answers: z.void(),
+      neverQueued: true,
+    },
+    /** Moves your number, once the code proves the handset (#78, ADR 0029). */
+    '/me/mobile': {
+      accepts: z.object({
+        mobile: z.string().min(1).max(60),
+        code: z.string().min(1).max(20),
+      }),
+      answers: z.void(),
+      neverQueued: true,
+    },
+    /**
+     * Giving the number up, with no code (#78).
+     *
+     * Verification exists to stop somebody being locked out by a number they
+     * cannot receive at; giving one up cannot lock anybody out — the address is
+     * still there and still signs them in — and asking a volunteer to prove
+     * they hold a handset before they may stop giving it to us is the wrong way
+     * round.
+     *
+     * `neverQueued` all the same: this one **is** safe to repeat, but a removal
+     * replayed from a pocket days later would take away a number the volunteer
+     * has since put back.
+     */
+    '/me/mobile/removal': {
+      accepts: z.object({}),
+      answers: z.void(),
+      neverQueued: true,
     },
     /**
      * Asks for a code at a **new** sign-in address (#68, ADR 0027).
@@ -1509,8 +1752,30 @@ export const contract = {
         name: z.string().min(1).max(200),
         email: z.string().min(1).max(320),
         mobile: z.string().max(50).nullish(),
+        /**
+         * **SMS Consent, and required rather than optional** (ADR 0028, #77).
+         *
+         * Carriers want documented proof of opt-in, and ADR 0028 is explicit
+         * that the opt-in language is *shown to the volunteer rather than
+         * assumed*. A field the invite form could leave out is a field it will
+         * leave out; a required boolean makes the Coordinator answer it, and
+         * `false` is a real answer that costs nothing.
+         */
+        smsConsent: z.boolean(),
       }),
       answers: z.object({ volunteerId: z.string() }),
+    },
+    /**
+     * Recording or withdrawing SMS Consent afterwards, under `roster` (#77).
+     *
+     * The invite form is where it is normally captured; this exists because
+     * sixty volunteers predate the question, and because *she told me at the
+     * barn to stop texting her* is a thing a Coordinator has to be able to act
+     * on without waiting for the carrier to hear it.
+     */
+    '/volunteers/sms-consent': {
+      accepts: z.object({ volunteerId, consented: z.boolean() }),
+      answers: z.void(),
     },
     '/volunteers/date-of-birth': {
       accepts: z.object({
@@ -1792,6 +2057,21 @@ export const contract = {
      * holder, which is the same check as posting: ADR 0010 has no authorship
      * axis for this to lean on (ADR 0018).
      */
+    /**
+     * **The Urgent Send for an Announcement** (#77), and the amendment to ADR
+     * 0018 — which said of an Announcement that *the app sends nothing about
+     * it*.
+     *
+     * Posting still sends nothing; the wall is still a wall. What changed is
+     * that a second deliberate act may put one in front of people, once.
+     * `neverQueued` is untouched on all three writes: an Urgent Send is the app
+     * as medium, not as ledger.
+     */
+    '/announcements/text': {
+      accepts: z.object({ announcementId }),
+      answers: urgentSent,
+      neverQueued: true,
+    },
     '/announcements/edit': {
       accepts: z.object({
         announcementId,
@@ -1989,6 +2269,24 @@ export const contract = {
     '/shifts/short': {
       accepts: z.object({ shiftId: z.uuid(), short: z.boolean() }),
       answers: z.void(),
+    },
+    /**
+     * **The Urgent Send for a Short Shift** (#77, ADR 0028).
+     *
+     * A **second, deliberate act** and not a field on the write above, and the
+     * split is the whole design. Declaring Short *queues*: a Shift needing
+     * people is true in the barn whether or not the app knows, so the app is
+     * the ledger there. A text does not: a message about Tuesday arriving on
+     * Thursday is the app as medium failing, which is ADR 0018's own rule and
+     * why this carries `neverQueued`.
+     *
+     * It answers how many it reached, because a half-delivered send has to be
+     * visible rather than assumed.
+     */
+    '/shifts/short/text': {
+      accepts: z.object({ shiftId: z.uuid() }),
+      answers: urgentSent,
+      neverQueued: true,
     },
     /**
      * The evening digest: the **one** thing this application sends about

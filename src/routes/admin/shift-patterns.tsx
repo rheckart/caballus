@@ -71,6 +71,7 @@ import { client } from '../../shared/api-client'
 import { refusalText } from '../../shared/refusals'
 import {
   ASSIGNABLE_POSITIONS,
+  SHIFT_TYPE_LABEL,
   WEEKDAYS,
   type AssignablePosition,
   type Weekday,
@@ -98,13 +99,6 @@ const WEEKDAY_LABEL: Record<Weekday, string> = {
   friday: 'Friday',
   saturday: 'Saturday',
   sunday: 'Sunday',
-}
-
-const SHIFT_TYPE_LABEL: Record<ShiftType | 'pop_up', string> = {
-  feed_am: 'Feed AM',
-  feed_pm: 'Feed PM',
-  lunch: 'Lunch',
-  pop_up: 'Pop-up',
 }
 
 const POSITION_LABEL: Record<AssignablePosition | 'acting_lead', string> = {

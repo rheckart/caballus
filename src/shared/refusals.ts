@@ -18,6 +18,15 @@ import { ApiError } from './api-client'
 const REFUSALS: Record<string, string> = {
   not_authorized: 'You do not hold the scope that act needs.',
   email_taken: 'Somebody at the rescue already has that address.',
+  mobile_taken: 'Somebody at the rescue already has that number.',
+  mobile_invalid:
+    'That is not a mobile number we can read. Ten digits, or a + and the country code.',
+  mobile_unchanged: 'That is already your number — nothing to change.',
+  sms_not_sent: 'The code could not be texted. Your number has not changed. Try again in a minute.',
+  sms_not_configured:
+    'Nobody has told this deployment how to send a text. Set the Twilio variables.',
+  already_sent: 'This has already been texted out. Nobody is told twice.',
+  announcement_expired: 'That announcement has expired, so there is no news left to send.',
   date_of_birth_not_established:
     'Record a date of birth first — the ID is sighted at the same desk.',
   already_oriented: 'An orientation is already recorded, and it never lapses.',

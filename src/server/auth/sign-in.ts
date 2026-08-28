@@ -1,6 +1,27 @@
 /**
- * Signing in: a six-digit code to an address the rescue already knows, and a
- * session row that lasts until somebody revokes it (ADR 0008, 0009).
+ * Signing in: a six-digit code to an address **or a mobile number** the rescue
+ * already knows, and a session row that lasts until somebody revokes it
+ * (ADR 0008, 0009, 0029).
+ *
+ * **The second door is a second door and never a replacement** (ADR 0029).
+ * `volunteers.email` is still the credential every Account resolves through;
+ * what the number buys is the volunteer ADR 0009 named as its own sharpest
+ * risk — the one with no usable email, or who never reads it, who is the
+ * reason this whole line of work started.
+ *
+ * **The code for a number is Twilio Verify's, and the session is still Better
+ * Auth's.** Verify proves the handset and nothing else — it has no idea who
+ * this rescue's people are — so once it says *approved*, the session is minted
+ * through the one path that already knows how to claim an Account: a sign-in
+ * OTP for the Volunteer's own address, created and consumed here without ever
+ * being sent anywhere. That is not a back door. The gate above it is the same
+ * gate the emailed code passes, and the Account claimed is the same row; what
+ * changes is which of two facts about the same person was proved.
+ *
+ * **Login is never gated on SMS Consent** (ADR 0028, ADR 0029). A code is
+ * asked for by the person receiving it, in the moment, which is not standing
+ * permission to be messaged — and conflating them means a volunteer who
+ * replied STOP to a staffing text finds they can no longer sign in.
  *
  * These are plain functions rather than endpoints. Signing in is a **credential
  * exchange that must never be replayed from a queue** — the whole of ADR 0005
@@ -17,11 +38,15 @@
 import { auth, codeEmail } from './auth'
 import { askedTooOften } from './code-budget'
 import { sendEmail } from '../email'
+import { checkVerification, sendVerification } from './verify'
+import { looksLikeMobile, normaliseMobile } from '../../shared/mobile'
 import {
   claimAccount,
   hasLeftTheRescue,
+  hasLeftTheRescueByMobile,
   normaliseEmail,
   volunteerByEmail,
+  volunteerByMobile,
   type Volunteer,
 } from './volunteers'
 import { forOrg, type OrgId } from '../../db/for-org'
@@ -40,10 +65,17 @@ import { eq } from 'drizzle-orm'
  */
 export type Refusal =
   | 'unrecognised-email'
+  /**
+   * A number nobody at the rescue holds — and also a number that could not be
+   * read as one at all, deliberately: both send somebody to look for a typo,
+   * and splitting them would be two sentences for one mistake (#78).
+   */
+  | 'unrecognised-mobile'
   | 'volunteer-removed'
   | 'account-revoked'
   | 'wrong-code'
   | 'email-not-sent'
+  | 'sms-not-sent'
   | 'too-many-codes'
 
 /**
@@ -68,14 +100,16 @@ export type CodeRequested =
  * single channel is the difference between *your code is coming* and *nothing
  * is coming and nobody will tell you*.
  */
-export async function requestCode(orgId: OrgId, rawEmail: string): Promise<CodeRequested> {
-  const refused = await gate(orgId, rawEmail)
+export async function requestCode(orgId: OrgId, identifier: string): Promise<CodeRequested> {
+  if (looksLikeMobile(identifier)) return requestCodeByMobile(orgId, identifier)
+
+  const refused = await gate(orgId, identifier)
   if (refused !== null) {
     log('warn', 'sign_in_refused', { stage: 'request_code', because: refused })
     return { sent: false, because: refused }
   }
 
-  const email = normaliseEmail(rawEmail)
+  const email = normaliseEmail(identifier)
   if (askedTooOften(email)) {
     // Counted after the gate, so that an address nobody invited is told so
     // every time rather than being rate-limited into a different answer — the
@@ -121,14 +155,20 @@ export type SignedIn =
  * a `Set-Cookie` belongs to whatever is answering the browser and this module
  * does not know what that is.
  */
-export async function submitCode(orgId: OrgId, rawEmail: string, code: string): Promise<SignedIn> {
-  const refused = await gate(orgId, rawEmail)
+export async function submitCode(
+  orgId: OrgId,
+  identifier: string,
+  code: string,
+): Promise<SignedIn> {
+  if (looksLikeMobile(identifier)) return submitCodeByMobile(orgId, identifier, code)
+
+  const refused = await gate(orgId, identifier)
   if (refused !== null) {
     log('warn', 'sign_in_refused', { stage: 'submit_code', because: refused })
     return { signedIn: false, because: refused }
   }
 
-  const email = normaliseEmail(rawEmail)
+  const email = normaliseEmail(identifier)
   let answered
   try {
     answered = await auth().api.signInEmailOTP({
@@ -174,6 +214,108 @@ export async function signOut(request: Request): Promise<Headers> {
     returnHeaders: true,
   })
   return headers
+}
+
+/**
+ * A code to a handset, through Verify (#78).
+ *
+ * The gate is the same three facts about the person `gate` below checks, asked
+ * against the number instead of the address — and the same per-address budget,
+ * keyed on the normalised number. An E.164 number and an email address cannot
+ * collide as keys (one begins with `+`, the other contains `@`), so the two
+ * doors share one window without sharing a namespace.
+ */
+async function requestCodeByMobile(orgId: OrgId, rawMobile: string): Promise<CodeRequested> {
+  const refused = await mobileGate(orgId, rawMobile)
+  if (refused !== null) {
+    log('warn', 'sign_in_refused', { stage: 'request_code', because: refused })
+    return { sent: false, because: refused }
+  }
+
+  // Non-null: `mobileGate` refused everything this can be null for.
+  const mobile = normaliseMobile(rawMobile) ?? ''
+  if (askedTooOften(mobile)) {
+    log('warn', 'sign_in_refused', { stage: 'request_code', because: 'too-many-codes' })
+    return { sent: false, because: 'too-many-codes' }
+  }
+
+  try {
+    await sendVerification(mobile, 'sign-in')
+  } catch {
+    // Told plainly, like the email half: *nothing is coming* is a different
+    // fact from *the app is broken*, and only one of them means try again.
+    log('error', 'sign_in_refused', { stage: 'request_code', because: 'sms-not-sent' })
+    return { sent: false, because: 'sms-not-sent' }
+  }
+
+  return { sent: true }
+}
+
+/**
+ * Exchanges a texted code for a session (#78).
+ *
+ * Verify says whether the handset is theirs. The **session** is then minted the
+ * only way this application knows how to mint one — a sign-in OTP against the
+ * Volunteer's own address, created and immediately consumed, never sent — so a
+ * volunteer signing in by text lands on exactly the same `user` row, the same
+ * `claimAccount`, and the same year-long session as one signing in by mail.
+ * Reproducing any of that here would be a second identity path to keep in step
+ * with the first.
+ */
+async function submitCodeByMobile(
+  orgId: OrgId,
+  rawMobile: string,
+  code: string,
+): Promise<SignedIn> {
+  const refused = await mobileGate(orgId, rawMobile)
+  if (refused !== null) {
+    log('warn', 'sign_in_refused', { stage: 'submit_code', because: refused })
+    return { signedIn: false, because: refused }
+  }
+
+  const mobile = normaliseMobile(rawMobile) ?? ''
+  let approved: boolean
+  try {
+    approved = await checkVerification(mobile, code, 'sign-in')
+  } catch {
+    // The vendor being unreachable is not a wrong code, and telling somebody
+    // it is sends them to retype digits that were always right.
+    log('error', 'sign_in_refused', { stage: 'submit_code', because: 'sms-not-sent' })
+    return { signedIn: false, because: 'sms-not-sent' }
+  }
+  if (!approved) {
+    log('warn', 'sign_in_refused', { stage: 'submit_code', because: 'wrong-code' })
+    return { signedIn: false, because: 'wrong-code' }
+  }
+
+  const volunteer = await volunteerByMobile(orgId, mobile)
+  if (volunteer === null) {
+    throw new Error('The volunteer that passed the sign-in gate is no longer there')
+  }
+
+  const otp = await auth().api.createVerificationOTP({
+    body: { email: volunteer.email, type: 'sign-in' },
+  })
+  const answered = await auth().api.signInEmailOTP({
+    body: { email: volunteer.email, otp },
+    returnHeaders: true,
+  })
+
+  await claimAccount(orgId, volunteer.id, answered.response.user.id)
+
+  log('info', 'signed_in', { volunteerId: volunteer.id, orgId, channel: 'sms' })
+  return { signedIn: true, volunteerId: volunteer.id, headers: answered.headers }
+}
+
+/** The same three facts as `gate`, asked of a number (#78). */
+async function mobileGate(orgId: OrgId, rawMobile: string): Promise<Refusal | null> {
+  const volunteer = await volunteerByMobile(orgId, rawMobile)
+  if (volunteer === null) {
+    return (await hasLeftTheRescueByMobile(orgId, rawMobile))
+      ? 'volunteer-removed'
+      : 'unrecognised-mobile'
+  }
+  return (await revoked(orgId, volunteer)) ? 'account-revoked' : null
 }
 
 /** The three refusals that are facts about the person, or `null` to proceed. */

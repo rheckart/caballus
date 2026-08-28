@@ -182,6 +182,7 @@ describe.skipIf(!reachable)('the roster, through the API', () => {
       const created = await post(api, '/volunteers', {
         name: 'Beth Alderson',
         email: 'Beth@Example.Invalid',
+        smsConsent: false,
       })
       expect(created.status).toBe(201)
 
@@ -200,6 +201,7 @@ describe.skipIf(!reachable)('the roster, through the API', () => {
       const refused = await post(api, '/volunteers', {
         name: 'Beth Alderson',
         email: 'beth@example.invalid',
+        smsConsent: false,
       })
 
       expect(refused.status).toBe(403)
@@ -208,12 +210,17 @@ describe.skipIf(!reachable)('the roster, through the API', () => {
 
     it('refuses a second live Volunteer at one address', async () => {
       const api = await coordinator()
-      await post(api, '/volunteers', { name: 'Beth', email: 'beth@example.invalid' })
+      await post(api, '/volunteers', {
+        name: 'Beth',
+        email: 'beth@example.invalid',
+        smsConsent: false,
+      })
 
       const again = await post(api, '/volunteers', {
         name: 'Beth Again',
         // The same address, spelled differently — normalised on the way in.
         email: ' BETH@example.invalid ',
+        smsConsent: false,
       })
 
       expect(again.status).toBe(409)
@@ -227,6 +234,7 @@ describe.skipIf(!reachable)('the roster, through the API', () => {
       const created = await post(api, '/volunteers', {
         name: 'Beth',
         email: 'beth@example.invalid',
+        smsConsent: false,
       })
 
       const refused = await post(api, '/volunteers/orientation', {
@@ -244,6 +252,7 @@ describe.skipIf(!reachable)('the roster, through the API', () => {
       const created = await post(api, '/volunteers', {
         name: 'Beth',
         email: 'beth@example.invalid',
+        smsConsent: false,
       })
       const volunteerId = created.body.volunteerId
 
@@ -282,6 +291,7 @@ describe.skipIf(!reachable)('the roster, through the API', () => {
       const created = await post(api, '/volunteers', {
         name: 'Beth',
         email: 'beth@example.invalid',
+        smsConsent: false,
       })
       const volunteerId = created.body.volunteerId
       await post(api, '/volunteers/date-of-birth', {
@@ -321,6 +331,7 @@ describe.skipIf(!reachable)('the roster, through the API', () => {
       const created = await post(api, '/volunteers', {
         name: 'Sophie',
         email: 'sophie@example.invalid',
+        smsConsent: false,
       })
       const volunteerId = created.body.volunteerId
       await post(api, '/volunteers/date-of-birth', {
@@ -361,6 +372,7 @@ describe.skipIf(!reachable)('the roster, through the API', () => {
       const created = await post(api, '/volunteers', {
         name: 'Beth',
         email: 'beth@example.invalid',
+        smsConsent: false,
       })
       const volunteerId = created.body.volunteerId
       await post(api, '/volunteers/date-of-birth', {
@@ -387,6 +399,7 @@ describe.skipIf(!reachable)('the roster, through the API', () => {
       const created = await post(api, '/volunteers', {
         name: 'Beth',
         email: 'beth@example.invalid',
+        smsConsent: false,
       })
       const volunteerId = created.body.volunteerId
       await post(api, '/volunteers/date-of-birth', {
@@ -437,6 +450,7 @@ describe.skipIf(!reachable)('the roster, through the API', () => {
       const created = await post(api, '/volunteers', {
         name: 'Beth',
         email: 'beth@example.invalid',
+        smsConsent: false,
       })
       const volunteerId = created.body.volunteerId
       await post(api, '/volunteers/date-of-birth', {
@@ -463,6 +477,7 @@ describe.skipIf(!reachable)('the roster, through the API', () => {
       const created = await post(api, '/volunteers', {
         name: 'Beth',
         email: 'beth@example.invalid',
+        smsConsent: false,
       })
       const volunteerId = created.body.volunteerId
       await post(api, '/volunteers/date-of-birth', {
@@ -494,6 +509,7 @@ describe.skipIf(!reachable)('the roster, through the API', () => {
       const created = await post(officer, '/volunteers', {
         name: 'Beth',
         email: 'beth@example.invalid',
+        smsConsent: false,
       })
       await post(officer, '/volunteers/date-of-birth', {
         volunteerId: created.body.volunteerId,
@@ -533,6 +549,7 @@ describe.skipIf(!reachable)('the roster, through the API', () => {
       const created = await post(officer, '/volunteers', {
         name: 'Terry',
         email: 'terry@example.invalid',
+        smsConsent: false,
       })
       const volunteerId = created.body.volunteerId
 
@@ -637,6 +654,7 @@ describe.skipIf(!reachable)('the roster, through the API', () => {
       const created = await post(officer, '/volunteers', {
         name: 'Val',
         email: 'val@example.invalid',
+        smsConsent: false,
       })
       const volunteerId = created.body.volunteerId
 
@@ -673,6 +691,7 @@ describe.skipIf(!reachable)('the roster, through the API', () => {
       const created = await post(officer, '/volunteers', {
         name: 'Terry',
         email: 'terry@example.invalid',
+        smsConsent: false,
       })
       const volunteerId = created.body.volunteerId
       await post(officer, '/volunteers/roles', { volunteerId, role: 'head_of_maintenance' })

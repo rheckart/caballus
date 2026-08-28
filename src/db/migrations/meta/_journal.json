@@ -155,6 +155,20 @@
       "when": 1787672239018,
       "tag": "0021_one_live_pattern_per_weekday",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1787929959560,
+      "tag": "0022_a_horses_own_timeline",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1787930584097,
+      "tag": "0023_a_second_door_and_an_urgent_send",
+      "breakpoints": true
     }
   ]
 }

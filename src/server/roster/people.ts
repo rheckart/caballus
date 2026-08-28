@@ -82,6 +82,16 @@ export interface PersonOnTheFloor {
 export interface PersonBehindRoster {
   readonly email: string
   readonly mobile: string | null
+  /**
+   * **SMS Consent**, and the STOP against it (ADR 0028, #77).
+   *
+   * Behind `roster` with the rest of the contact details, because both are
+   * facts about how to reach one person. Epoch milliseconds, so that *when did
+   * she agree to this* has an answer a carrier could be shown — which is the
+   * whole reason the record exists.
+   */
+  readonly smsConsentAt: number | null
+  readonly smsStoppedAt: number | null
   readonly dateOfBirth: DayString | null
   readonly dateOfBirthProvenance: string | null
   readonly age: number | null
@@ -125,6 +135,8 @@ export async function peopleList(
           name: volunteers.name,
           email: volunteers.email,
           mobile: volunteers.mobile,
+          smsConsentAt: volunteers.smsConsentAt,
+          smsStoppedAt: volunteers.smsStoppedAt,
           dateOfBirth: volunteers.dateOfBirth,
           dateOfBirthProvenance: volunteers.dateOfBirthProvenance,
           orientedOn: volunteers.orientedOn,
@@ -215,6 +227,8 @@ export async function peopleList(
         : {
             email: row.email,
             mobile: row.mobile,
+            smsConsentAt: row.smsConsentAt === null ? null : row.smsConsentAt.getTime(),
+            smsStoppedAt: row.smsStoppedAt === null ? null : row.smsStoppedAt.getTime(),
             dateOfBirth,
             dateOfBirthProvenance: row.dateOfBirthProvenance,
             age: dateOfBirth === null ? null : ageOn(dateOfBirth, today),

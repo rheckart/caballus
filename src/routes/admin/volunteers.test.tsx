@@ -38,6 +38,8 @@ const joy = {
   hasAccount: true,
   consentIsHistorical: false,
   behindRoster: {
+    smsConsentAt: null,
+    smsStoppedAt: null,
     email: 'joy@example.com',
     mobile: null,
     dateOfBirth: '1990-04-02',

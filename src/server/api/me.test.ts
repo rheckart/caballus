@@ -42,6 +42,8 @@ import {
   submitCode,
 } from '../auth/sign-in'
 import { forgetSendsForTest, setEmailTransport, type OutgoingEmail } from '../email'
+import { forgetTextsForTest, setSmsTransport, type OutgoingText } from '../sms'
+import { setVerifier, type VerifyPurpose } from '../auth/verify'
 import { anonymousContext, currentOrgId } from '../request-context'
 import { api, buildApi } from './app'
 
@@ -78,6 +80,13 @@ describe.skipIf(!reachable)('your own contact details, through the API', () => {
 
   /** Every message the run sent, so a test can read a code the way a volunteer does. */
   let posted: OutgoingEmail[] = []
+
+  /** Every text the run sent, and every verification it started (#78). */
+  let texted: OutgoingText[] = []
+  let verified: { to: string; purpose: VerifyPurpose }[] = []
+
+  /** What the fake verifier accepts. Verify owns the code, so a test picks one. */
+  const STANDING_CODE = '424242'
 
   function orgId(): OrgId {
     process.env.APP_ORG_ID = HILL_BARN
@@ -152,11 +161,26 @@ describe.skipIf(!reachable)('your own contact details, through the API', () => {
 
   beforeEach(() => {
     posted = []
+    texted = []
+    verified = []
     forgetCodeRequestsForTest()
     forgetSendsForTest()
+    forgetTextsForTest()
     setEmailTransport((message) => {
       posted.push(message)
       return Promise.resolve()
+    })
+    // **No test makes a paid call** (#77, #78): both doors out are replaced.
+    setSmsTransport((message) => {
+      texted.push(message)
+      return Promise.resolve()
+    })
+    setVerifier({
+      start: (to, purpose) => {
+        verified.push({ to, purpose })
+        return Promise.resolve()
+      },
+      check: (_to, code) => Promise.resolve(code === STANDING_CODE),
     })
     // The transport logs the address and subject of everything it sends, and a
     // suite that signs several people in would otherwise write a page of it.
@@ -167,6 +191,8 @@ describe.skipIf(!reachable)('your own contact details, through the API', () => {
     // The transport is process-wide, so it is put back rather than left
     // pointing at an array the next test has already replaced.
     setEmailTransport(null)
+    setSmsTransport(null)
+    setVerifier(null)
     vi.restoreAllMocks()
     await wipe({ keepOrg: true })
   })
@@ -285,18 +311,15 @@ describe.skipIf(!reachable)('your own contact details, through the API', () => {
     }))
   }
 
-  describe('the name and the mobile, which commit immediately', () => {
-    it('changes your own mobile, and names you as both the actor and the subject', async () => {
+  describe('the name, which commits immediately', () => {
+    it('changes your own name, and names you as both the actor and the subject', async () => {
       const volunteerId = await seedVolunteer('Kate Ellery', `kate${OURS}`)
 
-      const saved = await post(apiAs(volunteerId), '/me/contact-details', {
-        name: 'Kate Ellery',
-        mobile: '410-555-0117',
-      })
+      const saved = await post(apiAs(volunteerId), '/me/contact-details', { name: 'Kate Nash' })
 
       expect(saved.status).toBe(204)
-      const [row] = await owner`select mobile from volunteers where id = ${volunteerId}`
-      expect(row?.mobile).toBe('410-555-0117')
+      const [row] = await owner`select name from volunteers where id = ${volunteerId}`
+      expect(row?.name).toBe('Kate Nash')
       // The whole of what ADR 0027 asks the entry to say: one person in both
       // columns, and **no reason** — a reason exists because somebody is
       // explaining a decision about another person, which this is not.
@@ -305,41 +328,29 @@ describe.skipIf(!reachable)('your own contact details, through the API', () => {
           actor: volunteerId,
           entity: 'volunteer',
           subject: volunteerId,
-          field: 'mobile',
-          before: null,
-          after: '410-555-0117',
+          field: 'name',
+          before: 'Kate Ellery',
+          after: 'Kate Nash',
           reason: null,
         },
       ])
     })
 
-    it('writes an entry for the field that moved and none for the field that did not', async () => {
-      const volunteerId = await seedVolunteer('Kate Ellery', `kate${OURS}`, '410-555-0117')
+    it('writes nothing when the name did not move', async () => {
+      const volunteerId = await seedVolunteer('Kate Ellery', `kate${OURS}`)
       const mine = apiAs(volunteerId)
 
-      // The name changes and the mobile is sent back unchanged.
-      expect(
-        (await post(mine, '/me/contact-details', { name: 'Kate Nash', mobile: '410-555-0117' }))
-          .status,
-      ).toBe(204)
+      expect((await post(mine, '/me/contact-details', { name: 'Kate Ellery' })).status).toBe(204)
 
-      expect(await auditHere()).toEqual([
-        expect.objectContaining({ field: 'name', before: 'Kate Ellery', after: 'Kate Nash' }),
-      ])
-
-      // And now the other way round: the same name, a new number. An entry
-      // saying a name changed from *Kate Nash* to *Kate Nash* is noise in the
+      // An entry saying a name changed from *Kate* to *Kate* is noise in the
       // one record that has to stay readable.
-      expect(
-        (await post(mine, '/me/contact-details', { name: 'Kate Nash', mobile: '410-555-0199' }))
-          .status,
-      ).toBe(204)
+      expect(await auditHere()).toEqual([])
+    })
 
-      const entries = await auditHere()
-      expect(entries.map((entry) => entry.field)).toEqual(['mobile', 'name'])
-      expect(entries[0]).toEqual(
-        expect.objectContaining({ before: '410-555-0117', after: '410-555-0199' }),
-      )
+    it('carries no mobile at all, which is #78 moving it behind a code', async () => {
+      // Structural rather than checked: the field is not in the contract, so
+      // there is no shape in which this endpoint moves a credential.
+      expect(Object.keys(contract.writes['/me/contact-details'].accepts.shape)).toEqual(['name'])
     })
 
     it('answers /me with your own email and mobile, which the redaction was never about', async () => {
@@ -582,6 +593,149 @@ describe.skipIf(!reachable)('your own contact details, through the API', () => {
       // And the plain edit does not, because it is an ordinary write about the
       // past and safe to send twice (ADR 0005).
       expect('neverQueued' in contract.writes['/me/contact-details']).toBe(false)
+    })
+  })
+
+  /**
+   * Changing the number you sign in with (#78, ADR 0029).
+   *
+   * The trap ADR 0027 walked out of once, for a second field: the moment a text
+   * is how somebody logs in, a new number is a permanent lockout only a
+   * Coordinator can undo. So the flow is the address flow's — a code to the
+   * **new** number, of a type structurally unreachable from the login screen,
+   * and nothing moves until it comes back.
+   */
+  describe('changing the number you sign in with', () => {
+    it('sends a code to the new number and moves nothing yet', async () => {
+      const volunteerId = await seedVolunteer('Kate Ellery', `kate${OURS}`, '+14105550117')
+      const mine = apiAs(volunteerId)
+
+      const asked = await post(mine, '/me/mobile/code', { mobile: '410-555-0199' })
+
+      expect(asked.status).toBe(204)
+      // Twilio Verify, on the **change** Service — not the sign-in one, which
+      // is what makes this code structurally unreachable from `/login`.
+      expect(verified).toEqual([{ to: '+14105550199', purpose: 'change-mobile' }])
+      const [row] = await owner`select mobile from volunteers where id = ${volunteerId}`
+      expect(row?.mobile).toBe('+14105550117')
+    })
+
+    it('moves the number when the code comes back, and tells the old one', async () => {
+      const volunteerId = await seedVolunteer('Kate Ellery', `kate${OURS}`, '+14105550117')
+      const mine = apiAs(volunteerId)
+      await post(mine, '/me/mobile/code', { mobile: '410-555-0199' })
+
+      const changed = await post(mine, '/me/mobile', {
+        mobile: '410-555-0199',
+        code: STANDING_CODE,
+      })
+
+      expect(changed.status).toBe(204)
+      const [row] = await owner`select mobile from volunteers where id = ${volunteerId}`
+      // Stored in one spelling, because a code sent here signs somebody in.
+      expect(row?.mobile).toBe('+14105550199')
+      // The old number is told, because the person who can no longer sign in at
+      // that handset is the one who most needs to know.
+      expect(texted.map((message) => message.to)).toEqual(['+14105550117'])
+      expect(await auditHere()).toEqual([
+        expect.objectContaining({
+          actor: volunteerId,
+          subject: volunteerId,
+          field: 'mobile',
+          before: '+14105550117',
+          after: '+14105550199',
+          reason: null,
+        }),
+      ])
+    })
+
+    it('completes the change even when the notice to the old number fails', async () => {
+      const volunteerId = await seedVolunteer('Kate Ellery', `kate${OURS}`, '+14105550117')
+      const mine = apiAs(volunteerId)
+      await post(mine, '/me/mobile/code', { mobile: '410-555-0199' })
+      setSmsTransport(() => Promise.reject(new Error('Twilio said no')))
+
+      // Refusing a completed credential change over an undeliverable notice
+      // leaves somebody with a number they cannot sign in at (ADR 0027).
+      const changed = await post(mine, '/me/mobile', {
+        mobile: '410-555-0199',
+        code: STANDING_CODE,
+      })
+
+      expect(changed.status).toBe(204)
+      const [row] = await owner`select mobile from volunteers where id = ${volunteerId}`
+      expect(row?.mobile).toBe('+14105550199')
+    })
+
+    it('refuses a wrong code and moves nothing', async () => {
+      const volunteerId = await seedVolunteer('Kate Ellery', `kate${OURS}`, '+14105550117')
+      const mine = apiAs(volunteerId)
+      await post(mine, '/me/mobile/code', { mobile: '410-555-0199' })
+
+      const refused = await post(mine, '/me/mobile', { mobile: '410-555-0199', code: '000000' })
+
+      expect(refused.status).toBe(409)
+      expect(refused.body).toEqual({ error: 'wrong_code' })
+      const [row] = await owner`select mobile from volunteers where id = ${volunteerId}`
+      expect(row?.mobile).toBe('+14105550117')
+    })
+
+    it('refuses a number another live Volunteer already holds', async () => {
+      await seedVolunteer('Joy Marsden', `joy${OURS}`, '+14105550199')
+      const volunteerId = await seedVolunteer('Kate Ellery', `kate${OURS}`, '+14105550117')
+
+      const refused = await post(apiAs(volunteerId), '/me/mobile/code', { mobile: '410-555-0199' })
+
+      expect(refused.status).toBe(409)
+      expect(refused.body).toEqual({ error: 'mobile_taken' })
+      expect(verified).toEqual([])
+    })
+
+    it('refuses something that is not a number at all', async () => {
+      const volunteerId = await seedVolunteer('Kate Ellery', `kate${OURS}`)
+
+      const refused = await post(apiAs(volunteerId), '/me/mobile/code', { mobile: 'ask Kate' })
+
+      expect(refused.status).toBe(409)
+      expect(refused.body).toEqual({ error: 'mobile_invalid' })
+    })
+
+    it('gives the number up with no code, because that locks nobody out', async () => {
+      const volunteerId = await seedVolunteer('Kate Ellery', `kate${OURS}`, '+14105550117')
+
+      const removed = await post(apiAs(volunteerId), '/me/mobile/removal', {})
+
+      expect(removed.status).toBe(204)
+      const [row] = await owner`select mobile from volunteers where id = ${volunteerId}`
+      expect(row?.mobile).toBeNull()
+      expect(await auditHere()).toEqual([
+        expect.objectContaining({ field: 'mobile', before: '+14105550117', after: null }),
+      ])
+    })
+
+    it('spends the budget before it sends, never after', async () => {
+      const volunteerId = await seedVolunteer('Kate Ellery', `kate${OURS}`, '+14105550117')
+      const mine = apiAs(volunteerId)
+
+      for (let index = 0; index < CODES_PER_ADDRESS; index += 1) {
+        expect((await post(mine, '/me/mobile/code', { mobile: '410-555-0199' })).status).toBe(204)
+      }
+      const spent = await post(mine, '/me/mobile/code', { mobile: '410-555-0199' })
+
+      expect(spent.status).toBe(429)
+      expect(spent.body).toEqual({ error: 'too_many_codes' })
+      // The point: the refused one never reached the vendor. A send above a
+      // spent budget is a paid message that left before the 429 came back, and
+      // this endpoint takes an arbitrary number from any signed-in volunteer.
+      expect(verified).toHaveLength(CODES_PER_ADDRESS)
+    })
+
+    it('declares neverQueued on all three, because a credential is not replayable', () => {
+      expect(contract.writes['/me/mobile/code'].neverQueued).toBe(true)
+      expect(contract.writes['/me/mobile'].neverQueued).toBe(true)
+      // Even the removal, which **is** safe to repeat: replayed from a pocket
+      // days later it would take away a number somebody has since put back.
+      expect(contract.writes['/me/mobile/removal'].neverQueued).toBe(true)
     })
   })
 })

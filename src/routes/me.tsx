@@ -47,12 +47,19 @@ type EmailStep =
   | { readonly step: 'asking'; readonly email: string }
   | { readonly step: 'changed'; readonly sessionsEnded: number }
 
+/** The same three steps for the number (#78) — one fewer fact to report. */
+type MobileStep =
+  | { readonly step: 'idle' }
+  | { readonly step: 'asking'; readonly mobile: string }
+  | { readonly step: 'changed' }
+
 function MyDetails() {
   const [me, setMe] = useState<Me | null>(null)
   const [missing, setMissing] = useState<string | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [email, setEmail] = useState<EmailStep>({ step: 'idle' })
+  const [mobile, setMobile] = useState<MobileStep>({ step: 'idle' })
 
   const load = useCallback(async () => {
     setMe(await client.get('/me'))
@@ -114,21 +121,17 @@ function MyDetails() {
       )}
 
       <section className="mb-4 rounded-lg border border-border bg-background p-4 sm:p-6">
-        <h2 className="m-0">Name and mobile</h2>
+        <h2 className="m-0">Name</h2>
         <p className="text-sm text-muted-foreground">
-          These commit as soon as you save. Nobody is asked why.
+          This commits as soon as you save. Nobody is asked why.
         </p>
         <form
           onSubmit={(event: FormEvent<HTMLFormElement>) => {
             event.preventDefault()
             const data = new FormData(event.currentTarget)
-            const mobile = String(data.get('mobile') ?? '').trim()
             setSaved(false)
             void act(() =>
-              client.post('/me/contact-details', {
-                name: String(data.get('name') ?? ''),
-                mobile: mobile === '' ? null : mobile,
-              }),
+              client.post('/me/contact-details', { name: String(data.get('name') ?? '') }),
             ).then((ok) => {
               setSaved(ok)
             })
@@ -138,15 +141,128 @@ function MyDetails() {
             <Field label="Name" htmlFor="my-name">
               <Input id="my-name" name="name" required maxLength={200} defaultValue={me.name} />
             </Field>
-            <Field label="Mobile" htmlFor="my-mobile">
-              <Input id="my-mobile" name="mobile" maxLength={60} defaultValue={me.mobile ?? ''} />
-            </Field>
           </Fields>
           <Actions>
             <Button type="submit">Save</Button>
             {saved && <span className="text-sm text-muted-foreground">Saved.</span>}
           </Actions>
         </form>
+      </section>
+
+      {/* The mobile left the section above when it became a credential (#78,
+          ADR 0029): a number that moves without being proved is exactly the
+          lockout ADR 0027 built the address flow to prevent. Same two steps,
+          same shape, and a third act for giving it up — which needs no proof,
+          because nobody is locked out by not having a number. */}
+      <section className="mb-4 rounded-lg border border-border bg-background p-4 sm:p-6">
+        <h2 className="m-0">Mobile number</h2>
+        <p className="text-sm text-muted-foreground">
+          {me.mobile === null
+            ? 'You have no number on file. Adding one lets you sign in by text as well as by email, and lets the rescue reach you when a shift is short.'
+            : `Your number is ${me.mobile}. You can sign in with it as well as with your email address.`}{' '}
+          Changing it takes a code texted to the new number — until you enter that code, nothing
+          changes.
+        </p>
+
+        {mobile.step === 'changed' && (
+          <p role="status">
+            Your number is now <strong>{me.mobile}</strong>. We told the old one.
+          </p>
+        )}
+
+        {mobile.step !== 'asking' && (
+          <form
+            onSubmit={(event: FormEvent<HTMLFormElement>) => {
+              event.preventDefault()
+              const wanted = String(new FormData(event.currentTarget).get('mobile') ?? '').trim()
+              void act(() => client.post('/me/mobile/code', { mobile: wanted })).then((ok) => {
+                if (ok) setMobile({ step: 'asking', mobile: wanted })
+              })
+            }}
+          >
+            <Fields>
+              <Field label="New number" htmlFor="my-mobile">
+                <Input
+                  id="my-mobile"
+                  name="mobile"
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  required
+                  maxLength={60}
+                />
+              </Field>
+            </Fields>
+            <Actions>
+              <Button type="submit">Text me a code</Button>
+              {me.mobile !== null && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    void act(() => client.post('/me/mobile/removal', {}))
+                  }}
+                >
+                  Remove my number
+                </Button>
+              )}
+            </Actions>
+          </form>
+        )}
+
+        {mobile.step === 'asking' && (
+          <form
+            onSubmit={(event: FormEvent<HTMLFormElement>) => {
+              event.preventDefault()
+              const code = String(new FormData(event.currentTarget).get('code') ?? '')
+              setProblem(null)
+              void client.post('/me/mobile', { mobile: mobile.mobile, code }).then(
+                () => {
+                  // Off the write's own answer and before the re-read, for the
+                  // reason the address flow states: the code is spent the
+                  // moment the server takes it.
+                  setMobile({ step: 'changed' })
+                  void load().catch(() => {
+                    setProblem(
+                      'Your number changed, but this screen could not reload. Pull to refresh.',
+                    )
+                  })
+                },
+                (error: unknown) => {
+                  setProblem(refusalText(error))
+                },
+              )
+            }}
+          >
+            <p className="text-sm text-muted-foreground">
+              We texted a six-digit code to <strong>{mobile.mobile}</strong>.
+            </p>
+            <Fields>
+              <Field label="Code" htmlFor="my-mobile-code">
+                <Input
+                  id="my-mobile-code"
+                  name="code"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  required
+                  maxLength={20}
+                />
+              </Field>
+            </Fields>
+            <Actions>
+              <Button type="submit">Change my number</Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setMobile({ step: 'idle' })
+                }}
+              >
+                Cancel
+              </Button>
+            </Actions>
+          </form>
+        )}
       </section>
 
       <section className="mb-4 rounded-lg border border-border bg-background p-4 sm:p-6">

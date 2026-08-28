@@ -216,11 +216,54 @@ export const volunteers = pgTable(
      */
     email: text('email').notNull(),
     /**
-     * Still collected, no longer enforced (ADR 0009). Backfilling sixty of
-     * these later is the kind of chore that never happens, and it is what SMS
-     * returns to.
+     * **A credential, as of ADR 0029, and no longer decoration.**
+     *
+     * ADR 0009 kept collecting it and stopped enforcing it, and wrote down that
+     * backfilling sixty of these later is the chore that never happens. SMS has
+     * returned: a code sent here signs somebody in, so this is stored in one
+     * spelling — E.164, through `normaliseMobile` in `src/shared/mobile.ts` —
+     * and no two live Volunteers may hold the same one.
+     *
+     * Still nullable. A volunteer with no mobile signs in by email exactly as
+     * before, which is the whole of ADR 0029's *a second door, never a
+     * replacement*.
      */
     mobile: text('mobile'),
+    /**
+     * **SMS Consent**: permission to be texted, and the timestamp of it
+     * (ADR 0028).
+     *
+     * Carriers require documented proof of opt-in, so this is the rescue's own
+     * record of a thing somebody else may ask to see. Captured in the
+     * Coordinator's invite flow, where the opt-in language is shown rather than
+     * assumed, and recordable later for the sixty volunteers who predate it.
+     *
+     * **It gates the Urgent Send and never login** (ADR 0029). A sign-in code
+     * is asked for by the person receiving it, in the moment, which is not
+     * standing permission to be messaged — and conflating the two means a
+     * volunteer who replied STOP to a staffing text cannot sign in.
+     */
+    smsConsentAt: timestamp('sms_consent_at', { withTimezone: true }),
+    smsConsentRecordedBy: uuid('sms_consent_recorded_by').references(
+      (): AnyPgColumn => volunteers.id,
+    ),
+    /**
+     * When they replied STOP, as the carrier reported it.
+     *
+     * A **different fact** from consent never given, and it is why this is a
+     * second column rather than clearing the one above: the carrier is the
+     * system of record for an opt-out and legally has to be, so what is here is
+     * the rescue's copy of somebody else's decision. Twilio blocks the message
+     * itself; this is written down the first time a send is refused for it
+     * (`wasUnsubscribed` in `src/server/sms.ts`), so the next *reaches 47 of
+     * 60* is right rather than promising somebody who will never receive it.
+     *
+     * There is no inbound webhook, deliberately: an endpoint for a stranger's
+     * POST is a real surface, ADR 0016 requires every one to be declared in the
+     * contract with an authorization, and the carrier is already honouring the
+     * STOP whether or not this column knows about it yet.
+     */
+    smsStoppedAt: timestamp('sms_stopped_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     /** Removed from the rescue. The work they did still happened. */
     removedAt: timestamp('removed_at', { withTimezone: true }),
@@ -279,6 +322,14 @@ export const volunteers = pgTable(
     // so the two cannot disagree about which row is the live one.
     uniqueIndex('volunteers_email_in_org')
       .on(table.orgId, table.email)
+      .where(sql`removed_at is null`),
+    // One mobile, one *current* Volunteer — the twin of the address index
+    // above, and for the same reason now that a code sent here signs somebody
+    // in (ADR 0029). Partial over the ones still here, and over the ones who
+    // gave a number at all: a null is not a collision, and Postgres already
+    // treats it as distinct, so the predicate is about removal alone.
+    uniqueIndex('volunteers_mobile_in_org')
+      .on(table.orgId, table.mobile)
       .where(sql`removed_at is null`),
     inScope('volunteers_in_scope'),
   ],
@@ -1285,6 +1336,27 @@ export const shifts = pgTable(
     /** Set when a person clears it. Never set by arithmetic, and never by a clock. */
     shortClearedAt: timestamp('short_cleared_at', { withTimezone: true }),
     shortClearedBy: uuid('short_cleared_by').references(() => volunteers.id),
+    /**
+     * **The Urgent Send**: who put this Shift's Short in front of people by
+     * text, and when (ADR 0028, #77).
+     *
+     * Two columns on the record that already exists, because an Urgent Send is
+     * a send and not a noun — there is no Message, no Broadcast and no
+     * Notification entity, and this is what stops the model growing a fifth way
+     * to say something.
+     *
+     * It is a **second, deliberate act** on top of declaring Short rather than
+     * part of it: declaring Short queues (the app is the ledger — a Shift
+     * needing people is true whether or not the app knows), and a text does
+     * not (the app is the medium, and a text about Tuesday arriving on
+     * Thursday is the failure ADR 0018 names).
+     *
+     * Never cleared. Declaring Short again writes a **new** `short_declared_at`
+     * later than this, which is how a Shift that was cleared and called short a
+     * second time can be sent a second time without a column to reset.
+     */
+    urgentSentAt: timestamp('urgent_sent_at', { withTimezone: true }),
+    urgentSentBy: uuid('urgent_sent_by').references(() => volunteers.id),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     createdBy: uuid('created_by').references(() => volunteers.id),
     /**
@@ -1791,6 +1863,12 @@ export const observations = pgTable(
     // A Shift's or a Visit's own Observations, and the Visit sign-out gate's
     // own read.
     index('observations_attendance').on(table.orgId, table.attendanceId),
+    // A horse's Timeline (#74). `subjectId` carries no foreign key, because an
+    // Observation names a Space, a Product or *a record that is wrong* as
+    // readily as a horse (ADR 0014) — so the pair is what a subject is, and it
+    // is the pair that is indexed. Without it the profile of one horse is a
+    // scan of every Observation the rescue has ever recorded.
+    index('observations_subject').on(table.orgId, table.subjectKind, table.subjectId),
     inScope('observations_in_scope'),
   ],
 ).enableRLS()
@@ -1904,6 +1982,18 @@ export const announcements = pgTable(
     /** Null until the first edit — posting is not an edit of itself. */
     lastEditedBy: uuid('last_edited_by').references(() => volunteers.id),
     lastEditedAt: timestamp('last_edited_at', { withTimezone: true }),
+    /**
+     * **The Urgent Send**, the same two columns a Shift carries (ADR 0028,
+     * #77) — and this is the amendment to ADR 0018, which said the app sends
+     * nothing about an Announcement.
+     *
+     * Posting still sends nothing. The wall is still a wall. What changed is
+     * that a second deliberate act may put one in front of people, once: an
+     * Announcement is posted once, an edit does not re-open it, and *nobody is
+     * told twice* is the rule the absence of a clearing path keeps.
+     */
+    urgentSentAt: timestamp('urgent_sent_at', { withTimezone: true }),
+    urgentSentBy: uuid('urgent_sent_by').references(() => volunteers.id),
   },
   (table) => [
     // The Home screen's and the Board's one read: what has not expired yet.

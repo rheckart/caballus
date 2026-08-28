@@ -210,7 +210,7 @@ describe('what a Shift is missing, as a sentence rather than a category', () => 
           day: '2026-08-28',
           roster: [member('beth')],
           gaps: ['below_target_headcount'],
-          short: { declaredAt: 1_755_000_000_000, declaredBy: 'priya' },
+          short: { declaredAt: 1_755_000_000_000, declaredBy: 'priya', urgentSentAt: null },
         }),
       ],
     })

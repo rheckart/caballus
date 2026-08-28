@@ -50,6 +50,26 @@ export function isAnyShiftType(stored: string): stored is AnyShiftType {
 }
 
 /**
+ * What a Shift Type is called on a screen, and now in a text (#77).
+ *
+ * Eight screens each carried their own copy of this map with identical values.
+ * The ninth reader was going to be `src/shared/urgent.ts`, where the words go
+ * out to sixty handsets rather than onto one page — and a wording that drifts
+ * between the wall and the text is exactly the failure ADR 0011 keeps
+ * `staffingFact` in one place to prevent. So it is one constant, here, beside
+ * the vocabulary it labels.
+ *
+ * A **total** `Record`, so a fourth Shift Type does not compile until somebody
+ * decides what to call it.
+ */
+export const SHIFT_TYPE_LABEL: Record<AnyShiftType, string> = {
+  feed_am: 'Feed AM',
+  feed_pm: 'Feed PM',
+  lunch: 'Lunch',
+  pop_up: 'Pop-up',
+}
+
+/**
  * The position a Volunteer holds on one Shift (ADR 0010): `lead`, `co_lead`,
  * `acting_lead`, `volunteer`.
  *

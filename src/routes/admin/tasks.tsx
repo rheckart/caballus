@@ -56,6 +56,7 @@ import { SHIFT_TYPES } from '../../shared/feed-schedule'
 import { refusalText } from '../../shared/refusals'
 import { TASK_PERIODS, TASK_PRIORITIES, TASK_SUBJECT_KINDS } from '../../shared/materialization'
 import type { Answers, contract } from '../../shared/api-contract'
+import { SHIFT_TYPE_LABEL } from '../../shared/shifts'
 
 export const Route = createFileRoute('/admin/tasks')({
   component: Tasks,
@@ -81,12 +82,6 @@ const PRIORITY_LABEL: Record<Task['priority'], string> = {
 const PERIOD_LABEL: Record<Task['period'], string> = {
   shift: 'per Shift',
   day: 'per day',
-}
-
-const SHIFT_TYPE_LABEL: Record<ShiftType, string> = {
-  feed_am: 'Feed AM',
-  feed_pm: 'Feed PM',
-  lunch: 'Lunch',
 }
 
 /** A Subject encoded onto one Select item value, and decoded back off it. */

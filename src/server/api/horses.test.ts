@@ -96,6 +96,13 @@ describe.skipIf(!reachable)('horses and Spaces, through the API', () => {
 
   async function wipe({ keepOrg = false }: { keepOrg?: boolean } = {}): Promise<void> {
     await owner`delete from audit_entries where org_id = ${FIELD_BARN}`
+    await owner`delete from escalation_comments where org_id = ${FIELD_BARN}`
+    await owner`delete from escalations where org_id = ${FIELD_BARN}`
+    await owner`delete from observations where org_id = ${FIELD_BARN}`
+    await owner`delete from attendance where org_id = ${FIELD_BARN}`
+    await owner`delete from horse_measurements where org_id = ${FIELD_BARN}`
+    await owner`delete from feed_schedule_lines where org_id = ${FIELD_BARN}`
+    await owner`delete from feed_schedule_versions where org_id = ${FIELD_BARN}`
     await owner`delete from alerts where org_id = ${FIELD_BARN}`
     await owner`delete from horse_space_assignments where org_id = ${FIELD_BARN}`
     await owner`delete from horses where org_id = ${FIELD_BARN}`
@@ -713,6 +720,220 @@ describe.skipIf(!reachable)('horses and Spaces, through the API', () => {
       })
       expect(refused.status).toBe(404)
       expect(refused.body.error).toBe('horse_not_found')
+    })
+  })
+
+  /**
+   * The Timeline, and the list of horses with something going on (#74).
+   *
+   * The claims are the ticket's own acceptance: one section, newest first,
+   * composed from records that already exist; every entry naming who and when;
+   * an Escalation under the Observation it framed rather than beside it; a
+   * Departed horse keeping her Timeline and leaving the list; and the list
+   * derived, so closing an Escalation or ending an Alert drops her out with
+   * nothing to clear.
+   */
+  describe('the Timeline', () => {
+    /** The `horse_care` holder `holder()` seeded, whose acts the Timeline names. */
+    async function priyaId(): Promise<string> {
+      const rows = (await owner`
+        select id from volunteers where org_id = ${FIELD_BARN} and name = 'Priya Chandra'
+      `) as { id: string }[]
+      return String(rows[0]?.id)
+    }
+
+    /** An Observation about a horse, recorded against an Attendance of its own. */
+    async function observationAbout(
+      horseId: string,
+      volunteerId: string,
+      text: string,
+    ): Promise<string> {
+      const [attendance] = await owner`
+        insert into attendance (id, org_id, volunteer_id, category, description,
+                                arrived_at, arrived_recorded_by)
+        values (gen_random_uuid(), ${FIELD_BARN}, ${volunteerId}, 'other', 'Checking in',
+                now(), ${volunteerId})
+        returning id
+      `
+      const [observation] = await owner`
+        insert into observations (id, org_id, attendance_id, text, subject_kind, subject_id,
+                                  subject_label, recorded_by, observed_by)
+        values (gen_random_uuid(), ${FIELD_BARN}, ${String(attendance?.id)}, ${text},
+                'horse', ${horseId}, 'Storm', ${volunteerId}, ${volunteerId})
+        returning id
+      `
+      return String(observation?.id)
+    }
+
+    async function escalate(
+      observationId: string,
+      volunteerId: string,
+      framing: string,
+      closed = false,
+    ): Promise<string> {
+      const [row] = await owner`
+        insert into escalations (id, org_id, observation_id, scope, framing, escalated_by,
+                                 closed_at, closed_by, closing_note)
+        values (gen_random_uuid(), ${FIELD_BARN}, ${observationId}, 'horse_care', ${framing},
+                ${volunteerId}, ${closed ? owner`now()` : null},
+                ${closed ? volunteerId : null}, ${closed ? 'The farrier came.' : null})
+        returning id
+      `
+      return String(row?.id)
+    }
+
+    it('gathers what is scattered across four screens onto the horse, newest first', async () => {
+      const api = await holder()
+      const actorId = await priyaId()
+      const created = await post(api, '/horses', { name: 'Storm' })
+      const horseId = created.body.horseId as string
+
+      // One of each kind, in the order they happened.
+      const raised = await post(api, '/alerts', {
+        horseId,
+        kind: 'prohibition',
+        text: 'No treats by hand — she bites.',
+      })
+      await post(api, '/measurements', {
+        horseId,
+        kind: 'weight',
+        value: 1040,
+        method: 'tape',
+        takenOn: '2026-03-02',
+      })
+      const observationId = await observationAbout(horseId, actorId, 'Favouring the near hind.')
+      await escalate(observationId, actorId, 'She needs the farrier this week.')
+      await post(api, '/alerts/end', {
+        alertId: raised.body.alertId as string,
+        reason: 'She has been fine on the ground for a season.',
+      })
+
+      const profile = await get(api, `/horses/${horseId}`)
+      const timeline = profile.body.timeline as {
+        kind: string
+        on: string
+        byName: string | null
+        escalations?: { framing: string; closedAt: number | null; commentCount: number }[]
+      }[]
+
+      // Newest first, and the Escalation is *not* a sixth entry — it rides
+      // under the Observation it framed (#74).
+      expect(timeline.map((entry) => entry.kind)).toEqual([
+        'alert_ended',
+        'observation',
+        'measurement',
+        'alert_raised',
+      ])
+      // Every entry names who and when.
+      for (const entry of timeline) {
+        expect(entry.byName).toBe('Priya Chandra')
+        expect(entry.on).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+      }
+      expect(timeline[1]?.escalations).toEqual([
+        expect.objectContaining({
+          framing: 'She needs the farrier this week.',
+          closedAt: null,
+          commentCount: 0,
+        }),
+      ])
+    })
+
+    it('carries the reason an Alert ended, which is the only thing that answers why', async () => {
+      const api = await holder()
+      const created = await post(api, '/horses', { name: 'Reformed' })
+      const horseId = created.body.horseId as string
+      const raised = await post(api, '/alerts', { horseId, kind: 'care', text: 'Left eye drops' })
+      await post(api, '/alerts/end', {
+        alertId: raised.body.alertId as string,
+        reason: 'The eye healed in March.',
+      })
+
+      const profile = await get(api, `/horses/${horseId}`)
+      expect(profile.body.timeline).toContainEqual(
+        expect.objectContaining({ kind: 'alert_ended', reason: 'The eye healed in March.' }),
+      )
+    })
+
+    it('keeps a Departed horse’s Timeline whole, and takes her off the list', async () => {
+      const api = await holder()
+      const created = await post(api, '/horses', { name: 'Old Timer' })
+      const horseId = created.body.horseId as string
+      await post(api, '/alerts', { horseId, kind: 'allergy', text: 'Bee stings' })
+
+      await post(api, '/horses/departure', { horseId, departedOn: '2026-04-01' })
+
+      const profile = await get(api, `/horses/${horseId}`)
+      // The history must not go with the horse leaving (#35).
+      expect(profile.body.timeline).toHaveLength(1)
+
+      const listed = await get(api, '/horses')
+      expect(listed.body.attention).toEqual([])
+    })
+
+    it('lists a horse with a standing Alert, and drops her when it ends', async () => {
+      const api = await holder()
+      const created = await post(api, '/horses', { name: 'Biter' })
+      const horseId = created.body.horseId as string
+      const raised = await post(api, '/alerts', {
+        horseId,
+        kind: 'prohibition',
+        text: 'No treats by hand.',
+      })
+
+      const listed = await get(api, '/horses')
+      expect(listed.body.attention).toEqual([
+        expect.objectContaining({
+          horseId,
+          horseName: 'Biter',
+          because: 'alert',
+          text: 'No treats by hand.',
+        }),
+      ])
+
+      await post(api, '/alerts/end', {
+        alertId: raised.body.alertId as string,
+        reason: 'She stopped.',
+      })
+
+      // Derived, never stored: nothing had to be cleared for her to leave.
+      expect((await get(api, '/horses')).body.attention).toEqual([])
+    })
+
+    it('lists a horse with an open Escalation, and drops her when it closes', async () => {
+      const api = await holder()
+      const actorId = await priyaId()
+      const created = await post(api, '/horses', { name: 'Dawson' })
+      const horseId = created.body.horseId as string
+      const observationId = await observationAbout(horseId, actorId, 'Would not weight it.')
+      const escalationId = await escalate(observationId, actorId, 'The near hind needs looking at.')
+
+      expect((await get(api, '/horses')).body.attention).toEqual([
+        expect.objectContaining({
+          horseId,
+          because: 'escalation',
+          text: 'The near hind needs looking at.',
+        }),
+      ])
+
+      await owner`
+        update escalations set closed_at = now(), closed_by = ${actorId},
+                               closing_note = 'The farrier came.'
+        where id = ${escalationId}
+      `
+      expect((await get(api, '/horses')).body.attention).toEqual([])
+    })
+
+    it('is read by any Volunteer, because the floor reads everything', async () => {
+      const holding = await holder()
+      const created = await post(holding, '/horses', { name: 'Read Me' })
+      const horseId = created.body.horseId as string
+      await post(holding, '/alerts', { horseId, kind: 'care', text: 'Left eye drops' })
+
+      const plain = await reader()
+      const profile = await get(plain, `/horses/${horseId}`)
+      expect(profile.status).toBe(200)
+      expect(profile.body.timeline).toHaveLength(1)
+      expect((await get(plain, '/horses')).body.attention).toHaveLength(1)
     })
   })
 

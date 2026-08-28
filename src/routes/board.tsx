@@ -46,6 +46,7 @@ import { BOARD_TOKEN_HEADER } from '../shared/board'
 import { BOARD_NOT_LINKED, refusalText } from '../shared/refusals'
 import type { Answers, contract } from '../shared/api-contract'
 import { elapsed, now, type Instant } from '../shared/time'
+import { SHIFT_TYPE_LABEL } from '../shared/shifts'
 
 export const Route = createFileRoute('/board')({
   component: Board,
@@ -97,12 +98,6 @@ const UNRESOLVED_TEXT: Record<NonNullable<Resolution['unresolved']>, string> = {
 const PROVIDER_NAME: Record<Reading['provider'], string> = {
   open_meteo: 'Open-Meteo',
   nws: 'the National Weather Service',
-}
-
-const SHIFT_TYPE_LABEL: Record<Feeding['shiftType'], string> = {
-  feed_am: 'Feed AM',
-  lunch: 'Lunch',
-  feed_pm: 'Feed PM',
 }
 
 const ROUTE_LABEL: Record<Feeding['lines'][number]['route'], string> = {

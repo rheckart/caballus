@@ -5,6 +5,7 @@
  * participate.
  */
 import { screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { stubApi } from '../../test/api-stub'
@@ -43,6 +44,7 @@ const HORSES = {
       spaces: { stall: null, pasture: null, paddock: null, barn: null },
     },
   ],
+  attention: [],
 }
 
 describe('the horse list', () => {
@@ -61,6 +63,87 @@ describe('the horse list', () => {
       expect(screen.queryByText('Apollo — Stall 4')).toBeTruthy()
     })
     expect(screen.queryByText(/Old Timer/)).toBeNull()
+  })
+
+  it('lists a horse with something going on, with the newest sentence against her name', async () => {
+    stubApi({
+      '/horses': {
+        ...HORSES,
+        attention: [
+          {
+            horseId: 'apollo-1',
+            horseName: 'Apollo',
+            because: 'alert',
+            text: 'No treats by hand — she bites.',
+            at: 1_772_000_000_000,
+          },
+        ],
+      },
+    })
+    renderRoute('/horses', HorseList)
+
+    // The directory opens first: *find Storm* is the common errand.
+    expect(await screen.findByText('Apollo — Stall 4')).toBeTruthy()
+
+    await userEvent.setup().click(screen.getByRole('tab', { name: /Something going on/ }))
+    await waitFor(() => {
+      expect(screen.getByText(/Standing alert — No treats by hand/)).toBeTruthy()
+    })
+  })
+
+  it('names an open report as a report rather than as an alert', async () => {
+    stubApi({
+      '/horses': {
+        ...HORSES,
+        attention: [
+          {
+            horseId: 'apollo-1',
+            horseName: 'Apollo',
+            because: 'escalation',
+            text: 'She needs the farrier this week.',
+            at: 1_772_000_000_000,
+          },
+        ],
+      },
+    })
+    renderRoute('/horses', HorseList)
+
+    await userEvent.setup().click(await screen.findByRole('tab', { name: /Something going on/ }))
+    await waitFor(() => {
+      expect(screen.getByText(/Open report — She needs the farrier this week\./)).toBeTruthy()
+    })
+  })
+
+  it('says nothing is going on rather than showing an empty list', async () => {
+    stubApi({ '/horses': HORSES })
+    renderRoute('/horses', HorseList)
+
+    await userEvent.setup().click(await screen.findByRole('tab', { name: 'Something going on' }))
+    await waitFor(() => {
+      expect(screen.getByText('Nothing going on with anybody right now.')).toBeTruthy()
+    })
+  })
+
+  it('carries no Alert on a directory row — #60 decided that deliberately', async () => {
+    stubApi({
+      '/horses': {
+        ...HORSES,
+        attention: [
+          {
+            horseId: 'apollo-1',
+            horseName: 'Apollo',
+            because: 'alert',
+            text: 'No treats by hand — she bites.',
+            at: 1_772_000_000_000,
+          },
+        ],
+      },
+    })
+    renderRoute('/horses', HorseList)
+
+    await screen.findByText('Apollo — Stall 4')
+    // On the other tab, not beside the name in the directory.
+    expect(screen.queryByText(/No treats by hand/)).toBeNull()
   })
 
   it('shows the refusal text when the read fails', async () => {

@@ -60,7 +60,7 @@ function watchPosts(extra: Record<string, unknown> = {}): { path: string; body: 
   stubApi({
     '/volunteers': PEOPLE,
     '/me': ME,
-    '/horses': { horses: [] },
+    '/horses': { horses: [], attention: [] },
     '/attendance/sign-in': (init: RequestInit) => {
       posted.push({ path: '/attendance/sign-in', body: JSON.parse(String(init.body)) as unknown })
       return { attendanceId: 'new' }

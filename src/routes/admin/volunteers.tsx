@@ -353,6 +353,10 @@ function NewVolunteer({
   onSaved: () => void
 }) {
   const { pending, saved, save } = useSaving()
+  // shadcn's Checkbox is a Radix button rather than an `<input>`, so it carries
+  // no name and `FormData` never sees it — the same reason the release form
+  // holds this in state.
+  const [smsConsent, setSmsConsent] = useState(false)
 
   return (
     <form
@@ -365,6 +369,7 @@ function NewVolunteer({
               name: String(data.get('name') ?? ''),
               email: String(data.get('email') ?? ''),
               mobile: String(data.get('mobile') ?? '') || null,
+              smsConsent,
             }),
           ).then(onSaved),
         ).catch(() => {
@@ -398,6 +403,29 @@ function NewVolunteer({
         <Field label="Mobile" htmlFor="new-mobile" optional>
           <Input id="new-mobile" name="mobile" type="tel" inputMode="tel" maxLength={50} />
         </Field>
+        {/* **SMS Consent, asked rather than assumed** (ADR 0028). Carriers want
+            documented proof of opt-in, so the sentence beside the box is the
+            opt-in language and has to be read to the volunteer — which is why
+            it says what will be sent rather than *may we text you*. */}
+        <WideField label="Texting" htmlFor="new-sms-consent">
+          <label
+            htmlFor="new-sms-consent"
+            className="m-0 flex min-h-11 items-start gap-2 text-sm font-medium text-foreground"
+          >
+            <Checkbox
+              id="new-sms-consent"
+              className="mt-2.5"
+              checked={smsConsent}
+              onCheckedChange={(checked) => {
+                setSmsConsent(checked === true)
+              }}
+            />
+            <span className="py-2.5 font-normal">
+              They agree to be texted when a shift they could work is short, or when there is rescue
+              news that will not keep. Replying STOP ends it. Sign-in codes are not part of this.
+            </span>
+          </label>
+        </WideField>
       </Fields>
       <Actions>
         <SaveButton pending={pending}>Add the volunteer</SaveButton>
@@ -536,11 +564,62 @@ function DetailsTab({
             Turns 18 on {behind.turnsEighteenOn}, which obsoletes a parent&rsquo;s signature
           </li>
         )}
+        <li className={RECORD_ROW}>
+          Texting:{' '}
+          {behind.smsStoppedAt !== null
+            ? 'they replied STOP'
+            : behind.smsConsentAt === null
+              ? 'no consent recorded'
+              : 'agreed'}
+          {behind.mobile === null && ', and there is no number on file'}
+        </li>
         <li className={RECORD_ROW}>Account: {person.hasAccount ? 'claimed' : 'never signed in'}</li>
       </ul>
 
+      <RecordSmsConsent person={person} reload={reload} />
+
       <RecordDateOfBirth person={person} today={today} reload={reload} />
     </>
+  )
+}
+
+/**
+ * Recording or withdrawing SMS Consent for somebody who predates the question
+ * (#77, ADR 0028).
+ *
+ * A **STOP is not offered here**, and that is deliberate: `sms_stopped_at` is
+ * the rescue's copy of what a volunteer told the carrier, and a Coordinator
+ * writing into it would make two different facts indistinguishable. What a
+ * Coordinator can do is withdraw the consent they recorded, which is a
+ * different sentence and a different column.
+ */
+function RecordSmsConsent({ person, reload }: { person: Person; reload: () => Promise<void> }) {
+  const { pending, saved, save } = useSaving()
+  const behind = person.behindRoster
+  const held = behind !== null && behind.smsConsentAt !== null
+
+  return (
+    <div className="mb-4">
+      <Actions>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={pending}
+          onClick={() => {
+            void save(async () => {
+              await client.post('/volunteers/sms-consent', {
+                volunteerId: person.id,
+                consented: !held,
+              })
+              await reload()
+            })
+          }}
+        >
+          {held ? 'Withdraw consent to text' : 'Record consent to text'}
+        </Button>
+        <Saved saved={saved} what="Recorded" />
+      </Actions>
+    </div>
   )
 }
 

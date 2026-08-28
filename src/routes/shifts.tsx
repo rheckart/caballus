@@ -33,13 +33,14 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { Empty, Loading } from '../components/forms'
 import { Refusal } from '../components/refusal'
+import { UrgentSend } from '../components/urgent-send'
 import { Alert, AlertTitle } from '../components/ui/alert'
 import { Button } from '../components/ui/button'
 import { client } from '../shared/api-client'
 import { rosteredAbsent } from '../shared/attendance'
 import { refusalText } from '../shared/refusals'
 import type { AssignablePosition } from '../shared/shifts'
-import { carriesShiftAuthority } from '../shared/shifts'
+import { carriesShiftAuthority, SHIFT_TYPE_LABEL } from '../shared/shifts'
 import { PROMINENT_DAYS, staffingFacts } from '../shared/staffing'
 import { daysBetween } from '../shared/time'
 import type { Answers, contract } from '../shared/api-contract'
@@ -51,13 +52,6 @@ export const Route = createFileRoute('/shifts')({
 type Schedule = Answers<typeof contract, '/shifts'>
 type Shift = Schedule['shifts'][number]
 type Me = Answers<typeof contract, '/me'>
-
-const SHIFT_TYPE_LABEL: Record<Shift['shiftType'], string> = {
-  feed_am: 'Feed AM',
-  feed_pm: 'Feed PM',
-  lunch: 'Lunch',
-  pop_up: 'Pop-up',
-}
 
 const POSITION_LABEL: Record<AssignablePosition | 'acting_lead', string> = {
   lead: 'Lead',
@@ -323,6 +317,28 @@ function MyShifts() {
                           {shift.short === null ? 'Call it short' : 'Clear short'}
                         </Button>
                       )}
+                      {/* The Urgent Send (#77, ADR 0028), offered **after**
+                          Short is declared and never as part of declaring it.
+                          Two acts, because they queue differently: the
+                          declaration is a fact about the barn and is safe to
+                          arrive late; a text about Tuesday arriving on Thursday
+                          is not.
+
+                          Offered to whoever the server will take it from —
+                          Shift Authority here, or any Domain Scope holder — so
+                          a Coordinator at a desk can shout about a Shift they
+                          are not on. Declining sends nothing: the first tap
+                          only asks how many it would reach. */}
+                      {shift.short !== null &&
+                        shift.short.urgentSentAt === null &&
+                        ((member !== undefined && carriesShiftAuthority(member.position)) ||
+                          me.domainScopes.length > 0) && (
+                          <UrgentSend
+                            audience={{ kind: 'shift', shiftId: shift.id }}
+                            label="Text who could cover"
+                            onSend={() => client.post('/shifts/short/text', { shiftId: shift.id })}
+                          />
+                        )}
                       {/* Offered to anybody rostered on a leaderless Shift, and to
                           the suggested person with the suggestion said out loud —
                           a claim nobody made silently is the point (ADR 0010). */}

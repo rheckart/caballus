@@ -23,6 +23,7 @@ import {
   volunteerRoles,
   volunteers,
 } from '../../db/schema'
+import { normaliseMobile } from '../../shared/mobile'
 import { rosterability } from '../../shared/rostering'
 import { type DayString } from '../../shared/time'
 import { audit, type AuditEntry } from './audit'
@@ -71,6 +72,12 @@ export interface NewVolunteer {
   readonly name: string
   readonly email: string
   readonly mobile?: string | null
+  /**
+   * **SMS Consent, taken at invite** (ADR 0028). Optional here and required at
+   * the endpoint: the bootstrap and the tests create a Volunteer with no
+   * Coordinator in front of them, and `false` is the safe answer for both.
+   */
+  readonly smsConsent?: boolean
 }
 
 /**
@@ -91,6 +98,13 @@ export async function createVolunteerIn(
 ): Promise<Recorded<{ id: string; name: string; email: string }>> {
   const email = normaliseEmail(details.email)
   const name = details.name.trim()
+  // One spelling, because a code sent here signs somebody in now (ADR 0029).
+  // Something that cannot be read as a number is refused rather than stored
+  // unusable: a Coordinator typing four digits should be told, not left with a
+  // volunteer who can never use the second door.
+  const raw = details.mobile ?? ''
+  const mobile = raw.trim() === '' ? null : normaliseMobile(raw)
+  if (mobile === null && raw.trim() !== '') return refused('mobile_invalid')
 
   // Checked rather than caught, so that the Coordinator gets *that address is
   // already somebody's* instead of a raw unique violation for an action the app
@@ -103,10 +117,31 @@ export async function createVolunteerIn(
     .limit(1)
   if (taken !== undefined) return refused('email_taken')
 
+  if (mobile !== null) {
+    // The same pre-flight for the same reason, now that
+    // `volunteers_mobile_in_org` exists and a number is a second credential.
+    const [held] = await db
+      .select({ id: volunteers.id })
+      .from(volunteers)
+      .where(and(eq(volunteers.mobile, mobile), isNull(volunteers.removedAt)))
+      .limit(1)
+    if (held !== undefined) return refused('mobile_taken')
+  }
+
   const id = uuidv7()
   await db
     .insert(volunteers)
-    .values({ id, orgId, name, email, mobile: details.mobile ?? null })
+    .values({
+      id,
+      orgId,
+      name,
+      email,
+      mobile,
+      // The timestamp is the record a carrier could be shown, and the actor is
+      // whoever showed them the opt-in language (ADR 0028).
+      smsConsentAt: details.smsConsent === true ? sql`now()` : null,
+      smsConsentRecordedBy: details.smsConsent === true ? actorVolunteerId : null,
+    })
     .returning({ id: volunteers.id })
 
   await audit(db, orgId, actorVolunteerId, [
@@ -141,50 +176,81 @@ export async function recordOwnContactDetails(
   db: OrgScopedDatabase,
   orgId: OrgId,
   volunteerId: string,
-  details: { readonly name: string; readonly mobile: string | null },
+  details: { readonly name: string },
 ): Promise<Recorded> {
   const name = details.name.trim()
-  // Blank and absent are the same fact about a phone number, and storing the
-  // empty string would make *has a mobile* two questions.
-  const mobile =
-    details.mobile === null || details.mobile.trim() === '' ? null : details.mobile.trim()
 
   const [existing] = await db
-    .select({ name: volunteers.name, mobile: volunteers.mobile })
+    .select({ name: volunteers.name })
     .from(volunteers)
     .where(and(eq(volunteers.id, volunteerId), isNull(volunteers.removedAt)))
     .limit(1)
   if (existing === undefined) return refused('volunteer_not_found')
+  // An entry saying a name changed from *Kate* to *Kate* is noise in the one
+  // record that has to stay readable.
+  if (existing.name === name) return recorded(null)
 
-  await db.update(volunteers).set({ name, mobile }).where(eq(volunteers.id, volunteerId))
+  await db.update(volunteers).set({ name }).where(eq(volunteers.id, volunteerId))
 
-  // One entry per field that actually moved. An entry saying a name changed
-  // from *Kate* to *Kate* is noise in the one record that has to stay readable.
-  await audit(
-    db,
-    orgId,
-    volunteerId,
-    [
-      existing.name === name
-        ? null
-        : {
-            entity: 'volunteer' as const,
-            entityId: volunteerId,
-            field: 'name',
-            before: existing.name,
-            after: name,
-          },
-      existing.mobile === mobile
-        ? null
-        : {
-            entity: 'volunteer' as const,
-            entityId: volunteerId,
-            field: 'mobile',
-            before: existing.mobile,
-            after: mobile,
-          },
-    ].filter((entry) => entry !== null),
-  )
+  await audit(db, orgId, volunteerId, [
+    {
+      entity: 'volunteer',
+      entityId: volunteerId,
+      field: 'name',
+      before: existing.name,
+      after: name,
+    },
+  ])
+
+  return recorded(null)
+}
+
+/**
+ * Recording or withdrawing **SMS Consent**, under `roster` (#77, ADR 0028).
+ *
+ * The invite form is where it is normally taken; this exists because sixty
+ * volunteers predate the question, and because *she told me at the barn to stop
+ * texting her* is a thing a Coordinator has to be able to act on without
+ * waiting for the carrier to hear it.
+ *
+ * Withdrawing **clears the timestamp** rather than writing a STOP:
+ * `sms_stopped_at` is the rescue's copy of what a volunteer told the *carrier*,
+ * and putting a Coordinator's decision in that column would make two different
+ * facts indistinguishable. Audited like any other current-state edit.
+ */
+export async function recordSmsConsent(
+  db: OrgScopedDatabase,
+  orgId: OrgId,
+  actorVolunteerId: string,
+  about: { readonly volunteerId: string; readonly consented: boolean },
+): Promise<Recorded> {
+  const [existing] = await db
+    .select({ smsConsentAt: volunteers.smsConsentAt })
+    .from(volunteers)
+    .where(and(eq(volunteers.id, about.volunteerId), isNull(volunteers.removedAt)))
+    .limit(1)
+  if (existing === undefined) return refused('volunteer_not_found')
+
+  const held = existing.smsConsentAt !== null
+  if (held === about.consented) return recorded(null)
+
+  await db
+    .update(volunteers)
+    .set({
+      smsConsentAt: about.consented ? sql`now()` : null,
+      smsConsentRecordedBy: about.consented ? actorVolunteerId : null,
+    })
+    .where(eq(volunteers.id, about.volunteerId))
+
+  await audit(db, orgId, actorVolunteerId, [
+    {
+      entity: 'volunteer',
+      entityId: about.volunteerId,
+      field: 'sms_consent',
+      before: held ? 'held' : 'not held',
+      after: about.consented ? 'held' : 'not held',
+    },
+  ])
 
   return recorded(null)
 }

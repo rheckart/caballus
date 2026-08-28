@@ -15,8 +15,16 @@ A person who works at the rescue. Created by the Volunteer Coordinator from a na
 _Avoid_: user, member, helper, staff
 
 **Contact Details**:
-A Volunteer's name, mobile number and email address — the three facts a person is the best authority on, and the only three they may change about themselves. Everything else on the record is a statement somebody _else_ has to make: an Orientation is a Coordinator saying they oriented you, a Release records a piece of paper, a date of birth is checked against photo ID, a Role is a grant. The email is also the credential, so moving it takes a code at the new address first; the name and the mobile take effect at once. All three are audited and none carries a reason, because nobody asks why you changed your own phone number.
+A Volunteer's name, mobile number and email address — the three facts a person is the best authority on, and the only three they may change about themselves. Everything else on the record is a statement somebody _else_ has to make: an Orientation is a Coordinator saying they oriented you, a Release records a piece of paper, a date of birth is checked against photo ID, a Role is a grant. Either the email or the mobile can be the credential a code is sent to, so moving either one takes a code at the new address or number first; the name takes effect at once. All three are audited and none carries a reason, because nobody asks why you changed your own phone number.
 _Avoid_: profile, my details, personal info, account settings
+
+**SMS Consent**:
+A Volunteer's recorded permission to be texted, captured when they are invited and withdrawable by replying STOP. It is the rescue's own record of a thing the carriers require evidence of, and it gates only the Urgent Send — a login code is asked for by the person receiving it and so needs no standing permission.
+_Avoid_: opt-in, subscription, preference, notification settings
+
+**Reachable**:
+Whether a given Volunteer can actually receive an Urgent Send: a mobile number on the record, SMS Consent held, and no STOP against it. It is shown to whoever is about to send — _this reaches 47 of 60_ — because a sender who thinks they told everyone and did not is the failure the Facebook group already has.
+_Avoid_: contactable, subscribed, active, opted in
 
 **Candidate**:
 A Volunteer who has not yet been oriented — someone the rescue is still deciding about. It is the Coordinator's to-do list, and it is a state and not a separate kind of person: a Candidate holds a Volunteer record, may hold an Account and Roles, and reads everything. The word stops at Orientation. A volunteer of ten years whose Release has been obsoleted is not a Candidate; they are a Volunteer with a gap.
@@ -89,8 +97,12 @@ Who to phone: a name, a number, the hours it is answered, and what it is for —
 _Avoid_: directory, phone book, escalation list, on-call
 
 **Announcement**:
-News about the rescue, posted to everyone and belonging to no Shift: the hay comes Thursday, the water in the tack room is off until Saturday, the vet is here on Tuesday. It carries no subject — anything about one horse is a care instruction, a measurement or an Observation — and it **expires**, by a date the writer sets rather than one the app assumes, because a note that never expires is a standing rule nobody decided to make. Posted by anyone holding a Domain Scope, edited in place, and read on the home screen and on the Board. It is authored, never a Disposition: if a Lead thinks a volunteer's Observation belongs on the wall, they say so in their own words. **The app sends nothing about it** — this is a wall, not a broadcast, and what has to reach everyone today still goes to the Facebook group.
+News about the rescue, posted to everyone and belonging to no Shift: the hay comes Thursday, the water in the tack room is off until Saturday, the vet is here on Tuesday. It carries no subject — anything about one horse is a care instruction, a measurement or an Observation — and it **expires**, by a date the writer sets rather than one the app assumes, because a note that never expires is a standing rule nobody decided to make. Posted by anyone holding a Domain Scope, edited in place, and read on the home screen and on the Board. It is authored, never a Disposition: if a Lead thinks a volunteer's Observation belongs on the wall, they say so in their own words. It is a wall rather than a broadcast, and posting one sends nothing: the two cases that must reach people today are carried by an Urgent Send, which is a deliberate second act and never a property of the posting.
 _Avoid_: notice, bulletin, post, memo, broadcast
+
+**Urgent Send**:
+The act of putting a record that already exists in front of people by text, because it has to be known today: a Shift declared Short, or an Announcement whose news will not keep. It is a delivery and never a record of its own — there is no message entity, and nothing is said in a text that is not already written somewhere it will still be true tomorrow. Chosen deliberately by whoever holds a Domain Scope or Shift Authority, capped so that it cannot be diluted, and confined to those two cases: everything else the app says goes by email, because a channel that carries everything means nothing, which is the property the Facebook group lost. Caballus carries no message between two people; a volunteer with something to say to another volunteer has a phone.
+_Avoid_: alert, notification, blast, broadcast, message, push, page
 
 ### Shifts
 
@@ -255,6 +267,10 @@ _Avoid_: inactive, archived, removed, deleted
 **Alert**:
 A standing warning on a horse that a volunteer must read before working with it, and one of exactly three kinds: a prohibition ("no treats"), a care alert, or an allergy. Not a medical condition; those are out of scope. It stands until a person ends it and never expires on its own, because an Alert that quietly lapsed is a horse that bites and nobody was told. It is its own record rather than an Observation grown up — an Observation is frozen the moment it lands and says what somebody saw once, where an Alert says what is always true and has to be endable. Read wherever a volunteer meets the horse, not only where somebody goes looking for it. The line against a Task is whether it generates work: an Alert has nothing to tick, where "fly spray daily" is a Task carrying an instruction. Raised and ended by holders of `horse_care` alone — the floor's door for a horse that has started biting is the Observation it already has, because an Alert anybody may post is a wall nobody reads. Ending one carries a reason and never deletes it, and a horse leaving the rescue ends nothing: she is gone, not cured.
 _Avoid_: flag, note, warning, caution
+
+**Timeline**:
+A horse's own story in one place, newest first, composed from records the rescue already keeps rather than written into: her Observations, her Escalations and their threads, her Alerts raised and ended, her weights, her feed changes. It answers _what is going on with Storm_, which the barn currently answers by scrolling a Facebook group. It is a read and nothing else — nothing is authored here, and a record reached through it is the same record reached anywhere else.
+_Avoid_: history, feed, activity, log, wall
 
 ### Feed and medication
 
