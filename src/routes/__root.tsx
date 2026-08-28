@@ -22,9 +22,10 @@
  * the app bar) and Sign out. Sign out lived on Home, and Home is becoming the
  * barn's dashboard (#67), so it had to move somewhere that is on every screen.
  *
- * Both bars stay off exactly two paths. `/login` has nowhere to navigate to,
- * and `/board` is a wall a barn reads across a room, authenticated as the barn
- * and with no `Actor` to navigate as (ADR 0022).
+ * Both bars stay off four paths. `/login` has nowhere to navigate to, `/board`
+ * is a wall a barn reads across a room, authenticated as the barn and with no
+ * `Actor` to navigate as (ADR 0022), and `/privacy` and `/terms` are read by a
+ * carrier's vetting reviewer who has no session and nowhere to go (#80).
  *
  * `src/styles/tailwind.css` is the whole styling system (ADR 0025, #61–#63):
  * Tailwind's theme carrying DESIGN.md's tokens, the shadcn semantic tokens
@@ -62,8 +63,14 @@ const tabs = [
   { to: '/contacts', Icon: Phone, label: 'Contacts' },
 ] as const
 
-/** The two paths the shell stays off: nowhere to go, and nobody to go as. */
-const bare = ['/login', '/board']
+/**
+ * The paths the shell stays off: nowhere to go, nobody to go as, and — since
+ * #80 — the two legal pages a carrier's vetting reviewer reads with no session
+ * at all. Twenty Destinations drawn around a privacy policy is chrome for a
+ * reader who cannot open one of them, and a volunteer who followed the link out
+ * of the app has the page's own footer to come back through.
+ */
+const bare = ['/login', '/board', '/privacy', '/terms']
 
 export const Route = createRootRoute({
   head: () => ({

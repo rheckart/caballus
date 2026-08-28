@@ -16,8 +16,10 @@ import { Route as ContactsRouteImport } from './routes/contacts'
 import { Route as EscalationsRouteImport } from './routes/escalations'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as MeRouteImport } from './routes/me'
+import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as ShiftsRouteImport } from './routes/shifts'
 import { Route as SuppliesRouteImport } from './routes/supplies'
+import { Route as TermsRouteImport } from './routes/terms'
 import { Route as AdminAttendanceRouteImport } from './routes/admin/attendance'
 import { Route as AdminAuditRouteImport } from './routes/admin/audit'
 import { Route as AdminContactsRouteImport } from './routes/admin/contacts'
@@ -70,6 +72,11 @@ const MeRoute = MeRouteImport.update({
   path: '/me',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ShiftsRoute = ShiftsRouteImport.update({
   id: '/shifts',
   path: '/shifts',
@@ -78,6 +85,11 @@ const ShiftsRoute = ShiftsRouteImport.update({
 const SuppliesRoute = SuppliesRouteImport.update({
   id: '/supplies',
   path: '/supplies',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminAttendanceRoute = AdminAttendanceRouteImport.update({
@@ -169,8 +181,10 @@ export interface FileRoutesByFullPath {
   '/escalations': typeof EscalationsRoute
   '/login': typeof LoginRoute
   '/me': typeof MeRoute
+  '/privacy': typeof PrivacyRoute
   '/shifts': typeof ShiftsRouteWithChildren
   '/supplies': typeof SuppliesRoute
+  '/terms': typeof TermsRoute
   '/admin/attendance': typeof AdminAttendanceRoute
   '/admin/audit': typeof AdminAuditRoute
   '/admin/contacts': typeof AdminContactsRoute
@@ -196,8 +210,10 @@ export interface FileRoutesByTo {
   '/escalations': typeof EscalationsRoute
   '/login': typeof LoginRoute
   '/me': typeof MeRoute
+  '/privacy': typeof PrivacyRoute
   '/shifts': typeof ShiftsRouteWithChildren
   '/supplies': typeof SuppliesRoute
+  '/terms': typeof TermsRoute
   '/admin/attendance': typeof AdminAttendanceRoute
   '/admin/audit': typeof AdminAuditRoute
   '/admin/contacts': typeof AdminContactsRoute
@@ -224,8 +240,10 @@ export interface FileRoutesById {
   '/escalations': typeof EscalationsRoute
   '/login': typeof LoginRoute
   '/me': typeof MeRoute
+  '/privacy': typeof PrivacyRoute
   '/shifts': typeof ShiftsRouteWithChildren
   '/supplies': typeof SuppliesRoute
+  '/terms': typeof TermsRoute
   '/admin/attendance': typeof AdminAttendanceRoute
   '/admin/audit': typeof AdminAuditRoute
   '/admin/contacts': typeof AdminContactsRoute
@@ -253,8 +271,10 @@ export interface FileRouteTypes {
     | '/escalations'
     | '/login'
     | '/me'
+    | '/privacy'
     | '/shifts'
     | '/supplies'
+    | '/terms'
     | '/admin/attendance'
     | '/admin/audit'
     | '/admin/contacts'
@@ -280,8 +300,10 @@ export interface FileRouteTypes {
     | '/escalations'
     | '/login'
     | '/me'
+    | '/privacy'
     | '/shifts'
     | '/supplies'
+    | '/terms'
     | '/admin/attendance'
     | '/admin/audit'
     | '/admin/contacts'
@@ -307,8 +329,10 @@ export interface FileRouteTypes {
     | '/escalations'
     | '/login'
     | '/me'
+    | '/privacy'
     | '/shifts'
     | '/supplies'
+    | '/terms'
     | '/admin/attendance'
     | '/admin/audit'
     | '/admin/contacts'
@@ -335,8 +359,10 @@ export interface RootRouteChildren {
   EscalationsRoute: typeof EscalationsRoute
   LoginRoute: typeof LoginRoute
   MeRoute: typeof MeRoute
+  PrivacyRoute: typeof PrivacyRoute
   ShiftsRoute: typeof ShiftsRouteWithChildren
   SuppliesRoute: typeof SuppliesRoute
+  TermsRoute: typeof TermsRoute
   AdminAttendanceRoute: typeof AdminAttendanceRoute
   AdminAuditRoute: typeof AdminAuditRoute
   AdminContactsRoute: typeof AdminContactsRoute
@@ -405,6 +431,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/shifts': {
       id: '/shifts'
       path: '/shifts'
@@ -417,6 +450,13 @@ declare module '@tanstack/react-router' {
       path: '/supplies'
       fullPath: '/supplies'
       preLoaderRoute: typeof SuppliesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/attendance': {
@@ -553,8 +593,10 @@ const rootRouteChildren: RootRouteChildren = {
   EscalationsRoute: EscalationsRoute,
   LoginRoute: LoginRoute,
   MeRoute: MeRoute,
+  PrivacyRoute: PrivacyRoute,
   ShiftsRoute: ShiftsRouteWithChildren,
   SuppliesRoute: SuppliesRoute,
+  TermsRoute: TermsRoute,
   AdminAttendanceRoute: AdminAttendanceRoute,
   AdminAuditRoute: AdminAuditRoute,
   AdminContactsRoute: AdminContactsRoute,

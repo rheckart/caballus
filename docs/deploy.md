@@ -470,7 +470,17 @@ maintainer personally, and it is capped:
 Registration wants a legal name matching government ID, a mobile that receives
 a PIN **within 24 hours or the process restarts**, a physical address with no PO
 box, and a public URL — which is why `caballus.tech` serves a real page (#75)
-rather than a login form. Roughly $4 one-time, $15 campaign vetting and $2 a
+rather than a login form. **Three URLs go on the form**, and all three are
+served by the application: `https://caballus.tech/` describes the messages and
+the opt-in, `https://caballus.tech/privacy` is the privacy policy carrying the
+non-sharing statement vetting looks for, and `https://caballus.tech/terms` is
+the terms carrying HELP, STOP and the rates disclosure (#80).
+
+**HELP and STOP auto-replies are a console setting, not code.** Twilio answers
+both keywords for a US number by default; `src/server/sms.ts` only recognises
+the 21610 a blocked send comes back with. Confirm the default is on for the
+number before the canary, because `/terms` promises a HELP reply and this
+repository is not what keeps that promise. Roughly $4 one-time, $15 campaign vetting and $2 a
 month, plus a number at about $1.15 and messages at about $0.008 plus carrier
 pass-through. **Campaign approval runs 3–7 business days.** Confirm the
 no-EIN rule at the form before paying anything: one secondary source claims 2026
