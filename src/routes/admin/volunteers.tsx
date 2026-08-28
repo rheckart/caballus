@@ -578,6 +578,8 @@ function DetailsTab({
 
       <RecordSmsConsent person={person} reload={reload} />
 
+      <ClearSmsStop person={person} reload={reload} />
+
       <RecordDateOfBirth person={person} today={today} reload={reload} />
     </>
   )
@@ -587,11 +589,13 @@ function DetailsTab({
  * Recording or withdrawing SMS Consent for somebody who predates the question
  * (#77, ADR 0028).
  *
- * A **STOP is not offered here**, and that is deliberate: `sms_stopped_at` is
- * the rescue's copy of what a volunteer told the carrier, and a Coordinator
- * writing into it would make two different facts indistinguishable. What a
- * Coordinator can do is withdraw the consent they recorded, which is a
- * different sentence and a different column.
+ * **Writing a STOP is not offered here**, and that is deliberate:
+ * `sms_stopped_at` is the rescue's copy of what a volunteer told the carrier,
+ * and a Coordinator writing into it would make two different facts
+ * indistinguishable. What a Coordinator can do is withdraw the consent they
+ * recorded, which is a different sentence and a different column — and, since
+ * #82, *clear* a STOP the volunteer has already lifted with the carrier, which
+ * is the button below this one.
  */
 function RecordSmsConsent({ person, reload }: { person: Person; reload: () => Promise<void> }) {
   const { pending, saved, save } = useSaving()
@@ -618,6 +622,54 @@ function RecordSmsConsent({ person, reload }: { person: Person; reload: () => Pr
           {held ? 'Withdraw consent to text' : 'Record consent to text'}
         </Button>
         <Saved saved={saved} what="Recorded" />
+      </Actions>
+    </div>
+  )
+}
+
+/**
+ * Clearing a recorded STOP (#82, ADR 0028).
+ *
+ * **The un-stop is an act inside the app, not a webhook.** START, YES and
+ * UNSTOP are keywords the campaign registers and Twilio honours, and this
+ * application never hears about it — ADR 0028 owns no inbound webhook and that
+ * decision stands. So the volunteer who did exactly what they were told to do
+ * to come back needs a person to say so here, or their own screen to say it.
+ * `/terms` promises both doors by name.
+ *
+ * **Offered only when there is one to clear**, because a button against a
+ * column that is already null is a Coordinator wondering what it did. And it
+ * says what it will *not* do: consent is a separate fact in a separate column,
+ * and clearing this alone leaves somebody who never agreed still unreachable.
+ */
+function ClearSmsStop({ person, reload }: { person: Person; reload: () => Promise<void> }) {
+  const { pending, saved, save } = useSaving()
+  const behind = person.behindRoster
+  if (behind === null || behind.smsStoppedAt === null) return null
+
+  return (
+    <div className="mb-4">
+      <p className="text-sm text-muted-foreground">
+        They replied STOP, so the carrier is refusing our messages and they are in nobody&rsquo;s
+        reachable count. Once they have texted START back to the number, clear it here.
+        {behind.smsConsentAt === null &&
+          ' They have no consent recorded, so this alone is not enough.'}
+      </p>
+      <Actions>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={pending}
+          onClick={() => {
+            void save(async () => {
+              await client.post('/volunteers/sms-stop-clearance', { volunteerId: person.id })
+              await reload()
+            })
+          }}
+        >
+          Clear the recorded STOP
+        </Button>
+        <Saved saved={saved} what="Cleared" />
       </Actions>
     </div>
   )

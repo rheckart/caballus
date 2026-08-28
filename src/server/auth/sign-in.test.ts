@@ -646,6 +646,8 @@ describe.skipIf(!reachable)('email codes, sessions and revocation, against the d
         // asks for protects other people's, never your own.
         email: 'grace@example.invalid',
         mobile: null,
+        smsConsentAt: null,
+        smsStoppedAt: null,
         domainScopes: ['roster'],
       })
     })

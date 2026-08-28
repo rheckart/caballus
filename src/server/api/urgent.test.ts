@@ -43,6 +43,9 @@ describe.skipIf(!reachable)('the Urgent Send, through the API', () => {
   /** Every text the run sent, in order. Nothing here reaches a carrier. */
   let texted: OutgoingText[] = []
 
+  /** Whatever `APP_URL` was, put back afterwards. */
+  let beforeUrl: string | undefined
+
   function apiAs(volunteerId: string, scopes: readonly DomainScope[]) {
     return buildApi({
       idempotency: postgresIdempotency(),
@@ -84,6 +87,11 @@ describe.skipIf(!reachable)('the Urgent Send, through the API', () => {
 
   beforeAll(async () => {
     process.env.APP_ORG_ID = SHOUT_BARN
+    // Fixed rather than inherited (#83): the link in a text is `APP_URL`, which
+    // is whatever the box running the suite happens to have, and a message
+    // assertion that changes with somebody's `.env` is not an assertion.
+    beforeUrl = process.env.APP_URL
+    process.env.APP_URL = 'https://caballus.tech'
     await wipe()
     await owner`
       insert into orgs (id, name, time_zone)
@@ -109,6 +117,8 @@ describe.skipIf(!reachable)('the Urgent Send, through the API', () => {
   })
 
   afterAll(async () => {
+    if (beforeUrl === undefined) delete process.env.APP_URL
+    else process.env.APP_URL = beforeUrl
     await wipe()
     await owner.end()
     await closeDb()
@@ -268,7 +278,7 @@ describe.skipIf(!reachable)('the Urgent Send, through the API', () => {
       // The reply is the receipt: somebody taps Cover, which is already a
       // record with a name on it (ADR 0028).
       expect(texted[0]?.text).toBe(
-        `Caballus: Feed PM on ${day()} at 16:00 is short. Open the app to cover. Reply STOP to stop.`,
+        `Caballus: Feed PM on ${day()} at 16:00 is short. Cover it: https://caballus.tech/shifts Reply STOP to stop.`,
       )
     })
 
@@ -382,7 +392,9 @@ describe.skipIf(!reachable)('the Urgent Send, through the API', () => {
       expect(sent.body).toEqual({ recipients: 2, sent: 2, unreachable: 0 })
       // The Announcement's own words, unedited: nothing is said in a text that
       // is not already written somewhere it will still be true tomorrow.
-      expect(texted[0]?.text).toBe('Caballus: The hay comes Thursday. Reply STOP to stop.')
+      expect(texted[0]?.text).toBe(
+        'Caballus: The hay comes Thursday. More: https://caballus.tech Reply STOP to stop.',
+      )
     })
 
     it('refuses a second send, because nobody is told twice', async () => {
@@ -538,6 +550,163 @@ describe.skipIf(!reachable)('the Urgent Send, through the API', () => {
       expect(contract.writes['/shifts/short/text'].neverQueued).toBe(true)
       expect(contract.writes['/announcements/text'].neverQueued).toBe(true)
       expect('neverQueued' in contract.writes['/shifts/short']).toBe(false)
+    })
+  })
+
+  /**
+   * Clearing a recorded STOP (#82, ADR 0028).
+   *
+   * The un-stop is an act inside the app rather than a webhook: START, YES and
+   * UNSTOP are keywords the campaign registers and Twilio honours, and this
+   * application never hears about it. Until this existed the column was written
+   * in one place and cleared nowhere, so somebody who did exactly what they
+   * were told to do to come back stayed out of every count permanently.
+   */
+  describe('clearing a recorded STOP, which the carrier never tells us about', () => {
+    it('lets a roster holder clear it, and counts them again immediately', async () => {
+      const officer = await reachablePerson('Kate Ellery', '+14105550101')
+      const back = await volunteer('Joy Marsden', {
+        mobile: '+14105550102',
+        consented: true,
+        stopped: true,
+      })
+      const api = apiAs(officer, ['roster'])
+      expect((await get(api, '/reach')).body.everyone).toEqual({ reachable: 1, total: 2 })
+
+      const cleared = await post(api, '/volunteers/sms-stop-clearance', { volunteerId: back })
+
+      expect(cleared.status).toBe(204)
+      // The acceptance in one line: *this reaches 47 of 60* stops being wrong
+      // about the one person who asked to be counted.
+      expect((await get(api, '/reach')).body.everyone).toEqual({ reachable: 2, total: 2 })
+    })
+
+    it('lets a Volunteer clear their own, with no Domain Scope and no volunteerId', async () => {
+      const mine = await volunteer('Beth Ann', {
+        mobile: '+14105550103',
+        consented: true,
+        stopped: true,
+      })
+
+      // The floor, and the payload has no field that could name anybody else:
+      // the subject is the actor structurally (ADR 0027).
+      const cleared = await post(apiAs(mine, []), '/me/sms-stop-clearance')
+
+      expect(cleared.status).toBe(204)
+      const [row] = await owner`select sms_stopped_at from volunteers where id = ${mine}`
+      expect(row?.sms_stopped_at).toBeNull()
+      expect(Object.keys(contract.writes['/me/sms-stop-clearance'].accepts.shape)).toEqual([])
+    })
+
+    it('does not touch consent, so somebody who never agreed stays unreachable', async () => {
+      const officer = await reachablePerson('Kate Ellery', '+14105550101')
+      const never = await volunteer('No Consent', { mobile: '+14105550104', stopped: true })
+      const api = apiAs(officer, ['roster'])
+
+      await post(api, '/volunteers/sms-stop-clearance', { volunteerId: never })
+
+      // Two facts, two columns. This is not a second consent, and clearing one
+      // must never quietly answer the other's question.
+      const [row] = await owner`
+        select sms_consent_at, sms_stopped_at from volunteers where id = ${never}
+      `
+      expect(row?.sms_consent_at).toBeNull()
+      expect(row?.sms_stopped_at).toBeNull()
+      expect((await get(api, '/reach')).body.everyone).toEqual({ reachable: 1, total: 2 })
+    })
+
+    it('lets the carrier win again: a later 21610 re-stamps the column', async () => {
+      const officer = await reachablePerson('Kate Ellery', '+14105550101')
+      const back = await volunteer('Joy Marsden', {
+        mobile: '+14105550102',
+        consented: true,
+        stopped: true,
+      })
+      const api = apiAs(officer, ['roster'])
+      await post(api, '/volunteers/sms-stop-clearance', { volunteerId: back })
+      const shiftId = await shortShift(officer)
+      setSmsTransport((message) => {
+        if (message.to === '+14105550102') {
+          return Promise.reject(new Error('Twilio answered 400 (21610): unsubscribed'))
+        }
+        texted.push(message)
+        return Promise.resolve()
+      })
+
+      await post(api, '/shifts/short/text', { shiftId })
+
+      // Clearing is our copy alone. Twilio is the system of record and legally
+      // has to be, so somebody who never actually texted START comes straight
+      // back out on the next send.
+      const [row] = await owner`select sms_stopped_at from volunteers where id = ${back}`
+      expect(row?.sms_stopped_at).not.toBeNull()
+    })
+
+    it('is quiet about a Volunteer who has no STOP recorded, rather than writing noise', async () => {
+      const officer = await reachablePerson('Kate Ellery', '+14105550101')
+      const fine = await reachablePerson('Joy Marsden', '+14105550102')
+
+      const cleared = await post(apiAs(officer, ['roster']), '/volunteers/sms-stop-clearance', {
+        volunteerId: fine,
+      })
+
+      expect(cleared.status).toBe(204)
+      // An entry saying a STOP went from absent to absent is noise in the one
+      // record that has to stay readable.
+      const entries = await owner`
+        select 1 from audit_entries
+        where org_id = ${SHOUT_BARN} and entity_id = ${fine} and field = 'sms_stopped'
+      `
+      expect(entries.length).toBe(0)
+    })
+
+    it('audits the clearance as a current-state edit, with no reason', async () => {
+      const officer = await reachablePerson('Kate Ellery', '+14105550101')
+      const back = await volunteer('Joy Marsden', {
+        mobile: '+14105550102',
+        consented: true,
+        stopped: true,
+      })
+
+      await post(apiAs(officer, ['roster']), '/volunteers/sms-stop-clearance', {
+        volunteerId: back,
+      })
+
+      // Never a grant: nobody asks why the texts came back on (ADR 0027).
+      const [entry] = await owner`
+        select actor_volunteer_id, field, "before", "after", reason
+        from audit_entries
+        where org_id = ${SHOUT_BARN} and entity_id = ${back} and field = 'sms_stopped'
+      `
+      expect(entry?.actor_volunteer_id).toBe(officer)
+      expect(entry?.before).toBe('recorded')
+      expect(entry?.after).toBe('cleared')
+      expect(entry?.reason).toBeNull()
+    })
+
+    it('refuses a roster clearance from somebody without the Scope', async () => {
+      const officer = await reachablePerson('Kate Ellery', '+14105550101')
+      const back = await volunteer('Joy Marsden', {
+        mobile: '+14105550102',
+        consented: true,
+        stopped: true,
+      })
+
+      const refused = await post(apiAs(officer, []), '/volunteers/sms-stop-clearance', {
+        volunteerId: back,
+      })
+
+      expect(refused.status).toBe(403)
+    })
+
+    it('offers no way to write a STOP, because that column is the carrier’s answer', () => {
+      // `sms_stopped_at` is the rescue's copy of what a volunteer told Twilio.
+      // A Coordinator writing *into* it would make two different facts
+      // indistinguishable; withdrawing consent is the other column.
+      expect(Object.keys(contract.writes).filter((path) => path.includes('sms-stop'))).toEqual([
+        '/me/sms-stop-clearance',
+        '/volunteers/sms-stop-clearance',
+      ])
     })
   })
 })

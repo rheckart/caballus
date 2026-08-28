@@ -58,16 +58,59 @@ export function reachSentence(reachable: number, total: number): string {
 const STOP = 'Reply STOP to stop.'
 
 /**
+ * Where a text points, and **it is an argument rather than configuration**
+ * (#83).
+ *
+ * Every message this application sent said *open the app* and gave no way to
+ * open it — a link the volunteer has to be the router for, on a phone, in a
+ * barn, from a message that has just told them something is urgent. It is also
+ * the weaker answer at the campaign form: 10DLC vetting asks whether the
+ * traffic carries embedded links, and samples that carry one against traffic
+ * that does not is the mismatch carriers flag for (#76, ADR 0028).
+ *
+ * The origin is passed in because this module is pure and table-tested, and a
+ * composer that reaches for `process.env` is a composer no table test can
+ * drive. `src/server/urgent/send.ts` is the caller that knows the environment,
+ * the same seam that already resolves the transport. `APP_URL` is what it
+ * passes — already the real origin on the box and `http://localhost:3000` on a
+ * development one, which is exactly right: a development send must not name
+ * production.
+ *
+ * **Never a shortener.** bit.ly and its kind are the most reliable way to have
+ * a campaign blocked, because a carrier cannot see where the link goes. The
+ * brand's own domain is the whole point.
+ *
+ * Unset is a real case and not an error: a box with no `APP_URL` composes the
+ * sentence it composed before this ticket rather than one naming `undefined`.
+ * The argument is **required and nullable** rather than defaulted, on
+ * `applyToScheduled`'s own discipline (ADR 0001): a default is a decision the
+ * next caller does not have to make, and the one it would make silently is the
+ * linkless message this ticket exists to stop sending.
+ */
+function linkTo(origin: string | null, path: string): string | null {
+  const trimmed = (origin ?? '').trim().replace(/\/+$/, '')
+  return trimmed === '' ? null : `${trimmed}${path}`
+}
+
+/**
  * *We are short tonight.* The reply is the receipt (ADR 0028): somebody taps
  * Cover, which is already a record with a name on it, so the text asks for the
  * app and never for a reply.
  */
-export function shortText(shift: {
-  readonly shiftType: string
-  readonly day: string
-  readonly startTime: string
-}): string {
-  return `Caballus: ${shift.shiftType} on ${shift.day} at ${shift.startTime} is short. Open the app to cover. ${STOP}`
+export function shortText(
+  shift: {
+    readonly shiftType: string
+    readonly day: string
+    readonly startTime: string
+  },
+  origin: string | null,
+): string {
+  // `/shifts` and never `/shifts/:shiftId`: Cover lives on the schedule, the
+  // id is a uuid that would half again the message, and the Work Surface is
+  // not the screen with the Cover button on it.
+  const link = linkTo(origin, '/shifts')
+  const asking = link === null ? 'Open the app to cover.' : `Cover it: ${link}`
+  return `Caballus: ${shift.shiftType} on ${shift.day} at ${shift.startTime} is short. ${asking} ${STOP}`
 }
 
 /**
@@ -77,6 +120,10 @@ export function shortText(shift: {
  * is not already written somewhere it will still be true tomorrow — which is
  * the property the group chat never had.
  */
-export function announcementText(text: string): string {
-  return `Caballus: ${text.trim()} ${STOP}`
+export function announcementText(text: string, origin: string | null): string {
+  // Home, because that is where the unexpired Announcements are (#67): the
+  // wall is the landing.
+  const link = linkTo(origin, '')
+  const more = link === null ? '' : `More: ${link} `
+  return `Caballus: ${text.trim()} ${more}${STOP}`
 }

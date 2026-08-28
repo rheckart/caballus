@@ -47,6 +47,8 @@ function me(overrides: Record<string, unknown> = {}) {
     name: 'Beth Ann',
     email: 'beth@barn.test',
     mobile: '410-555-0100',
+    smsConsentAt: null,
+    smsStoppedAt: null,
     domainScopes: [],
     ...overrides,
   }
@@ -174,6 +176,58 @@ describe('changing the number you sign in with', () => {
 
     await screen.findByText(/You have no number on file/)
     expect(screen.queryByRole('button', { name: 'Remove my number' })).toBeNull()
+  })
+})
+
+/**
+ * Turning your own texts back on (#82, ADR 0028).
+ *
+ * The carrier honours START and never tells us, so the volunteer who did what
+ * they were told to do to come back needs a door of their own. It clears our
+ * copy alone, and it is not a second consent — so the screen says both.
+ */
+describe('the texting section, which is two facts and not one', () => {
+  it('offers to clear a STOP you have already lifted with the carrier', async () => {
+    let posted: Record<string, unknown> | null = null
+    stubApi({
+      '/me': me({ smsConsentAt: 1_770_000_000_000, smsStoppedAt: 1_772_000_000_000 }),
+      '/me/sms-stop-clearance': (init: RequestInit) => {
+        posted = bodyOf(init)
+        return answeredNothing()
+      },
+    })
+    renderMe()
+
+    expect(await screen.findByText(/You replied STOP/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'I have started again' }))
+
+    await waitFor(() => {
+      expect(posted).not.toBeNull()
+    })
+    // No field on the wire could name anybody else: the subject is the actor,
+    // structurally, like every other write on this screen.
+    expect(Object.keys(posted ?? {})).toEqual(['idempotencyKey'])
+  })
+
+  it('says consent is still missing, because clearing a STOP is not agreeing', async () => {
+    stubApi({ '/me': me({ smsConsentAt: null, smsStoppedAt: 1_772_000_000_000 }) })
+    renderMe()
+
+    // Two facts, two columns. Somebody who never agreed is still unreachable
+    // after this, and being told so beats a button that appears to work.
+    expect(await screen.findByText(/no consent recorded/)).toBeTruthy()
+  })
+
+  it('offers nothing to clear when there is no STOP, and says what is true instead', async () => {
+    stubApi({ '/me': me({ smsConsentAt: 1_770_000_000_000, smsStoppedAt: null }) })
+    renderMe()
+
+    // The state in words rather than an empty field, which is what a screen
+    // owes somebody who came here to find out whether they are reachable.
+    expect(
+      await screen.findByText(/You have agreed to be texted, and nothing is stopping it/),
+    ).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'I have started again' })).toBeNull()
   })
 })
 
