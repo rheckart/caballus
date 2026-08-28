@@ -202,6 +202,17 @@ export const me = z.object({
    */
   email: z.string(),
   mobile: z.string().nullable(),
+  /**
+   * Your own texting state, in the two facts it is actually made of (#82).
+   *
+   * A screen offering *turn my texts back on* has to be able to say what is
+   * true now, and *cleared the STOP but never consented* is a real state that
+   * one boolean could not tell from *reachable*. Both are your own record, so
+   * neither is a hole in ADR 0017's redaction for the same reason the address
+   * above is not.
+   */
+  smsConsentAt: z.number().nullable(),
+  smsStoppedAt: z.number().nullable(),
   domainScopes: z.array(z.enum(DOMAIN_SCOPES)),
 })
 
@@ -1704,6 +1715,37 @@ export const contract = {
       neverQueued: true,
     },
     /**
+     * Clearing a STOP you have already told the carrier to lift (#82, ADR
+     * 0028).
+     *
+     * **The un-stop is an act inside the app, not a webhook.** A volunteer who
+     * replied STOP can tell the *carrier* to resume — START, YES and UNSTOP are
+     * keywords the campaign registers and Twilio honours — and this application
+     * never finds out, because ADR 0028 deliberately owns no inbound webhook
+     * and that decision stands. Without this, `volunteers.sms_stopped_at` is
+     * written in one place and cleared nowhere, so somebody who did exactly what
+     * the campaign told them to do to come back stays out of every count
+     * permanently. `/terms` already promises this door and this is it.
+     *
+     * **It is not a second consent.** `sms_consent_at` is the record of the
+     * volunteer agreeing, captured at invite (#77), and this neither re-asks
+     * that question nor overwrites that date: somebody who never consented is
+     * still unreachable afterwards.
+     *
+     * **It is not a way past the carrier.** Twilio remains the system of
+     * record. If they have not texted START the next send still fails with
+     * 21610 and `recordStop` stamps the column again — this clears *our* copy,
+     * and the carrier's own answer is what decides.
+     *
+     * No `volunteerId`, like the rest of `/me`: the subject is the actor,
+     * structurally. Queued like any other current-state edit — repeating it can
+     * only find the column already clear.
+     */
+    '/me/sms-stop-clearance': {
+      accepts: z.object({}),
+      answers: z.void(),
+    },
+    /**
      * Asks for a code at a **new** sign-in address (#68, ADR 0027).
      *
      * `neverQueued`, and not on ADR 0018's *medium rather than ledger*
@@ -1775,6 +1817,24 @@ export const contract = {
      */
     '/volunteers/sms-consent': {
       accepts: z.object({ volunteerId, consented: z.boolean() }),
+      answers: z.void(),
+    },
+    /**
+     * Clearing a recorded STOP on somebody else, under `roster` (#82).
+     *
+     * The Coordinator's half of the pair `/me/sms-stop-clearance` describes —
+     * *ask a Volunteer Coordinator* is the first thing `/terms` offers, because
+     * the volunteer standing in the barn saying *I texted START, put me back on*
+     * is the common case and finding their own screen is not.
+     *
+     * **A STOP still cannot be written from here**, and that asymmetry is the
+     * point: `sms_stopped_at` is the rescue's copy of what a volunteer told the
+     * carrier, and a Coordinator writing *into* it would make two different
+     * facts indistinguishable. Withdrawing consent is the Coordinator's own
+     * sentence and it has its own column above.
+     */
+    '/volunteers/sms-stop-clearance': {
+      accepts: z.object({ volunteerId }),
       answers: z.void(),
     },
     '/volunteers/date-of-birth': {

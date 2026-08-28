@@ -56,6 +56,8 @@ function me(domainScopes: readonly string[] = []) {
     name: 'Beth Ann',
     email: 'beth@barn.test',
     mobile: null,
+    smsConsentAt: null,
+    smsStoppedAt: null,
     domainScopes,
   }
 }

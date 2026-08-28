@@ -476,6 +476,37 @@ the opt-in, `https://caballus.tech/privacy` is the privacy policy carrying the
 non-sharing statement vetting looks for, and `https://caballus.tech/terms` is
 the terms carrying HELP, STOP and the rates disclosure (#80).
 
+### The sample messages, which have to match what the code sends
+
+The campaign form asks for sample messages and asks whether the traffic carries
+embedded links. **These are the two samples that were given, and they are the
+two `src/shared/urgent.ts` composes** (#83) — recorded here because nothing else
+in the repository would show a reader that the form and the code had drifted,
+and a mismatch between the samples and the traffic is what carriers flag for:
+
+```
+Caballus: Feed AM on 2026-09-03 at 07:00 is short. Cover it: https://caballus.tech/shifts Reply STOP to stop.
+Caballus: The farrier comes Thursday morning. More: https://caballus.tech Reply STOP to stop.
+```
+
+The link is `APP_URL`, passed in from `src/server/urgent/send.ts` rather than
+read by the composers — so a development send names `http://localhost:3000` and
+never production, and a box with `APP_URL` unset composes the linkless sentence
+rather than one naming `undefined`. **Never a shortener**: bit.ly and its kind
+are the most reliable way to have a campaign blocked, because a carrier cannot
+see where the link goes.
+
+The link costs about thirty characters, which can push an **Announcement** —
+which carries an officer's free text and is already the long one — from one
+segment into two. That doubles what Twilio bills for it and what it counts
+against the brand's thousand a day. It is worth knowing and is not worth a
+limit: nothing truncates an officer's words to save a fifth of a cent, and the
+app's own cap counts **sends** rather than segments, so `DAILY_CAP` is unmoved.
+
+The **mobile-change notice** is the one text that is not an Urgent Send and it
+carries no link, deliberately: it says _tell a coordinator_, which a link does
+not help with.
+
 **HELP and STOP auto-replies are a console setting, not code.** Twilio answers
 both keywords for a US number by default; `src/server/sms.ts` only recognises
 the 21610 a blocked send comes back with. Confirm the default is on for the

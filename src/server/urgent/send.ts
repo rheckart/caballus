@@ -158,14 +158,17 @@ export async function sendShortText(
     .set({ urgentSentAt: timestampOf(now()), urgentSentBy: actorVolunteerId })
     .where(eq(shifts.id, about.shiftId))
 
-  const message = shortText({
-    shiftType: isAnyShiftType(shift.shiftType)
-      ? SHIFT_TYPE_LABEL[shift.shiftType]
-      : shift.shiftType,
-    day: shift.day,
-    // `HH:MM` — the column carries seconds and nobody says them out loud.
-    startTime: shift.startTime.slice(0, 5),
-  })
+  const message = shortText(
+    {
+      shiftType: isAnyShiftType(shift.shiftType)
+        ? SHIFT_TYPE_LABEL[shift.shiftType]
+        : shift.shiftType,
+      day: shift.day,
+      // `HH:MM` — the column carries seconds and nobody says them out loud.
+      startTime: shift.startTime.slice(0, 5),
+    },
+    appOrigin(),
+  )
   const outcome = await deliver(db, audience, message, { kind: 'shift_short', shiftId: shift.id })
 
   return recorded(outcome)
@@ -211,12 +214,31 @@ export async function sendAnnouncementText(
     .set({ urgentSentAt: timestampOf(now()), urgentSentBy: actorVolunteerId })
     .where(eq(announcements.id, about.announcementId))
 
-  const outcome = await deliver(db, people, announcementText(posted.text), {
+  const outcome = await deliver(db, people, announcementText(posted.text, appOrigin()), {
     kind: 'announcement',
     announcementId: posted.id,
   })
 
   return recorded(outcome)
+}
+
+/**
+ * Where the link in a text points (#83).
+ *
+ * **This module reads the environment and `src/shared/urgent.ts` does not.**
+ * The composers are pure and table-tested; a composer that reaches for
+ * configuration is one no table test can drive, so the origin travels in as an
+ * argument from the one layer that already knows which box it is running on —
+ * the same seam that resolves the transport.
+ *
+ * `APP_URL` is the variable, and it is the one Better Auth already reads for
+ * its `baseURL` rather than a second one meaning the same thing. Unset answers
+ * `null`, and the composers then say what they said before this ticket: a
+ * development send must not name production, and a message naming `undefined`
+ * would be worse than one naming nothing.
+ */
+function appOrigin(): string | null {
+  return process.env.APP_URL ?? null
 }
 
 /** How many were meant to get it, and how many did. */

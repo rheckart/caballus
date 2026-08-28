@@ -32,6 +32,8 @@ const ME = {
   name: 'Beth Ann',
   email: 'someone@barn.test',
   mobile: null,
+  smsConsentAt: null,
+  smsStoppedAt: null,
   domainScopes: [],
 }
 

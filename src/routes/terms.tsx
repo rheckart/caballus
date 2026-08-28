@@ -90,8 +90,9 @@ function Terms() {
             programme, so stopping the texts never locks you out of the application.
           </li>
           <li>
-            <strong>Starting again.</strong> Ask a Volunteer Coordinator, or add your number back
-            under your own details once signed in.
+            <strong>Starting again.</strong> Text START to the same number — your carrier decides,
+            not us — then ask a Volunteer Coordinator, or clear it yourself under your own details
+            once signed in.
           </li>
         </ul>
       </section>

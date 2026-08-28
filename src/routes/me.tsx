@@ -12,6 +12,12 @@
  * 0017) — so none of them is on this screen, and the server refuses them here
  * whether or not it is.
  *
+ * **Texting is here too, and it is not a fourth field** (#82). Consent is still
+ * somebody else's statement about you and is not editable here; what is yours
+ * is the STOP you told the *carrier*, which this application only ever holds a
+ * copy of — ADR 0028 owns no inbound webhook, so lifting it with the carrier
+ * reaches us only when somebody says so.
+ *
  * **Name and mobile commit immediately. The email is the credential**, and it
  * takes a code at the **new** address first: `volunteers.email` is what decides
  * whether a sign-in code is sent at all, so moving it without proving the inbox
@@ -262,6 +268,47 @@ function MyDetails() {
               </Button>
             </Actions>
           </form>
+        )}
+      </section>
+
+      {/* Texting, which is two facts and not one (#82, ADR 0028). Consent is
+          somebody else's record of you agreeing and is not editable here — a
+          Coordinator takes it, at invite or afterwards. A STOP is what you told
+          the *carrier*, and this application never hears you lift it, because
+          ADR 0028 owns no inbound webhook. So the button is here, and it clears
+          our copy alone: if you have not actually texted START, the next send
+          still fails and the column is stamped again. */}
+      <section className="mb-4 rounded-lg border border-border bg-background p-4 sm:p-6">
+        <h2 className="m-0">Texting</h2>
+        <p className="text-sm text-muted-foreground">
+          {me.smsStoppedAt !== null
+            ? 'You replied STOP, so the rescue cannot text you and you are in nobody’s reachable count.'
+            : me.smsConsentAt === null
+              ? 'You have not agreed to be texted. A coordinator records that — ask one, because it is their statement about you rather than yours.'
+              : me.mobile === null
+                ? 'You have agreed to be texted, but there is no number on file to text.'
+                : 'You have agreed to be texted, and nothing is stopping it.'}
+        </p>
+
+        {me.smsStoppedAt !== null && (
+          <>
+            <p className="text-sm text-muted-foreground">
+              Text <strong>START</strong> back to the number the messages came from first — your
+              carrier decides, not us — then clear our copy here.
+              {me.smsConsentAt === null &&
+                ' You also have no consent recorded, so a coordinator has to record that before anything reaches you.'}
+            </p>
+            <Actions>
+              <Button
+                type="button"
+                onClick={() => {
+                  void act(() => client.post('/me/sms-stop-clearance', {}))
+                }}
+              >
+                I have started again
+              </Button>
+            </Actions>
+          </>
         )}
       </section>
 

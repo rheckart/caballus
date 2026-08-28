@@ -119,6 +119,49 @@ describe('the volunteer record', () => {
     expect(within(dialog).queryByRole('button', { name: 'Yes — they have left' })).toBeNull()
   })
 
+  /**
+   * Clearing a recorded STOP (#82, ADR 0028). The carrier never tells us the
+   * volunteer texted START, so a person has to say so — and the button exists
+   * only where there is one to clear, because a button against an already-null
+   * column is a Coordinator wondering what it did.
+   */
+  it('offers to clear a recorded STOP, and names the volunteer it is about', async () => {
+    const user = userEvent.setup()
+    let posted: unknown = null
+    stubDesk({
+      '/volunteers': {
+        people: [
+          { ...joy, behindRoster: { ...joy.behindRoster, smsStoppedAt: 1_772_000_000_000 } },
+        ],
+        today: '2026-08-23',
+        unstaffedScopes: [],
+      },
+      '/volunteers/sms-stop-clearance': (init: RequestInit) => {
+        posted = JSON.parse(String(init.body)) as unknown
+        return undefined
+      },
+    })
+    renderDesk()
+
+    const dialog = await openRecord(user)
+    expect(within(dialog).getByText(/They replied STOP/)).toBeTruthy()
+    await user.click(within(dialog).getByRole('button', { name: 'Clear the recorded STOP' }))
+
+    expect(posted).toMatchObject({ volunteerId: 'v1' })
+  })
+
+  it('offers nothing to clear when no STOP is recorded', async () => {
+    const user = userEvent.setup()
+    stubDesk()
+    renderDesk()
+
+    const dialog = await openRecord(user)
+    expect(within(dialog).queryByRole('button', { name: 'Clear the recorded STOP' })).toBeNull()
+    // Withdrawing consent is a different sentence in a different column, and
+    // writing a STOP from here stays impossible.
+    expect(within(dialog).getByRole('button', { name: 'Record consent to text' })).toBeTruthy()
+  })
+
   it('puts a refused write beside the button that was pressed', async () => {
     const user = userEvent.setup()
     stubDesk({

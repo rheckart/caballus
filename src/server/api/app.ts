@@ -46,6 +46,7 @@ import { sendEmail } from '../email'
 import { homePage } from '../home/page'
 import { auditLog, peopleList, unstaffedScopes } from '../roster/people'
 import {
+  clearSmsStop,
   createVolunteerIn,
   recordConsent,
   recordDateOfBirth,
@@ -453,7 +454,15 @@ export function buildApi(
 
     const [volunteer] = await forOrg(context.orgId).run((db) =>
       db
-        .select({ name: volunteers.name, email: volunteers.email, mobile: volunteers.mobile })
+        .select({
+          name: volunteers.name,
+          email: volunteers.email,
+          mobile: volunteers.mobile,
+          // Your own texting state, so the screen can say what is true rather
+          // than offer a button against nothing (#82).
+          smsConsentAt: volunteers.smsConsentAt,
+          smsStoppedAt: volunteers.smsStoppedAt,
+        })
         .from(volunteers)
         .where(eq(volunteers.id, actor.volunteerId))
         .limit(1),
@@ -471,6 +480,8 @@ export function buildApi(
       name: volunteer.name,
       email: volunteer.email,
       mobile: volunteer.mobile,
+      smsConsentAt: volunteer.smsConsentAt?.getTime() ?? null,
+      smsStoppedAt: volunteer.smsStoppedAt?.getTime() ?? null,
       domainScopes: [...actor.domainScopes],
     })
   })
@@ -753,6 +764,12 @@ export function buildApi(
    * Send (ADR 0028). It is addressed to one person about their own credential
    * rather than broadcast to the roster, and the person who can no longer sign
    * in at that handset is the one who most needs telling.
+   *
+   * **It carries no link, and that is deliberate rather than an oversight**
+   * (#83). The two Urgent Sends gained one because *open the app* without a way
+   * to open it is a link the volunteer has to be the router for; this one says
+   * *tell a coordinator*, which no link helps with, and it is a one-to-one
+   * credential notice rather than a broadcast.
    */
   api.mutation(
     '/me/mobile',
@@ -794,6 +811,28 @@ export function buildApi(
     },
   )
 
+  /**
+   * Turning your own texts back on, after telling the carrier START (#82).
+   *
+   * The same floor the rest of `/me` sits on and no `volunteerId` in the
+   * payload, so the subject is the actor structurally — the shape ADR 0027
+   * established rather than a third authorization axis past ADR 0010's two.
+   *
+   * `refusal` rather than `contactDetailsRefusal`: the only thing this can
+   * refuse is a Volunteer the policies cannot see.
+   */
+  api.mutation(
+    '/me/sms-stop-clearance',
+    floor('edit-your-own-contact-details'),
+    async (_input, { context, db }) => {
+      const actor = actorOf(context)
+      const outcome = await clearSmsStop(db, context.orgId, actor.volunteerId, {
+        volunteerId: actor.volunteerId,
+      })
+      return outcome.ok ? noContent() : refusal(outcome.because)
+    },
+  )
+
   api.mutation('/volunteers', domainScope('roster'), async (input, { context, db }) => {
     const actor = actorOf(context)
     const outcome = await createVolunteerIn(db, context.orgId, actor.volunteerId, {
@@ -820,6 +859,28 @@ export function buildApi(
     })
     return outcome.ok ? noContent() : refusal(outcome.because)
   })
+
+  /**
+   * Clearing a recorded STOP on somebody else, under `roster` (#82, ADR 0028).
+   *
+   * The Coordinator's half of the pair — *ask a Volunteer Coordinator* is the
+   * first thing `/terms` offers, because the volunteer saying *I texted START,
+   * put me back on* is standing in the barn and not on their own screen.
+   * Writing a STOP from here stays impossible: that column is the rescue's copy
+   * of what the volunteer told the carrier, and withdrawing consent is a
+   * different sentence in a different column.
+   */
+  api.mutation(
+    '/volunteers/sms-stop-clearance',
+    domainScope('roster'),
+    async (input, { context, db }) => {
+      const actor = actorOf(context)
+      const outcome = await clearSmsStop(db, context.orgId, actor.volunteerId, {
+        volunteerId: input.volunteerId,
+      })
+      return outcome.ok ? noContent() : refusal(outcome.because)
+    },
+  )
 
   api.mutation(
     '/volunteers/date-of-birth',

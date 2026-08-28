@@ -256,6 +256,68 @@ export async function recordSmsConsent(
 }
 
 /**
+ * Clearing a recorded STOP, from either of the two doors (#82, ADR 0028).
+ *
+ * **Twilio is the system of record and this is only the rescue's copy.** A
+ * volunteer who replied STOP can tell the *carrier* to resume — START, YES and
+ * UNSTOP are keywords the 10DLC campaign registers and Twilio honours — and
+ * this application never finds out, because ADR 0028 deliberately owns no
+ * inbound webhook and that decision stands. Until this existed,
+ * `sms_stopped_at` was written in one place (`recordStop`) and cleared nowhere,
+ * so somebody who did exactly what the campaign told them to do to come back
+ * stayed out of every `reachFor` count permanently. That is worse than the
+ * failure #77 was built to prevent: a sender is shown *this reaches 47 of 60*
+ * and the number is quietly wrong about the one person who asked to be counted.
+ *
+ * **It is not a second consent.** `sms_consent_at` is untouched, so a volunteer
+ * who never consented — or whose consent a Coordinator withdrew — is still
+ * unreachable after this. Two facts, two columns, and the pair is what
+ * `isReachable` reads.
+ *
+ * **It is not a way past the carrier.** If they have not actually texted START,
+ * the next send fails with 21610 and `recordStop` stamps the column again. The
+ * carrier still wins, every time.
+ *
+ * The same function behind both doors, because it is the same act: a `roster`
+ * holder naming somebody, and a Volunteer naming nobody at all. Audited as the
+ * current-state edit it is, and with **no `reason`** — nobody asks why you
+ * turned your own texts back on (ADR 0027), and this is never a grant.
+ */
+export async function clearSmsStop(
+  db: OrgScopedDatabase,
+  orgId: OrgId,
+  actorVolunteerId: string,
+  about: { readonly volunteerId: string },
+): Promise<Recorded> {
+  const [existing] = await db
+    .select({ smsStoppedAt: volunteers.smsStoppedAt })
+    .from(volunteers)
+    .where(and(eq(volunteers.id, about.volunteerId), isNull(volunteers.removedAt)))
+    .limit(1)
+  if (existing === undefined) return refused('volunteer_not_found')
+  // Nothing recorded is nothing to clear, and an audit entry saying a STOP went
+  // from absent to absent is noise in the one record that has to stay readable.
+  if (existing.smsStoppedAt === null) return recorded(null)
+
+  await db
+    .update(volunteers)
+    .set({ smsStoppedAt: null })
+    .where(eq(volunteers.id, about.volunteerId))
+
+  await audit(db, orgId, actorVolunteerId, [
+    {
+      entity: 'volunteer',
+      entityId: about.volunteerId,
+      field: 'sms_stopped',
+      before: 'recorded',
+      after: 'cleared',
+    },
+  ])
+
+  return recorded(null)
+}
+
+/**
  * Records the date of birth and how it was established.
  *
  * A precondition of the Orientation tick rather than a fourth gate: the person

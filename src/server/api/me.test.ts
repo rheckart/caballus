@@ -368,6 +368,10 @@ describe.skipIf(!reachable)('your own contact details, through the API', () => {
         name: 'Kate Ellery',
         email: `kate${OURS}`,
         mobile: '410-555-0117',
+        // Your own texting state, so the screen can offer the STOP door #82
+        // added rather than a button against a fact it cannot see.
+        smsConsentAt: null,
+        smsStoppedAt: null,
         domainScopes: [],
       })
     })
