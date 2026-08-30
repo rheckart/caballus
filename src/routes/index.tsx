@@ -32,8 +32,20 @@
  * and what it sends by text — a requirement of 10DLC campaign vetting (ADR
  * 0028) rather than decoration. It is the `signed-out` branch and nothing else
  * changes; the shell is already off for that reader (#66).
+ *
+ * **And that branch is decided on the server, because the reader who matters
+ * runs no JavaScript.** The campaign vetting bot fetches `/` once and reads
+ * what the HTML says; while `signed-out` was reached only through `/home`'s
+ * 401 in an effect, what it read was the skeleton's *One moment…* — and the
+ * campaign was rejected (30886) for an opt-in page it could not see. The
+ * loader below answers one hint — did the request carry a session cookie at
+ * all — so a cookie-less request gets the public page in the server's own
+ * HTML. It is a hint and never the truth: a stale cookie still renders the
+ * skeleton and `/home`'s answer still decides, exactly as before.
  */
-import { Link, createFileRoute } from '@tanstack/react-router'
+import { Link, createFileRoute, useLoaderData } from '@tanstack/react-router'
+import { createIsomorphicFn } from '@tanstack/react-start'
+import { getStartContext } from '@tanstack/start-storage-context'
 import { Pencil } from 'lucide-react'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 
@@ -53,7 +65,34 @@ import { dayString, daysBetween } from '../shared/time'
 import type { Answers, contract } from '../shared/api-contract'
 import { SHIFT_TYPE_LABEL } from '../shared/shifts'
 
+/**
+ * Whether the request carried a session cookie — presence, never validity.
+ *
+ * The server side reads the request out of the framework's own per-request
+ * storage. `@tanstack/start-storage-context` is Start's internal package,
+ * imported deliberately: this version exports no public accessor for the
+ * request outside a server function, and a server function here is the thing
+ * ADR 0016 bans. Owned the way `storeOTP`'s shape is owned in
+ * `src/server/auth/email-change.ts` — revisit on the next Start upgrade,
+ * which may offer the public door. Outside a request (the test harness), the
+ * answer is `true`: unknowable behaves exactly as this screen always has.
+ *
+ * The client side answers `true` for the same reason: a volunteer navigating
+ * here mid-session must get the skeleton, and `/home` remains the one thing
+ * that decides.
+ */
+const requestCarriesSession = createIsomorphicFn()
+  .client(() => true)
+  .server(() => {
+    const start = getStartContext({ throwIfNotFound: false })
+    if (start === undefined) return true
+    // Better Auth's cookie in both spellings: `better-auth.session_token`,
+    // and `__Secure-`-prefixed in production.
+    return (start.request.headers.get('cookie') ?? '').includes('session_token')
+  })
+
 export const Route = createFileRoute('/')({
+  loader: () => ({ carriesSession: requestCarriesSession() }),
   component: Home,
 })
 
@@ -207,7 +246,13 @@ function when(today: string, day: string): string {
 }
 
 function Home() {
-  const [state, setState] = useState<State>({ state: 'asking' })
+  // `strict: false`, the way `shifts.$shiftId.tsx` reads its param: the test
+  // harness mounts this component on a route of its own, which has no loader
+  // and answers `undefined` — and undefined means *asking*, as it always did.
+  const loaded = useLoaderData({ strict: false }) as { carriesSession?: boolean } | undefined
+  const [state, setState] = useState<State>(
+    loaded?.carriesSession === false ? { state: 'signed-out' } : { state: 'asking' },
+  )
   const [problem, setProblem] = useState<string | null>(null)
   const [editing, setEditing] = useState<string | null>(null)
 

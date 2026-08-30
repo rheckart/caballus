@@ -22,13 +22,20 @@ import userEvent from '@testing-library/user-event'
 export interface TestRoute {
   readonly path: string
   readonly component: RouteComponent
+  /** What the real route's loader would have answered, for a component that reads one. */
+  readonly loader?: () => unknown
 }
 
 /** Renders `routes` under one router, navigated to `at`. */
 export function renderRoutes(routes: readonly TestRoute[], at: string) {
   const rootRoute = createRootRoute()
   const children = routes.map((route) =>
-    createRoute({ getParentRoute: () => rootRoute, path: route.path, component: route.component }),
+    createRoute({
+      getParentRoute: () => rootRoute,
+      path: route.path,
+      component: route.component,
+      loader: route.loader,
+    }),
   )
   const routeTree = rootRoute.addChildren(children)
   const router = createRouter({

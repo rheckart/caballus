@@ -260,6 +260,24 @@ describe('the Home screen', () => {
       expect(contact.getAttribute('href')).toBe('mailto:rob@heckart.me')
     })
 
+    it('shows without waiting on /home when the request carried no session cookie', async () => {
+      // The campaign vetting bot runs no JavaScript: it reads the server's own
+      // HTML and nothing after it. The loader's hint is what puts the public
+      // page in that first render, so `/home` here is a promise that never
+      // settles — the page can only appear through the hint, because *after
+      // the fetch* is exactly where the 30886 rejection came from.
+      vi.stubGlobal(
+        'fetch',
+        vi.fn((): Promise<Response> => new Promise(() => undefined)),
+      )
+      if (component === undefined) throw new Error('The route has no component.')
+      renderRoutes([{ path: '/', component, loader: () => ({ carriesSession: false }) }], '/')
+
+      expect(await screen.findByText('What we send by text')).toBeTruthy()
+      expect(screen.getByText('How to stop')).toBeTruthy()
+      expect(screen.queryByText('One moment…')).toBeNull()
+    })
+
     it('shows a signed-in volunteer none of it', async () => {
       stubApi({ '/home': page() })
       renderHome()
