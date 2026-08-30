@@ -489,6 +489,97 @@ Caballus: Feed AM on 2026-09-03 at 07:00 is short. Cover it: https://caballus.te
 Caballus: The farrier comes Thursday morning. More: https://caballus.tech Reply STOP to stop.
 ```
 
+**The campaign description, which vetting reads against the samples.** The
+first submission was rejected with Twilio's 30886 — _Invalid Campaign
+Description_ — which is the vetting bot saying the description did not spell
+out who sends, who receives, and why. This is the resubmitted text, recorded
+for the same reason the samples are: a rewording that drops one of the three
+fails a review a week later in an email nobody would connect back to it.
+Resubmitted with this text on 2026-08-30. **The dates inside Twilio's
+compliance emails distinguish nothing**: both the rejection and the
+resubmission confirmation stamp the _original_ submission timestamp, so an
+email cannot tell you which submission it reviewed — only the campaign's
+status in the console can. If a resubmission is rejected again with 30886,
+the next step is a support ticket quoting the Campaign SID and asking which
+part of the description failed, not a third blind resubmit.
+
+```
+Caballus is a volunteer-coordination web app for a horse rescue barn, operated
+by Rob Heckart as a sole proprietor. Messages are sent through the app by the
+rescue's volunteer coordinators to the rescue's own registered volunteers
+(about 60 people). There are exactly two message types: (1) an alert that a
+specific upcoming barn shift is short-staffed, with a link to
+https://caballus.tech/shifts where the volunteer can offer to cover it, and
+(2) a time-sensitive operational announcement from a rescue officer, such as a
+farrier visit. Volunteers opt in when a coordinator registers them: SMS
+consent is collected explicitly at invitation and recorded, as described at
+https://caballus.tech/. There is no marketing and no public sign-up. Traffic
+is very low — the app caps itself at 120 messages per rolling 24 hours — and
+every message ends with "Reply STOP to stop."
+```
+
+A rejection is resolved by **editing and resubmitting the same campaign**,
+never by creating a second one — a new campaign is a second vetting fee, and
+the sole-proprietor brand only carries one anyway.
+
+**The second rejection (2026-08-30, same 30886, two hours after resubmission)
+was the page and not the words.** Vetting fetches the opt-in URL with no
+JavaScript, and `/` answered every scriptless client the loading shell —
+_One moment…_ — because the signed-out branch was decided by `/home`'s 401 in
+a client-side effect. The consent language the form pointed at was invisible
+to the one reader it was written for. The fix is in `src/routes/index.tsx`: a
+cookie-less request gets the public page in the server's own HTML. Verify the
+fix is actually serving before resubmitting a third time:
+`curl -s https://caballus.tech/ | grep -c "What we send by text"` must answer
+at least 1.
+
+**Two more 30886 causes were found by reading the campaign in the console
+rather than by rewriting the description again**, and both are the same fault:
+a field that disagrees with the description beside it. 30886's own text asks
+for a description matching "your selected campaign use case, sample messages,
+and registered brand details", so a contradiction anywhere in that set is the
+error, not only a vague description.
+
+The **opt-in field** (_How do end-users opt in to receive messages?_) said end
+users opt in by visiting the site, signing in and choosing to opt in "in the
+future" — self-serve, and a roadmap. The description says the opposite in the
+same campaign: a coordinator collects consent at invitation and there is no
+public sign-up. This is the text submitted for the third attempt, recorded here
+for the same reason the description and the samples are — plain ASCII, because
+a curly quote or an em dash in a carrier form is a needless variable:
+
+```
+There is no public sign-up and no self-serve opt-in. A Volunteer
+Coordinator at the horse rescue creates each volunteer's record from
+their name, email address, and, if the volunteer chooses to give one,
+their mobile number. Consent to be texted is asked for and answered at
+that moment, in the course of bringing the person on as a volunteer.
+The registration form requires an explicit yes or no; it is not
+pre-checked and it cannot be skipped. The answer is stored against the
+volunteer's record with the date it was given, and only a record
+carrying a recorded yes is ever texted. This process is described
+publicly at https://caballus.tech/ under the heading "You cannot sign
+yourself up". A volunteer can reply STOP to any message to stop the
+texts, and can remove their mobile number themselves once signed in.
+Replying HELP returns contact information for the operator.
+```
+
+Every sentence of it is checkable against `src/components/landing.tsx`, which
+is the point: the reviewer clicks the URL and reads the same claim in the same
+words under a heading of its own.
+
+The **operator's name** was the other one. The description said _Rob Heckart_;
+the registered sole-proprietor brand is **Charles Heckart**, which is the legal
+name on the ID that verified it. `Charles "Rob" Heckart` is what the
+description now carries — true, and matching the brand a reviewer holds it
+against. `src/components/landing.tsx` still says _Rob Heckart_ and that is
+fine: it is the name the rescue's volunteers know, and the campaign is where
+the legal one has to appear.
+
+One thing the console shows that is **not** a vetting problem and is still a
+send-time one: no phone number is assigned to the Messaging Service. Buy one
+and add it to `MG…` after approval, or the canary has nothing to send from.
+
 The link is `APP_URL`, passed in from `src/server/urgent/send.ts` rather than
 read by the composers — so a development send names `http://localhost:3000` and
 never production, and a box with `APP_URL` unset composes the linkless sentence
