@@ -33,7 +33,7 @@
  */
 import { Link } from '@tanstack/react-router'
 
-import { CONTACT, LEAD, RATES, SECTION } from './public'
+import { CONTACT, LEAD, RATES, SECTION, SMS_CONSENT } from './public'
 import { Button } from './ui/button'
 
 export function Landing() {
@@ -76,6 +76,24 @@ export function Landing() {
           your email address and — if you give one — your mobile number, and that is the moment you
           are asked whether Caballus may text you. Your answer is recorded against your record with
           the date you gave it.
+        </p>
+        {/* **The disclosure, quoted rather than described** (#79). Twilio's
+            30909 is a reviewer unable to verify consent, and its companion
+            30921 is why: the form the coordinator ticks is behind a login and
+            no reviewer will ever see it. So the words themselves are here, on
+            the one page with no session in front of it, and they are the same
+            `SMS_CONSENT` the form renders — not a summary of it. */}
+        <p className="m-0 mt-3">
+          These are the words you are read, and you answer yes or no to them:
+        </p>
+        <blockquote className="m-0 mt-3 border-l-2 border-border pl-4 text-muted-foreground">
+          {SMS_CONSENT}
+        </blockquote>
+        <p className="m-0 mt-3">
+          Nothing is agreed on your behalf: the box beside those words starts empty, a coordinator
+          ticks it only if you say yes, and a no is recorded as readily as a yes. What we do with
+          your number is the <Link to="/privacy">privacy policy</Link>, and the rest of it is the{' '}
+          <Link to="/terms">terms</Link>.
         </p>
         <p className="m-0 mt-3">
           You then sign in with a six-digit code sent to you. Nobody without a record can get in.

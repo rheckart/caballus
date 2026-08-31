@@ -54,6 +54,31 @@ export const NO_SHARING =
 export const RATES = 'Message and data rates may apply.'
 
 /**
+ * **The exact words a volunteer agrees to, and the one string three places
+ * carry** (#79, ADR 0028).
+ *
+ * Twilio's 30909 is the reviewer saying they cannot verify how anybody
+ * consented, and its companion codes name what was missing: the disclosures
+ * themselves (30924), and a flow they could not reach because it sits behind a
+ * login (30921). Both are answered by the same move — one constant, quoted
+ * verbatim in the three places that have to agree: the checkbox a Volunteer
+ * Coordinator ticks in `src/routes/admin/volunteers.tsx`, the public page at
+ * `/` where a reviewer with no session reads it, and the campaign's own opt-in
+ * field, recorded in `docs/deploy.md`. A paraphrase in any one of them is the
+ * drift the whole arrangement exists to make impossible.
+ *
+ * Every clause is load-bearing and none of them is taste. The brand name,
+ * because a disclosure that does not say who is texting identifies nobody.
+ * *Message frequency varies*, because a carrier asks for it by those words.
+ * `RATES`, interpolated rather than retyped, so the sentence `/terms` carries
+ * and the sentence a volunteer hears cannot come apart. Both keywords, because
+ * `/terms` promises a HELP reply. And ADR 0029's separation last, because the
+ * volunteer being asked is the one person for whom *does STOP lock me out* is
+ * a real question.
+ */
+export const SMS_CONSENT = `Caballus will text you when a shift you could work is short, or when there is rescue news that will not keep. Message frequency varies. ${RATES} Reply STOP to stop and HELP for help. Your sign-in codes are separate, and STOP never stops those.`
+
+/**
  * A legal page: a heading, the date, the prose, and the way back.
  *
  * The footer cross-links the other two public pages, because a reviewer lands

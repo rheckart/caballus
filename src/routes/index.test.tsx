@@ -242,6 +242,36 @@ describe('the Home screen', () => {
       expect(screen.getByText(/asked whether Caballus may text you/)).toBeTruthy()
     })
 
+    /**
+     * Twilio's 30909 is a reviewer saying they cannot verify how anybody
+     * consented, and 30924 and 30921 name why: the disclosures were not in the
+     * words, and the flow carrying them was behind a login. Every clause below
+     * is asserted **by its words** rather than against `SMS_CONSENT`, for the
+     * same reason `privacy.test.tsx` and `terms.test.tsx` do it: a rewording
+     * that quietly drops one would satisfy a test written against the constant
+     * and fail a campaign review a fortnight later.
+     */
+    it('quotes the consent disclosure a reviewer with no session cannot otherwise reach', async () => {
+      renderSignedOut()
+
+      expect(await screen.findByText(/These are the words you are read/)).toBeTruthy()
+      const quoted = screen.getByText(/Caballus will text you when a shift you could work is short/)
+      expect(quoted.textContent).toContain('Message frequency varies.')
+      expect(quoted.textContent).toContain('Message and data rates may apply.')
+      expect(quoted.textContent).toContain('Reply STOP to stop and HELP for help.')
+      // ADR 0029's separation, inside the disclosure itself rather than only
+      // beside it: the volunteer being asked is the one person for whom *does
+      // STOP lock me out* is a real question.
+      expect(quoted.textContent).toContain('STOP never stops those')
+    })
+
+    it('says the opt-in is never pre-ticked, which carriers refuse outright', async () => {
+      renderSignedOut()
+
+      expect(await screen.findByText(/the box beside those words starts empty/)).toBeTruthy()
+      expect(screen.getByText(/a no is recorded as readily as a yes/)).toBeTruthy()
+    })
+
     it('says how to stop, and that stopping never locks anybody out', async () => {
       renderSignedOut()
 

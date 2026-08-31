@@ -544,29 +544,61 @@ The **opt-in field** (_How do end-users opt in to receive messages?_) said end
 users opt in by visiting the site, signing in and choosing to opt in "in the
 future" — self-serve, and a roadmap. The description says the opposite in the
 same campaign: a coordinator collects consent at invitation and there is no
-public sign-up. This is the text submitted for the third attempt, recorded here
-for the same reason the description and the samples are — plain ASCII, because
-a curly quote or an em dash in a carrier form is a needless variable:
+public sign-up. The third attempt replaced it with an accurate account of the
+coordinator's own act, and **that one was rejected too, with 30909** — a
+different error, and the first sign of progress in three attempts, because
+30886 was gone and the description had passed.
+
+**30909 is the reviewer saying they cannot verify how anybody consented**, and
+its companion codes are where the answer is: 30924 wants the required
+disclosures inside the consent language itself, and 30921 is a flow behind a
+login that no reviewer will ever see. An accurate description of an
+unverifiable process is still unverifiable. Both are closed by one move —
+`SMS_CONSENT` in `src/components/public.tsx`, quoted verbatim in the three
+places that have to agree (#79): the checkbox a Volunteer Coordinator ticks in
+`src/routes/admin/volunteers.tsx`, the public page at `/` where a reviewer with
+no session reads the identical words, and the campaign field below. A
+paraphrase in any one of them is the drift the constant exists to prevent, and
+`src/routes/index.test.tsx` asserts each clause **by its words** rather than
+against the constant, the way `privacy.test.tsx` and `terms.test.tsx` do.
+
+This is the fourth attempt's text, recorded here for the same reason the
+description and the samples are — plain ASCII, because a curly quote or an em
+dash in a carrier form is a needless variable:
 
 ```
-There is no public sign-up and no self-serve opt-in. A Volunteer
-Coordinator at the horse rescue creates each volunteer's record from
-their name, email address, and, if the volunteer chooses to give one,
-their mobile number. Consent to be texted is asked for and answered at
-that moment, in the course of bringing the person on as a volunteer.
-The registration form requires an explicit yes or no; it is not
-pre-checked and it cannot be skipped. The answer is stored against the
-volunteer's record with the date it was given, and only a record
-carrying a recorded yes is ever texted. This process is described
-publicly at https://caballus.tech/ under the heading "You cannot sign
-yourself up". A volunteer can reply STOP to any message to stop the
-texts, and can remove their mobile number themselves once signed in.
-Replying HELP returns contact information for the operator.
+There is one opt-in path and no others. There is no public sign-up, no
+web form, no keyword opt-in, and no purchased or shared list.
+
+The workflow, start to finish: a Volunteer Coordinator at the horse
+rescue brings a new volunteer on in person or by phone. The coordinator
+opens the volunteer's record in the Caballus web app and reads them this
+disclosure, word for word:
+
+"Caballus will text you when a shift you could work is short, or when
+there is rescue news that will not keep. Message frequency varies.
+Message and data rates may apply. Reply STOP to stop and HELP for help.
+Your sign-in codes are separate, and STOP never stops those."
+
+The volunteer answers yes or no. The consent checkbox beside those words
+is unchecked by default and is never pre-selected; the coordinator ticks
+it only on a yes, and a no is recorded as a no. The date of the answer
+is stored on the volunteer's record, and only a record carrying a
+recorded yes is ever sent a message.
+
+Reviewers can read the identical disclosure, quoted word for word and
+without signing in, at https://caballus.tech/ under the heading "You
+cannot sign yourself up". That page also links the privacy policy at
+https://caballus.tech/privacy and the terms at
+https://caballus.tech/terms.
+
+A volunteer can reply STOP at any time, ask a coordinator to remove
+their number, or remove it themselves once signed in.
 ```
 
-Every sentence of it is checkable against `src/components/landing.tsx`, which
-is the point: the reviewer clicks the URL and reads the same claim in the same
-words under a heading of its own.
+The quoted paragraph in the middle of it is `SMS_CONSENT` exactly, which is the
+point: a reviewer clicks the URL, reads the same paragraph under a heading of
+its own, and the two cannot come apart without a test failing first.
 
 The **operator's name** was the other one. The description said _Rob Heckart_;
 the registered sole-proprietor brand is **Charles Heckart**, which is the legal
