@@ -23,7 +23,7 @@
  * the modal both desks render, so the rule that **only one tab may ever be
  * unsaved** is one implementation rather than two that drift.
  */
-import { createFileRoute } from '@tanstack/react-router'
+import { Link, createFileRoute } from '@tanstack/react-router'
 import { Pencil } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { Controller, useForm, type FieldValues } from 'react-hook-form'
@@ -44,6 +44,7 @@ import {
   matches,
   useSaving,
 } from '../../components/forms'
+import { SMS_CONSENT } from '../../components/public'
 import {
   DANGER_CARD,
   InlineRefusal,
@@ -403,10 +404,22 @@ function NewVolunteer({
         <Field label="Mobile" htmlFor="new-mobile" optional>
           <Input id="new-mobile" name="mobile" type="tel" inputMode="tel" maxLength={50} />
         </Field>
-        {/* **SMS Consent, asked rather than assumed** (ADR 0028). Carriers want
-            documented proof of opt-in, so the sentence beside the box is the
-            opt-in language and has to be read to the volunteer — which is why
-            it says what will be sent rather than *may we text you*. */}
+        {/* **SMS Consent, asked rather than assumed** (ADR 0028), and the
+            words are `SMS_CONSENT` rather than a sentence written here (#79).
+            Carriers want documented proof of opt-in, and Twilio's 30909 —
+            *we cannot verify how end users consent* — is what a paraphrase
+            earns: the disclosures a reviewer looks for by name (the brand,
+            the frequency, the rates, both keywords) have to be in the words
+            actually read out, not merely near them. The same constant is
+            quoted on `/`, where a reviewer can reach it with no session, and
+            recorded in `docs/deploy.md` as the campaign's own opt-in text.
+
+            This is a script, not a summary: the box says *these words were
+            read and answered*, because a coordinator who paraphrases is the
+            failure mode the constant exists to close. It starts unticked and
+            nothing ever ticks it — carriers refuse a pre-checked opt-in
+            outright, and it is the volunteer's answer rather than the
+            coordinator's assumption. */}
         <WideField label="Texting" htmlFor="new-sms-consent">
           <label
             htmlFor="new-sms-consent"
@@ -421,10 +434,20 @@ function NewVolunteer({
               }}
             />
             <span className="py-2.5 font-normal">
-              They agree to be texted when a shift they could work is short, or when there is rescue
-              news that will not keep. Replying STOP ends it. Sign-in codes are not part of this.
+              You read them this, word for word, and they said yes.
             </span>
           </label>
+          <blockquote className="m-0 mt-1 border-l-2 border-border pl-4 text-sm text-muted-foreground">
+            {SMS_CONSENT}
+          </blockquote>
+          <p className="m-0 mt-2 text-sm text-muted-foreground">
+            The same words are on the public page at{' '}
+            <Link to="/" target="_blank" rel="noreferrer">
+              caballus.tech
+            </Link>
+            , if they would rather read them themselves. Leave the box empty if they say no, or if
+            you have not asked.
+          </p>
         </WideField>
       </Fields>
       <Actions>
