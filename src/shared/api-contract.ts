@@ -1510,9 +1510,10 @@ const escalationId = z.uuid()
  * call on the Board because *a horse looking alert-free whenever it is slow*.
  * This is the first screen opened, cold, on barn signal.
  *
- * `me` rides along for the same reason. The hero line has always said who is
- * reading, and the Announcement controls need the Scopes; a second `/me` call
- * to draw one sentence is the half-loaded state again, smaller.
+ * `me` rides along for the same reason: the Announcement controls need the
+ * Scopes, and a second `/me` call to decide whether to draw a button is the
+ * half-loaded state again, smaller. Your *name* is the sidebar footer's job
+ * since #66 and this screen no longer prints it (#88).
  *
  * There is no signed-out shape, exactly as `/me` has none: a signed-out request
  * gets `401 not_authorized` and the screen reads that back.
@@ -1520,7 +1521,20 @@ const escalationId = z.uuid()
 export const homePage = z.object({
   today: dayOfTheOrganisation,
   /**
-   * Who is reading — the hero line's own three fields and not `/me` whole.
+   * The rescue's own name, which is this screen's heading (#88).
+   *
+   * On the composed read rather than a second call to `/day`, for the reason
+   * every other field here is: a heading that arrives after the cards is the
+   * half-loaded screen #60 refused. It costs no query — `clockHere` already
+   * reads the name off the same `orgs` row it reads the timezone from.
+   *
+   * The sidebar's wordmark stays *Caballus* (#66). That is the application's
+   * name and the way home from twenty screens; this is whose barn you are
+   * standing in, and they are different facts.
+   */
+  organisation: z.string(),
+  /**
+   * Who is reading — three fields and not `/me` whole.
    * Your email and your mobile are yours to read and edit on `/me`'s own
    * screen (#68); a dashboard has no use for them, and a field a screen does
    * not render is a field that goes stale unwitnessed.

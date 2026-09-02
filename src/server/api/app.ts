@@ -524,6 +524,7 @@ export function buildApi(
 
       return json({
         today: clock.today,
+        organisation: clock.organisation,
         me: {
           volunteerId: actor.volunteerId,
           name: volunteer.name,

@@ -27,6 +27,16 @@
  * Sign out moved to the sidebar's footer with #66, so nothing is orphaned by
  * this screen having almost nothing on it some mornings.
  *
+ * **And the navy hero band went with #88.** It said *Caballus* over *Signed in
+ * as …*, both of which the sidebar has said on every screen since #66 — the
+ * application's name twice on the one screen where nobody is wondering which
+ * app they opened, spending the first inch of a phone screen the next-Shift
+ * card should have. The heading is the **rescue's own name** now, which is the
+ * one thing this screen can say that the sidebar cannot, in the room the band
+ * was using. It rides on the same composed read as everything else: a heading
+ * arriving after the cards is the half-loaded screen #60 refused, and
+ * `clockHere` already had the name off the row it reads the timezone from.
+ *
  * **A visitor with no session gets a different screen entirely** (#75): the
  * public page in `src/components/landing.tsx`, which describes the application
  * and what it sends by text — a requirement of 10DLC campaign vetting (ADR
@@ -116,7 +126,6 @@ type State =
   | { readonly state: 'signed-out' }
   | { readonly state: 'broken'; readonly because: string }
 
-const HERO_LINE = 'm-0 max-w-[46ch] text-base text-on-dark-muted'
 const SECTION_HEADING = 'mb-3 mt-6 text-foreground'
 const PANEL = 'mb-4 rounded-lg border border-border bg-background p-4 sm:p-6'
 const ROW =
@@ -307,27 +316,37 @@ function Home() {
 
   return (
     <main>
-      {/* The hero band: navy, one line of who you are, and nothing to press
-          that is not the one thing this state is for (DESIGN.md). */}
-      <div className="mb-5 rounded-lg bg-brand-navy px-5 py-8 min-[600px]:px-8 min-[600px]:py-12">
-        <h1 className="mb-2 text-4xl text-on-dark min-[600px]:text-5xl">Caballus</h1>
-        {state.state === 'asking' && <p className={HERO_LINE}>One moment…</p>}
-        {state.state === 'broken' && (
-          <p role="alert" className="m-0 max-w-[46ch] text-base text-on-dark">
-            Something is wrong: {state.because}
-          </p>
-        )}
-        {page !== null && <p className={HERO_LINE}>Signed in as {page.me.name}.</p>}
-      </div>
+      {/* The rescue's own name, with the room the navy band used to spend on
+          the application's (#88). *Caballus* is the sidebar's wordmark on
+          every screen; a volunteer standing in a barn already knows which app
+          they opened, and what this screen can say that the sidebar cannot is
+          whose barn it is. */}
+      {page !== null && (
+        <h1 className="mb-6 mt-2 text-4xl leading-tight tracking-tight text-foreground min-[600px]:mb-8 min-[600px]:mt-4 min-[600px]:text-5xl">
+          {page.organisation}
+        </h1>
+      )}
+
+      {state.state === 'broken' && (
+        <p role="alert" className="mb-6 mt-2 text-base text-foreground">
+          Something is wrong: {state.because}
+        </p>
+      )}
 
       {/* Grey blocks rather than the word *Loading* on a blank screen: this is
           opened cold on barn signal, and a page with nothing on it reads as an
-          app that did not start. */}
+          app that did not start. The heading is one of them — the name arrives
+          with the rest of the read, and a placeholder is honester than a flash
+          of the wrong barn. */}
       {state.state === 'asking' && (
-        <div aria-hidden="true">
-          <Skeleton className="mb-5 h-36 w-full" />
-          <Skeleton className="mb-4 h-24 w-full" />
-        </div>
+        <>
+          <p className="sr-only">One moment…</p>
+          <div aria-hidden="true">
+            <Skeleton className="mb-6 mt-2 h-10 w-3/4 min-[600px]:mb-8 min-[600px]:mt-4 min-[600px]:h-12" />
+            <Skeleton className="mb-5 h-36 w-full" />
+            <Skeleton className="mb-4 h-24 w-full" />
+          </div>
+        </>
       )}
 
       {page !== null && (
