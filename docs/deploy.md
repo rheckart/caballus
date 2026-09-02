@@ -450,6 +450,15 @@ Urgent Send's kill switch or daily cap from locking the roster out of the app.
 days to approve, and until they are approved every send refuses in words
 (`sms_not_configured`) rather than dropping quietly.
 
+**Where this stands as of 2026-09-02.** The brand and the campaign are
+**Approved**, the number is bought and attached, and both Verify Services
+exist — so all five values are obtainable and nothing below is waiting on
+Twilio any more. What is left is a person's work: put the five values in the
+vault, confirm the number's HELP and STOP auto-replies, and send the canary.
+The rejection history further down is kept rather than deleted, because the
+same four causes will be waiting the day the rescue re-registers under its own
+EIN.
+
 ### The sole-proprietor limits, which the next person will otherwise rediscover
 
 The brand ADR 0028 registers is **Sole Proprietor**, registered to the
@@ -608,9 +617,12 @@ against. `src/components/landing.tsx` still says _Rob Heckart_ and that is
 fine: it is the name the rescue's volunteers know, and the campaign is where
 the legal one has to appear.
 
-One thing the console shows that is **not** a vetting problem and is still a
-send-time one: no phone number is assigned to the Messaging Service. Buy one
-and add it to `MG…` after approval, or the canary has nothing to send from.
+One thing the console showed that was **not** a vetting problem and was still
+a send-time one: no phone number was assigned to the Messaging Service.
+**Resolved 2026-09-02** — `+1 667 225 3977` (Annapolis, MD) is bought and is
+the one sender on `MG…`. It stays written down because the failure it would
+have caused is the one this section exists to prevent: a campaign approved, a
+send that looks fine, and nothing to send it from.
 
 The link is `APP_URL`, passed in from `src/server/urgent/send.ts` rather than
 read by the composers — so a development send names `http://localhost:3000` and
@@ -651,6 +663,22 @@ Creating the second Service in the console is free and takes a minute. Both are
 required together: falling back to one for both purposes would fail on the day
 somebody changed their number rather than at boot, which is the quietly-wrong
 shape the pair exists to prevent.
+
+**Both exist as of 2026-09-02**, under Identity & security > Verify >
+Services: the login door is the one named **Caballus**, and `/me/mobile`'s is
+**Caballus Number Change**. The SIDs are values and live in the vault with the
+other three rather than here. Two things about the friendly name are worth
+knowing before anybody renames one. It is **not** a console label — Verify puts
+it in the message body, so the login code reads _Your Caballus verification
+code is: 123456_ and the other reads _Your Caballus Number Change verification
+code is:_, which is why the two cannot simply both be called Caballus. And
+setting one at all requires ticking a warranty that you are authorised to use
+that name and can show Twilio evidence within 72 hours, which is a statement a
+person makes rather than a field a script fills.
+
+The console enables the **Email** channel alongside SMS whether or not you ask
+for it. Harmless — `src/server/auth/verify.ts` only ever calls the SMS channel
+— and left alone rather than fought with.
 
 ### What is not done here, and cannot be
 
