@@ -261,10 +261,10 @@ function ItemLine({
 
   return (
     <li className="border-b border-border py-2 first:pt-0 last:border-b-0 last:pb-0">
-      <label className="flex min-h-11 items-center gap-2">
+      <label className="flex min-h-11 items-center gap-3">
         <input
           type="checkbox"
-          className="size-[22px] flex-none accent-primary"
+          className="size-7 flex-none accent-primary"
           checked={checked}
           disabled={checked}
           onChange={tick}
@@ -299,7 +299,7 @@ function ItemLine({
       </label>
       <div className="pl-[30px]">
         {unsent && (
-          <span className="mr-2 text-[13px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <span className="mr-2 inline-flex items-center rounded-full bg-card-tint-peach px-2.5 py-0.5 font-mono text-[11px] font-medium uppercase tracking-wider text-brand-orange-deep">
             Unsent
           </span>
         )}
@@ -354,8 +354,8 @@ function HorseAlerts({
 
   const kindTint: Record<Alert['kind'], string> = {
     prohibition: 'border-l-destructive bg-card-tint-rose dark:bg-transparent',
-    care: 'border-l-warning bg-card-tint-peach dark:bg-transparent',
-    allergy: 'border-l-brand-purple bg-card-tint-lavender dark:bg-transparent',
+    care: 'border-l-warning bg-card-tint-yellow dark:bg-transparent',
+    allergy: 'border-l-brand-teal bg-card-tint-lavender dark:bg-transparent',
   }
 
   return (
@@ -365,7 +365,7 @@ function HorseAlerts({
           key={alert.id}
           className={`m-0 rounded-md border border-border border-l-4 px-3 py-2 ${kindTint[alert.kind]}`}
         >
-          <strong className="mr-1 text-[13px] uppercase tracking-wide">
+          <strong className="mr-1 font-mono text-[12px] font-medium uppercase tracking-wider">
             {ALERT_KIND_LABEL[alert.kind]}
           </strong>{' '}
           {alert.text}

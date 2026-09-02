@@ -29,7 +29,7 @@ it('names the manifest and the icon the browser needs to install the app', async
       { rel: 'apple-touch-icon', href: '/icons/apple-touch-icon.png' },
     ]),
   )
-  expect(head?.meta).toEqual(expect.arrayContaining([{ name: 'theme-color', content: '#0f5d55' }]))
+  expect(head?.meta).toEqual(expect.arrayContaining([{ name: 'theme-color', content: '#101418' }]))
 })
 
 /** Every Destination as a route that renders nothing, so `<Link>` resolves. */

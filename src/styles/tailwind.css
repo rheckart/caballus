@@ -1,10 +1,24 @@
 /*
- * The styling system (ADR 0025, #61–#63): Tailwind v4 plus shadcn, and this
- * file is where `app.css`'s 72 custom properties became the `@theme`.
- * `app.css` itself rode along in a `legacy` cascade layer while the screens
- * migrated, and was deleted with the last of them (#63) — full migration
- * over coexistence, because the half state is not allowed to become
- * permanent.
+ * The styling system (ADR 0025, #61–#63), carrying **Field Signal** since the
+ * redesign: the direction drawn on the canvas in `design/` and picked out of
+ * three. Space Grotesk with DM Mono for anything countable, signal orange as
+ * the one primary action and the one warning, teal as the second action and
+ * every link, on a light grey ground with white panels.
+ *
+ * **The token names did not change and the values did.** Every screen already
+ * reads these by role — `bg-primary`, `text-muted-foreground`, `bg-card-tint-
+ * peach` — so re-pointing the values here is what restyles twenty-eight
+ * screens without touching a class name. A rename would have been a
+ * twenty-eight-file diff for no visual difference, and the names that read
+ * oddly now (`card-tint-lavender` is a teal tint) are named for the *role*
+ * they hold on the screen that uses them, which is the thing that did not
+ * move.
+ *
+ * **`--background` is a panel and `--card` is the page.** That inversion was
+ * already here — `body` reads `--card`, and every screen's panel is
+ * `bg-background` — and it is kept deliberately rather than corrected,
+ * because correcting it means editing every panel on every screen to say the
+ * opposite thing and the screens would look identical afterwards.
  */
 @import 'tailwindcss';
 @import 'tw-animate-css';
@@ -15,66 +29,67 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * The dozen semantic tokens shadcn's components read, mapped from `app.css`'s
- * palette **by role and never by name** (#61): `--muted` here is a background
- * (ours was a text colour, renamed `--muted-ink`), `--border` is the hairline,
- * `--ring` is the brand purple.
+ * The dozen semantic tokens shadcn's components read, mapped from Field
+ * Signal **by role and never by name**: `--muted` is a background, `--border`
+ * is the hairline, `--ring` is the signal orange the primary action is.
  *
- * Only these get a dark twin. The brand colours and the nine pastel card
- * tints keep one value in both themes — a tint on a dark background is spent
- * as an accent (a border, an icon, a badge), never as a panel fill.
+ * Only these get a dark twin. The brand colours and the nine tints keep one
+ * value in both themes — a tint on a dark background is spent as an accent (a
+ * border, an icon, a badge), never as a panel fill.
  */
 :root {
-  --background: #ffffff; /* --canvas */
-  --foreground: #1a1a1a; /* --ink */
-  --card: #fafaf9; /* --surface-soft */
-  --card-foreground: #1a1a1a;
-  --popover: #fafaf9; /* --surface-soft */
-  --popover-foreground: #1a1a1a;
-  --primary: #5645d4;
+  --background: #ffffff; /* a panel: white, on the grey page below */
+  --foreground: #101418; /* --ink */
+  --card: #eef2f5; /* the page ground, which `body` reads */
+  --card-foreground: #101418;
+  --popover: #ffffff;
+  --popover-foreground: #101418;
+  --primary: #ff5a1f; /* signal orange: the one primary action */
   --primary-foreground: #ffffff; /* --on-primary */
-  --secondary: #f6f5f4; /* --surface */
-  --secondary-foreground: #37352f; /* --charcoal */
-  --muted: #f6f5f4; /* --surface: a background, never the old text colour */
-  --muted-foreground: #787671; /* --steel */
-  --accent: #f6f5f4; /* --surface */
-  --accent-foreground: #1a1a1a;
-  --destructive: #e03131; /* --error */
+  --secondary: #e6edf1;
+  --secondary-foreground: #1c242b; /* --charcoal */
+  --muted: #f7f9fa; /* a background, never the old text colour */
+  --muted-foreground: #5b6b76; /* --steel */
+  --accent: #dbeeed; /* the teal tint */
+  --accent-foreground: #0a5f5e;
+  --destructive: #c8321a; /* --error */
   --destructive-foreground: #ffffff;
-  --border: #e5e3df; /* --hairline */
-  --input: #e5e3df; /* --hairline */
-  --ring: #5645d4; /* --primary */
-  /* link-blue for inline text links, never the purple: DESIGN.md keeps the
-     two roles apart, and the purple is the CTA's alone. */
-  --link: #0075de;
-  --link-pressed: #005bab;
+  --border: #dce3e8; /* --hairline */
+  --input: #dce3e8; /* --hairline */
+  --ring: #ff5a1f; /* --primary */
+  /* Teal for inline text links, never the orange: the orange is the primary
+     action's alone, and a paragraph full of primary actions is a paragraph
+     with no primary action in it. */
+  --link: #0e7c7b;
+  --link-pressed: #0a5f5e;
 }
 
-/* The dark twin: shadcn's own dark defaults, warmed to sit in the same
-   grey family as the light palette. The brand purple stays itself; the
-   destructive red and the ring lighten because they are read against dark. */
+/* The dark twin: the same grey family as the light palette, cooled. The
+   signal orange stays itself because it is the one thing that must be found
+   at a glance; the destructive red and the ring lighten because they are read
+   against dark. */
 .dark {
-  --background: #1a1a19;
-  --foreground: #f2f1ef;
-  --card: #232322;
-  --card-foreground: #f2f1ef;
-  --popover: #232322;
-  --popover-foreground: #f2f1ef;
-  --primary: #5645d4;
+  --background: #171d23; /* a panel */
+  --foreground: #eef2f5;
+  --card: #101418; /* the page ground */
+  --card-foreground: #eef2f5;
+  --popover: #171d23;
+  --popover-foreground: #eef2f5;
+  --primary: #ff5a1f;
   --primary-foreground: #ffffff;
-  --secondary: #2c2c2a;
-  --secondary-foreground: #f2f1ef;
-  --muted: #2c2c2a;
-  --muted-foreground: #a5a29b;
-  --accent: #2c2c2a;
-  --accent-foreground: #f2f1ef;
-  --destructive: #ef5f5f;
+  --secondary: #1e262d;
+  --secondary-foreground: #eef2f5;
+  --muted: #1e262d;
+  --muted-foreground: #94a3ad;
+  --accent: #1b2b2c;
+  --accent-foreground: #7cc9c5;
+  --destructive: #f0704f;
   --destructive-foreground: #ffffff;
-  --border: #34342f;
-  --input: #3d3d38;
-  --ring: #8577e0;
-  --link: #4da3ff;
-  --link-pressed: #82bfff;
+  --border: #2a333b;
+  --input: #333e47;
+  --ring: #ff7a48;
+  --link: #45b8b3;
+  --link-pressed: #7cc9c5;
 }
 
 @theme inline {
@@ -105,77 +120,92 @@
 }
 
 @theme {
-  /* The brand palette, transcribed whole from DESIGN.md via app.css. These
-     are single-valued in both themes, deliberately (#61). */
-  --color-primary-pressed: #4534b3;
-  --color-primary-deep: #3a2a99;
-  --color-brand-navy: #0a1530;
-  --color-brand-navy-deep: #070f24;
-  --color-brand-navy-mid: #1a2a52;
-  --color-link-blue: #0075de;
-  --color-link-blue-pressed: #005bab;
-  --color-brand-orange: #dd5b00;
-  --color-brand-orange-deep: #793400;
-  --color-brand-pink: #ff64c8;
-  --color-brand-pink-deep: #a02e6d;
-  --color-brand-purple: #7b3ff2;
-  --color-brand-purple-300: #d6b6f6;
-  --color-brand-purple-800: #391c57;
-  --color-brand-teal: #2a9d99;
-  --color-brand-green: #1aae39;
-  --color-brand-yellow: #f5d75e;
-  --color-brand-brown: #523410;
-  --color-card-tint-peach: #ffe8d4;
-  --color-card-tint-rose: #fde0ec;
-  --color-card-tint-mint: #d9f3e1;
-  --color-card-tint-lavender: #e6e0f5;
-  --color-card-tint-sky: #dcecfa;
-  --color-card-tint-yellow: #fef7d6;
-  --color-card-tint-yellow-bold: #f9e79f;
-  --color-card-tint-cream: #f8f5e8;
-  --color-card-tint-gray: #f0eeec;
-  --color-success: #1aae39;
-  --color-warning: #dd5b00;
-  --color-error: #e03131;
+  /*
+   * The brand palette. These are single-valued in both themes, deliberately.
+   *
+   * The names are the roles the screens already gave them and the values are
+   * Field Signal's: `brand-navy` is the dark panel a hero sits on, the three
+   * `link-blue` entries are the teal every link is, and the tints are the
+   * five soft grounds a callout is drawn on.
+   */
+  --color-primary-pressed: #e04a12;
+  --color-primary-deep: #b8380a;
+  --color-brand-navy: #101418;
+  --color-brand-navy-deep: #0a0d10;
+  --color-brand-navy-mid: #1e262d;
+  --color-link-blue: #0e7c7b;
+  --color-link-blue-pressed: #0a5f5e;
+  --color-brand-orange: #ff5a1f;
+  --color-brand-orange-deep: #a8320a;
+  --color-brand-pink: #d94f7d;
+  --color-brand-pink-deep: #8f2f4f;
+  --color-brand-purple: #0e7c7b;
+  --color-brand-purple-300: #7cc9c5;
+  --color-brand-purple-800: #0a5f5e;
+  --color-brand-teal: #0e7c7b;
+  --color-brand-green: #1f7a4d;
+  --color-brand-yellow: #d9a520;
+  --color-brand-brown: #6b4a2f;
+  --color-card-tint-peach: #ffe4d9;
+  --color-card-tint-rose: #ffe0da;
+  --color-card-tint-mint: #dcefe4;
+  --color-card-tint-lavender: #dbeeed;
+  --color-card-tint-sky: #dbeeed;
+  --color-card-tint-yellow: #fff2e0;
+  --color-card-tint-yellow-bold: #ffe4d9;
+  --color-card-tint-cream: #f7f9fa;
+  --color-card-tint-gray: #e6edf1;
+  --color-success: #1f7a4d;
+  --color-warning: #a8320a;
+  --color-error: #c8321a;
 
-  /* The surfaces and the grey ramp, single-valued: a migrated screen prefers
-     the semantic tokens above (which flip in dark); these carry the places
-     the exact light value is the point — the navy wordmark's face, a tint's
-     ink — and the transcription's completeness. */
+  /* The surfaces and the grey ramp, single-valued: a screen prefers the
+     semantic tokens above (which flip in dark); these carry the places the
+     exact light value is the point — the dark panel's own ink, a tint's
+     ink — and the palette's completeness. */
   --color-canvas: #ffffff;
-  --color-surface: #f6f5f4;
-  --color-surface-soft: #fafaf9;
-  --color-hairline: #e5e3df;
-  --color-hairline-soft: #ede9e4;
-  --color-hairline-strong: #c8c4be;
+  --color-surface: #e6edf1;
+  --color-surface-soft: #f7f9fa;
+  --color-hairline: #dce3e8;
+  --color-hairline-soft: #e6edf1;
+  --color-hairline-strong: #b9c4cc;
   --color-ink-deep: #000000;
-  --color-ink: #1a1a1a;
-  --color-charcoal: #37352f;
-  --color-slate: #5d5b54;
-  --color-steel: #787671;
-  --color-stone: #a4a097;
-  --color-muted-ink: #bbb8b1;
+  --color-ink: #101418;
+  --color-charcoal: #1c242b;
+  --color-slate: #41505a;
+  --color-steel: #5b6b76;
+  --color-stone: #8b99a3;
+  --color-muted-ink: #b0bcc4;
   --color-on-primary: #ffffff;
   --color-on-dark: #ffffff;
-  --color-on-dark-muted: #a4a097;
+  --color-on-dark-muted: #b7c2ca;
 
-  /* app.css's rounded scale, transcribed: xs 4, sm 6, md 8, lg 12, xl 16,
-     xxl 20 (2xl), xxxl 24 (3xl). */
-  --radius-xs: 4px;
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
-  --radius-2xl: 20px;
-  --radius-3xl: 24px;
+  /*
+   * Field Signal's radii, which are rounder than the scale they replace: a
+   * button is `rounded-md` and a panel `rounded-lg`, so those two are the 12
+   * and the 16 the canvas draws. Everything else follows from them.
+   */
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-2xl: 24px;
+  --radius-3xl: 28px;
 
-  /* app.css's spacing scale is a straight 4px grid (xxs 4 … hero 120), which
-     is Tailwind's own default scale — p-1 is 4px, p-30 is 120px — so it needs
-     no custom tokens: the transcription is the numbers. */
+  /* The spacing scale is a straight 4px grid, which is Tailwind's own default
+     — p-1 is 4px, p-30 is 120px — so it needs no custom tokens. */
 
-  /* Notion Sans is licensed and not ours to ship; DESIGN.md's own fallback
-     list, headed by Inter where the platform has it. */
-  --font-sans: Inter, -apple-system, system-ui, 'Segoe UI', Helvetica, sans-serif;
+  /*
+   * Two faces, and the second one is load-bearing rather than decoration.
+   * Space Grotesk carries everything a person reads; **DM Mono carries
+   * anything countable** — a time, a weight, a count of days, a stall number
+   * — because a barn's screens are read at a glance and a figure set in the
+   * text face has to be found before it can be read. Both are loaded in
+   * `src/routes/__root.tsx`, with a real fallback stack behind each.
+   */
+  --font-sans: 'Space Grotesk', -apple-system, system-ui, 'Segoe UI', Helvetica, sans-serif;
+  --font-mono: 'DM Mono', ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, monospace;
 }
 
 /* The shell's measurements: plain custom properties, read with var() — they
@@ -195,17 +225,22 @@
     font-family: var(--font-sans);
     background: var(--color-card);
     color: var(--color-foreground);
-    /* 16px, or iOS zooms the page on focus; DESIGN.md's body-md. */
+    /* 16px, or iOS zooms the page on focus. */
     font-size: 16px;
-    line-height: 1.55;
+    line-height: 1.5;
   }
 
   /*
-   * The element typography app.css used to carry (#63): every screen is
-   * already plain semantic HTML — a <main>, an <h2>, a <p> — and giving the
-   * elements their DESIGN.md sizes here is what keeps twenty screens
-   * consistent by default rather than by remembering. Everything reads the
-   * semantic tokens, so it is dark-correct for free.
+   * The element typography (#63): every screen is already plain semantic HTML
+   * — a <main>, an <h2>, a <p> — and giving the elements their sizes here is
+   * what keeps twenty-eight screens consistent by default rather than by
+   * remembering. Everything reads the semantic tokens, so it is dark-correct
+   * for free.
+   *
+   * Field Signal's headings are heavier and tighter than the ones they
+   * replace: 700 rather than 600, and negative tracking that grows with the
+   * size, which is what makes a heading read as a heading on a phone held at
+   * arm's length in sunlight.
    */
   h1,
   h2,
@@ -213,34 +248,34 @@
   h4,
   h5 {
     margin: 0 0 12px;
-    font-weight: 600;
+    font-weight: 700;
     color: var(--color-foreground);
     text-wrap: balance;
   }
 
-  /* typography.heading-2 at the phone's width, heading-1 once there is room. */
   h1 {
-    font-size: 30px;
-    line-height: 1.2;
-    letter-spacing: -0.5px;
+    font-size: 27px;
+    line-height: 1.15;
+    letter-spacing: -0.7px;
   }
 
   h2 {
-    font-size: 22px;
+    font-size: 20px;
     line-height: 1.25;
-    letter-spacing: -0.3px;
+    letter-spacing: -0.4px;
     margin-top: 24px;
   }
 
   h3 {
-    font-size: 18px;
+    font-size: 17px;
     line-height: 1.3;
+    letter-spacing: -0.3px;
     margin-top: 20px;
   }
 
   h4,
   h5 {
-    font-size: 16px;
+    font-size: 15px;
     line-height: 1.4;
     margin-top: 16px;
   }
@@ -263,6 +298,7 @@
   }
 
   code {
+    font-family: var(--font-mono);
     font-size: 13px;
     background: var(--color-secondary);
     border-radius: var(--radius-xs);
@@ -305,7 +341,7 @@
     }
 
     h1 {
-      font-size: 36px;
+      font-size: 31px;
     }
   }
 
@@ -315,8 +351,8 @@
     }
 
     h1 {
-      font-size: 44px;
-      letter-spacing: -0.5px;
+      font-size: 34px;
+      letter-spacing: -0.9px;
     }
   }
 
