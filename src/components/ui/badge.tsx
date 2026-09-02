@@ -1,7 +1,13 @@
 /**
- * shadcn's Badge (#61), with app.css's four tinted badges carried over as
- * variants — a card tint spent as an accent, which is the one way a tint may
- * be spent in dark (ADR 0025).
+ * shadcn's Badge (#61), with the four tinted badges carried over as variants —
+ * a tint spent as an accent, which is the one way a tint may be spent in dark
+ * (ADR 0025).
+ *
+ * Field Signal makes this a **status pill**: fully rounded, set in DM Mono,
+ * uppercase and tracked out. That is the whole of how a reader tells it from a
+ * button, which is a 12px-radius rectangle in the text face — and it is why
+ * `Button` may never be rounded-full. The uppercase is `text-transform`, so
+ * what a test reads out of the DOM is still the sentence somebody wrote.
  */
 import { Slot } from '@radix-ui/react-slot'
 import { cva, type VariantProps } from 'class-variance-authority'
@@ -10,7 +16,7 @@ import type { ComponentProps } from 'react'
 import { cn } from '../../shared/cn'
 
 const badgeVariants = cva(
-  'inline-flex w-fit shrink-0 items-center justify-center gap-1 overflow-hidden whitespace-nowrap rounded-sm px-2 py-0.5 text-[13px] font-semibold leading-snug [&>svg]:pointer-events-none [&>svg]:size-3',
+  'inline-flex w-fit shrink-0 items-center justify-center gap-1 overflow-hidden whitespace-nowrap rounded-full px-2.5 py-0.5 font-mono text-[11px] font-medium uppercase leading-snug tracking-wider [&>svg]:pointer-events-none [&>svg]:size-3',
   {
     variants: {
       variant: {

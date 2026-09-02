@@ -62,12 +62,22 @@ function ProductRow({
   act: (work: () => Promise<unknown>) => Promise<void>
 }) {
   return (
-    <li className="border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0">
+    <li
+      className={
+        product.atOrBelowReorderPoint
+          ? 'border-b border-l-4 border-border border-l-warning py-3 pl-3 first:pt-0 last:border-b-0 last:pb-0'
+          : 'border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0'
+      }
+    >
       <div>
         <strong>{product.productName}</strong>
         {product.reorderPointDays !== null && ` (reorder at ${product.reorderPointDays} days)`}
         {product.atOrBelowReorderPoint && <strong> — reorder point reached</strong>}
       </div>
+      {/* The count is the fact this screen exists to carry, so it is set in
+          the mono face like every other countable thing — a column of days
+          left is scanned down rather than read across, and proportional
+          figures make that harder than it needs to be. */}
       <div className="mt-0.5 text-sm text-muted-foreground">
         {product.latestReading === null ? (
           <span>Never counted.</span>
@@ -75,8 +85,14 @@ function ProductRow({
           <span>Out — last counted {product.latestReading.countedOn}.</span>
         ) : (
           <span>
-            {product.projectedDaysRemaining} days left — last counted{' '}
-            {product.latestReading.countedOn} by {product.latestReading.recordedByName}
+            {/* The figure and its unit stay one text node: they are one fact,
+                and splitting them would leave the screen readable and the
+                test that pins the sentence unable to see it. */}
+            <span className="font-mono text-base font-medium text-foreground">
+              {product.projectedDaysRemaining} days left
+            </span>{' '}
+            — last counted {product.latestReading.countedOn} by{' '}
+            {product.latestReading.recordedByName}
           </span>
         )}
       </div>

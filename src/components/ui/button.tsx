@@ -1,8 +1,13 @@
 /**
- * shadcn's Button (#61, ADR 0025), source this repo owns. Sizes are adjusted
- * to DESIGN.md's floor: the default is 44px tall, and `sm` — 36px — is for a
- * desktop table row's own quiet actions only. Rectangles at rounded-md, never
- * pills.
+ * shadcn's Button (#61, ADR 0025), source this repo owns.
+ *
+ * Field Signal's own rule about height, which is two rules rather than one:
+ * **on the phone a hit target never goes under 44px** — the default — **and
+ * the one primary action on a screen is 52px** (`lg`), because it is pressed
+ * with a glove on. **At the desk a control is 40px** (`sm`), because it is
+ * pressed with a mouse and a 44px row of buttons above a table reads as a
+ * toolbar rather than as a page. `rounded-md` is 12px now; still rectangles,
+ * never pills — a pill in this system is a *status*, not something you press.
  */
 import { Slot } from '@radix-ui/react-slot'
 import { cva, type VariantProps } from 'class-variance-authority'
@@ -24,8 +29,8 @@ const buttonVariants = cva(
       },
       size: {
         default: 'h-11 px-4.5 py-2',
-        sm: 'h-9 rounded-md px-3',
-        lg: 'h-12 rounded-md px-6',
+        sm: 'h-10 rounded-md px-3.5',
+        lg: 'h-13 rounded-md px-6 text-base',
         icon: 'size-11',
       },
     },

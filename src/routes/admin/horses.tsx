@@ -757,8 +757,8 @@ function AlertsTab({
 
   const kindTint: Record<AlertKind, string> = {
     prohibition: 'border-l-destructive bg-card-tint-rose dark:bg-transparent',
-    care: 'border-l-warning bg-card-tint-peach dark:bg-transparent',
-    allergy: 'border-l-brand-purple bg-card-tint-lavender dark:bg-transparent',
+    care: 'border-l-warning bg-card-tint-yellow dark:bg-transparent',
+    allergy: 'border-l-brand-teal bg-card-tint-lavender dark:bg-transparent',
   }
 
   return (

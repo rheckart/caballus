@@ -114,16 +114,16 @@ const ROUTE_LABEL: Record<Feeding['lines'][number]['route'], string> = {
  * old stylesheet would have let it ship colourless, reading as "we forgot".
  */
 export const KIND_TEXT_CLASS: Record<ProductKind, string> = {
-  feed: 'text-brand-teal',
-  supplement: 'text-link-blue',
+  feed: 'text-foreground',
+  supplement: 'text-brand-teal',
   medication: 'font-semibold text-error',
-  topical: 'text-brand-purple',
+  topical: 'text-brand-brown',
 }
 
 /** Every cell of the grid: ruled on two sides, the last column unruled. */
 const CELL = 'border-b border-r border-border px-4 py-3 text-left align-top last:border-r-0'
 const HEAD_CELL =
-  'whitespace-nowrap bg-secondary text-[11px] font-semibold uppercase tracking-widest text-muted-foreground'
+  'whitespace-nowrap bg-muted font-mono text-[11px] font-medium uppercase tracking-widest text-muted-foreground'
 
 /**
  * The token this tablet holds: the one it was just handed in the URL, or the
@@ -262,11 +262,13 @@ function Board() {
   return (
     <main className="max-w-none p-4 pb-5 text-foreground">
       <header className="mb-4 flex flex-wrap items-baseline gap-4">
-        <h1 className="m-0 text-[32px] tracking-tight">Feed board</h1>
-        <p className="m-0 text-lg text-secondary-foreground">{grid.today}</p>
+        <h1 className="m-0 text-[34px] font-bold tracking-tight">Feed board</h1>
+        <p className="m-0 font-mono text-lg text-secondary-foreground">{grid.today}</p>
         <p
           className={
-            stale ? 'm-0 text-sm font-semibold text-warning' : 'm-0 text-sm text-muted-foreground'
+            stale
+              ? 'm-0 rounded-full bg-card-tint-peach px-3 py-1 font-mono text-xs font-medium uppercase tracking-wider text-brand-orange-deep'
+              : 'm-0 rounded-full bg-card-tint-mint px-3 py-1 font-mono text-xs font-medium uppercase tracking-wider text-brand-green'
           }
           role={stale ? 'alert' : 'status'}
         >
@@ -281,7 +283,7 @@ function Board() {
       {grid.sections.map((section) => (
         <section key={section.heading}>
           <table className="mb-6 w-full border-separate border-spacing-0 overflow-hidden rounded-lg border border-border bg-background text-base">
-            <caption className="py-3 text-left text-[22px] font-semibold text-foreground">
+            <caption className="py-3 text-left text-[22px] font-bold tracking-tight text-foreground">
               {section.heading}
             </caption>
             <thead>
@@ -305,14 +307,14 @@ function Board() {
                   key={row.stall?.id ?? row.horse?.id ?? section.heading}
                   className="[&:last-child>*]:border-b-0"
                 >
-                  <th scope="row" className={`${CELL} font-semibold`}>
+                  <th scope="row" className={`${CELL} font-mono text-lg font-medium`}>
                     {row.stall === null ? <Blank>no stall</Blank> : row.stall.name}
                   </th>
                   {row.horse === null ? (
                     // The stall that stands OPEN keeps its row, because an
                     // empty stall is information (ADR 0002).
                     <td
-                      className={`${CELL} bg-card font-semibold tracking-[2px] text-stone`}
+                      className={`${CELL} bg-muted font-mono uppercase tracking-[2px] text-stone`}
                       colSpan={COLUMNS.length + 3}
                     >
                       OPEN
@@ -524,7 +526,7 @@ function HorseRow({
   return (
     <>
       <td className={CELL}>
-        <span className="block text-lg font-semibold text-foreground">
+        <span className="block text-xl font-bold tracking-tight text-foreground">
           {linked ? (
             // A phone. The tablet gets plain text: its token authorizes the
             // Board and nothing else, so a link there would lead to a refusal
@@ -539,7 +541,7 @@ function HorseRow({
         {horse.halterColour === null ? (
           <Blank>no halter colour</Blank>
         ) : (
-          <span className="inline-block text-[13px] font-semibold uppercase tracking-widest text-muted-foreground">
+          <span className="inline-block font-mono text-[12px] font-medium uppercase tracking-widest text-muted-foreground">
             {horse.halterColour}
           </span>
         )}
@@ -553,7 +555,7 @@ function HorseRow({
           // The number that decided it rides with it, so the tag explains
           // itself instead of looking arbitrary — *38 °F, sheets under 50°*.
           <span
-            className={`ml-1 inline-block rounded-sm px-2 py-0.5 text-[13px] font-semibold uppercase tracking-widest ${
+            className={`ml-1 inline-block rounded-full px-2.5 py-0.5 font-mono text-[12px] font-medium uppercase tracking-widest ${
               wearing.condition === 'blanket_weather'
                 ? 'bg-card-tint-lavender text-brand-purple-800'
                 : 'bg-card-tint-mint text-brand-green'
@@ -606,10 +608,16 @@ function HorseRow({
 }
 
 /** The three Alert kinds, apart by colour and by the word in front (ADR 0024). */
+/**
+ * A tint per kind, and the three have to be told apart **across a barn**.
+ * The left border carries the meaning and the fill only softens it, so the
+ * borders are the three that must never converge: the red a prohibition is,
+ * the orange a care alert is, and the teal an allergy is.
+ */
 const ALERT_TINT: Record<BoardHorse['alerts'][number]['kind'], string> = {
   prohibition: 'border-l-error bg-card-tint-rose',
-  care: 'border-l-warning bg-card-tint-peach',
-  allergy: 'border-l-brand-purple bg-card-tint-lavender',
+  care: 'border-l-warning bg-card-tint-yellow',
+  allergy: 'border-l-brand-teal bg-card-tint-lavender',
 }
 
 function Feed({

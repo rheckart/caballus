@@ -258,8 +258,8 @@ function MyShifts() {
                     className="border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0"
                   >
                     <p className="m-0">
-                      <strong>{shift.day}</strong> — {SHIFT_TYPE_LABEL[shift.shiftType]} at{' '}
-                      {shift.startTime}
+                      <strong className="font-mono">{shift.day}</strong> —{' '}
+                      {SHIFT_TYPE_LABEL[shift.shiftType]} at {shift.startTime}
                       {member !== undefined && <> — {POSITION_LABEL[member.position]}</>}
                       {shift.purpose !== null && <> — {shift.purpose}</>}
                       {shift.state === 'in_progress' && <em> — under way</em>}
@@ -406,10 +406,10 @@ function MyShifts() {
                   className="border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0"
                 >
                   <p className="m-0">
-                    <strong>{shift.day}</strong> — {SHIFT_TYPE_LABEL[shift.shiftType]} at{' '}
-                    {shift.startTime}
+                    <strong className="font-mono">{shift.day}</strong> —{' '}
+                    {SHIFT_TYPE_LABEL[shift.shiftType]} at {shift.startTime}
                     {shift.purpose !== null && <> — {shift.purpose}</>}
-                    <span>
+                    <span className="font-mono">
                       {' '}
                       {shift.roster.filter((member) => member.endedAs === null).length} of{' '}
                       {shift.targetHeadcount} so far

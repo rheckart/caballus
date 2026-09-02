@@ -13,7 +13,7 @@ function Table({ className, ...props }: ComponentProps<'table'>) {
       <table
         data-slot="table"
         className={cn(
-          'mb-4 w-full caption-bottom rounded-md border border-border bg-background text-sm',
+          'mb-4 w-full caption-bottom overflow-hidden rounded-lg border border-border bg-background text-sm',
           className,
         )}
         {...props}
@@ -66,7 +66,7 @@ function TableHead({ className, ...props }: ComponentProps<'th'>) {
     <th
       data-slot="table-head"
       className={cn(
-        'whitespace-nowrap border-b border-border bg-secondary px-4 py-3 text-left align-middle text-[11px] font-semibold uppercase tracking-widest text-muted-foreground',
+        'whitespace-nowrap border-b border-border bg-muted px-4 py-3 text-left align-middle font-mono text-[11px] font-medium uppercase tracking-widest text-muted-foreground',
         className,
       )}
       {...props}
