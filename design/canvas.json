@@ -1,0 +1,320 @@
+{
+  "pages": [
+    {
+      "id": "page-1",
+      "name": "Phone"
+    },
+    {
+      "id": "page-2",
+      "name": "Desk"
+    },
+    {
+      "id": "page-3",
+      "name": "Board and public"
+    },
+    {
+      "id": "page-4",
+      "name": "System"
+    }
+  ],
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "title": "Home",
+      "x": 0,
+      "y": 0,
+      "w": 390,
+      "h": 1240,
+      "page": "page-1"
+    },
+    {
+      "file": "Login.dc.html",
+      "title": "Login",
+      "x": 500,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "page": "page-1"
+    },
+    {
+      "file": "Shifts.dc.html",
+      "title": "Shifts",
+      "x": 1000,
+      "y": 0,
+      "w": 390,
+      "h": 1580,
+      "page": "page-1"
+    },
+    {
+      "file": "ShiftWork.dc.html",
+      "title": "Shift work surface",
+      "x": 1500,
+      "y": 0,
+      "w": 390,
+      "h": 2240,
+      "page": "page-1"
+    },
+    {
+      "file": "Horses.dc.html",
+      "title": "Horses",
+      "x": 2000,
+      "y": 0,
+      "w": 390,
+      "h": 1620,
+      "page": "page-1"
+    },
+    {
+      "file": "HorseProfile.dc.html",
+      "title": "Horse profile",
+      "x": 2500,
+      "y": 0,
+      "w": 390,
+      "h": 2280,
+      "page": "page-1"
+    },
+    {
+      "file": "Supplies.dc.html",
+      "title": "Supplies",
+      "x": 0,
+      "y": 2460,
+      "w": 390,
+      "h": 1720,
+      "page": "page-1"
+    },
+    {
+      "file": "Contacts.dc.html",
+      "title": "Contacts",
+      "x": 500,
+      "y": 2460,
+      "w": 390,
+      "h": 1360,
+      "page": "page-1"
+    },
+    {
+      "file": "Attendance.dc.html",
+      "title": "Attendance",
+      "x": 1000,
+      "y": 2460,
+      "w": 390,
+      "h": 1780,
+      "page": "page-1"
+    },
+    {
+      "file": "Escalations.dc.html",
+      "title": "Escalations",
+      "x": 1500,
+      "y": 2460,
+      "w": 390,
+      "h": 1420,
+      "page": "page-1"
+    },
+    {
+      "file": "Me.dc.html",
+      "title": "Your details",
+      "x": 2000,
+      "y": 2460,
+      "w": 390,
+      "h": 1480,
+      "page": "page-1"
+    },
+    {
+      "file": "AdminVolunteers.dc.html",
+      "title": "Volunteers",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "page": "page-2"
+    },
+    {
+      "file": "AdminHorses.dc.html",
+      "title": "Horses (desk)",
+      "x": 1600,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "page": "page-2"
+    },
+    {
+      "file": "AdminSpaces.dc.html",
+      "title": "Spaces",
+      "x": 3200,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "page": "page-2"
+    },
+    {
+      "file": "AdminProducts.dc.html",
+      "title": "Products and Suppliers",
+      "x": 4800,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "page": "page-2"
+    },
+    {
+      "file": "AdminShiftPatterns.dc.html",
+      "title": "Shift patterns",
+      "x": 0,
+      "y": 1080,
+      "w": 1440,
+      "h": 900,
+      "page": "page-2"
+    },
+    {
+      "file": "AdminTasks.dc.html",
+      "title": "Tasks",
+      "x": 1600,
+      "y": 1080,
+      "w": 1440,
+      "h": 900,
+      "page": "page-2"
+    },
+    {
+      "file": "AdminThresholds.dc.html",
+      "title": "Thresholds",
+      "x": 3200,
+      "y": 1080,
+      "w": 1440,
+      "h": 900,
+      "page": "page-2"
+    },
+    {
+      "file": "AdminHours.dc.html",
+      "title": "Volunteer hours",
+      "x": 4800,
+      "y": 1080,
+      "w": 1440,
+      "h": 900,
+      "page": "page-2"
+    },
+    {
+      "file": "AdminReleaseVersions.dc.html",
+      "title": "Release versions",
+      "x": 0,
+      "y": 2160,
+      "w": 1440,
+      "h": 900,
+      "page": "page-2"
+    },
+    {
+      "file": "AdminContacts.dc.html",
+      "title": "Contacts (desk)",
+      "x": 1600,
+      "y": 2160,
+      "w": 1440,
+      "h": 900,
+      "page": "page-2"
+    },
+    {
+      "file": "AdminWhiteboardRead.dc.html",
+      "title": "Read the whiteboard",
+      "x": 3200,
+      "y": 2160,
+      "w": 1440,
+      "h": 900,
+      "page": "page-2"
+    },
+    {
+      "file": "AdminAudit.dc.html",
+      "title": "Audit log",
+      "x": 4800,
+      "y": 2160,
+      "w": 1440,
+      "h": 900,
+      "page": "page-2"
+    },
+    {
+      "file": "Board.dc.html",
+      "title": "Feed board (tablet)",
+      "x": 0,
+      "y": 0,
+      "w": 1280,
+      "h": 800,
+      "page": "page-3"
+    },
+    {
+      "file": "Landing.dc.html",
+      "title": "Landing (signed out)",
+      "x": 1420,
+      "y": 0,
+      "w": 900,
+      "h": 1560,
+      "page": "page-3"
+    },
+    {
+      "file": "Privacy.dc.html",
+      "title": "Privacy policy",
+      "x": 2440,
+      "y": 0,
+      "w": 900,
+      "h": 1620,
+      "page": "page-3"
+    },
+    {
+      "file": "Terms.dc.html",
+      "title": "Terms and conditions",
+      "x": 3460,
+      "y": 0,
+      "w": 900,
+      "h": 1480,
+      "page": "page-3"
+    },
+    {
+      "file": "Components.dc.html",
+      "title": "Field Signal system",
+      "x": 0,
+      "y": 0,
+      "w": 1200,
+      "h": 1080,
+      "page": "page-4"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "note-phone",
+      "x": 0,
+      "y": -260,
+      "w": 460,
+      "page": "page-1",
+      "text": "PHONE - the eleven screens a volunteer actually uses.\n\nBottom tab bar is fixed at five floor entries so its shape never changes. Everything else hangs off Home."
+    },
+    {
+      "id": "note-shiftwork",
+      "x": 1500,
+      "y": -260,
+      "w": 460,
+      "page": "page-1",
+      "text": "The work surface is the core loop: per-horse cards in stall order, one tap per item, an Unsent count that is honest about the queue, and a close button that names what is blocking it."
+    },
+    {
+      "id": "note-desk",
+      "x": 0,
+      "y": -300,
+      "w": 520,
+      "page": "page-2",
+      "text": "DESK - twelve admin screens, one shell.\n\nSidebar is gated on the write each screen exists to perform, so a plain Volunteer sees General only. Every screen is a table plus one form panel; that repetition is the point."
+    },
+    {
+      "id": "note-board",
+      "x": 0,
+      "y": -260,
+      "w": 520,
+      "page": "page-3",
+      "text": "BOARD is pinned light and read across a barn: full alert text, never a count. Colour comes from the Product's kind, not a pen.\n\nThe three public pages are what a carrier reads during campaign vetting."
+    },
+    {
+      "id": "note-system",
+      "x": 1260,
+      "y": 0,
+      "w": 420,
+      "page": "page-4",
+      "text": "Every artboard is generated from design/build.py, so these tokens are the single source. Change one here and re-run rather than editing 28 files."
+    }
+  ],
+  "launch": {
+    "view": "canvas",
+    "page": "page-1"
+  }
+}
