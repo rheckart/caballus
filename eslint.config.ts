@@ -18,6 +18,7 @@ import type { Linter } from 'eslint'
 import tseslint from 'typescript-eslint'
 
 import prettier from 'eslint-config-prettier'
+import betterTailwind from 'eslint-plugin-better-tailwindcss'
 
 export type BanId = 'serverFn' | 'dbClient' | 'dayBoundary' | 'drizzleZod' | 'sentry' | 'apiPath'
 
@@ -211,6 +212,42 @@ export function rulesExcept(exempt: readonly BanId[] = []): Linter.RulesRecord {
 }
 
 /**
+ * The seventh guardrail, and the one that is not an AST selector (ADR 0025).
+ *
+ * Tailwind has no failure mode for a class it does not know: `text-brnad-500`
+ * renders nothing, throws nothing and tests green, and so does
+ * `bg-canvas-soft`, which was a real `app.css` token until #63 deleted it.
+ * That is the shape ADR 0016 exists for — except the wrong option here is not
+ * the more ergonomic one, it is the *indistinguishable* one, which is worse,
+ * because nobody chose it.
+ *
+ * Unlike the six, this rule is not hand-written and does not fail silently: it
+ * resolves the real design system out of `entryPoint`, so `bg-surface-soft`
+ * and `text-muted-ink` pass on the strength of this repo's own `@theme` rather
+ * than a list kept beside it, and a misconfigured `entryPoint` reports the
+ * misconfiguration on every class rather than quietly passing them all. It is
+ * still fixtured, because deleting this block is silent in exactly the way
+ * ADR 0016 describes.
+ *
+ * `.tsx` only, and no exemptions: a class name is not a thing a `.ts` file
+ * writes, and there is no file in this repository allowed a class that does
+ * not exist.
+ */
+export const CLASS_NAMES: Linter.Config = {
+  name: 'caballus/class-names',
+  files: ['**/*.tsx'],
+  plugins: { 'better-tailwindcss': betterTailwind },
+  settings: {
+    // Read rather than duplicated, so the 72 custom properties #61 transcribed
+    // into the `@theme` are the vocabulary this rule checks against.
+    'better-tailwindcss': { entryPoint: 'src/styles/tailwind.css' },
+  },
+  rules: {
+    'better-tailwindcss/no-unknown-classes': 'error',
+  },
+}
+
+/**
  * The guardrails alone. `npm run lint` runs these with everything else; the
  * PostToolUse hook and the fixture check run only these, because the only
  * thing permitted to stop work mid-file is this class of error.
@@ -243,6 +280,7 @@ export const guardrails: Linter.Config[] = [
     files: [...exemption.files],
     rules: rulesExcept(exemption.bans),
   })),
+  CLASS_NAMES,
 ]
 
 export default [

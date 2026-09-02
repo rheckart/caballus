@@ -9,6 +9,13 @@
  * It also asserts the exemption counts ADR 0016 states — two, one, one, zero,
  * one, one — so that changing an override breaks a count and somebody reads
  * the ADR.
+ *
+ * The seventh guardrail (ADR 0025's class-name rule) is counted here too, and
+ * is attributed by `ruleId` rather than by message text: it is a third-party
+ * rule and its wording is not ours to depend on. Its own failure mode is loud
+ * — a misconfigured `entryPoint` reports itself on every class — so what this
+ * fixture guards is narrower and still worth guarding: that the block is
+ * present at all.
  */
 import { ESLint } from 'eslint'
 import { createJiti } from 'jiti'
@@ -25,6 +32,10 @@ const EXPECTED_VIOLATIONS = {
   sentry: 1,
   apiPath: 3,
 }
+
+/** ADR 0025's class-name rule, which is not a `BAN` and carries no exemption. */
+const CLASS_NAMES_RULE = 'better-tailwindcss/no-unknown-classes'
+const EXPECTED_CLASS_NAME_VIOLATIONS = 4
 
 /** ADR 0016: "Today: two, two, one, zero, one, one." */
 const EXPECTED_EXEMPTIONS = {
@@ -92,11 +103,16 @@ if (claimedFiles.size !== EXPECTED_EXEMPT_PATHS) {
 // --- Violations -------------------------------------------------------------
 
 const eslint = new ESLint({ overrideConfigFile: 'eslint.guardrails.config.ts' })
-const results = await eslint.lintFiles(['lint-fixtures/**/*.ts'])
+const results = await eslint.lintFiles(['lint-fixtures/**/*.ts', 'lint-fixtures/**/*.tsx'])
 
 const counts = Object.fromEntries(banIds.map((id) => [id, 0]))
+let classNameCount = 0
 for (const result of results) {
   for (const message of result.messages) {
+    if (message.ruleId === CLASS_NAMES_RULE) {
+      classNameCount += 1
+      continue
+    }
     const ban = BANS.find((candidate) => message.message.includes(candidate.message))
     if (ban === undefined) {
       failures.push(`${result.filePath}:${String(message.line)} unattributable: ${message.message}`)
@@ -104,6 +120,13 @@ for (const result of results) {
     }
     counts[ban.id] += 1
   }
+}
+
+if (classNameCount !== EXPECTED_CLASS_NAME_VIOLATIONS) {
+  failures.push(
+    `${CLASS_NAMES_RULE}: expected ${String(EXPECTED_CLASS_NAME_VIOLATIONS)} violation(s) in ` +
+      `lint-fixtures, found ${String(classNameCount)}`,
+  )
 }
 
 for (const [id, expected] of Object.entries(EXPECTED_VIOLATIONS)) {
@@ -122,6 +145,9 @@ if (failures.length > 0) {
 }
 
 process.stdout.write(
-  `Guardrails armed: ${String(BANS.length)} rules, ${String(EXEMPTIONS.length)} exemptions, ` +
-    `${String(Object.values(EXPECTED_VIOLATIONS).reduce((a, b) => a + b, 0))} fixture violations.\n`,
+  `Guardrails armed: ${String(BANS.length + 1)} rules, ${String(EXEMPTIONS.length)} exemptions, ` +
+    `${String(
+      Object.values(EXPECTED_VIOLATIONS).reduce((a, b) => a + b, 0) +
+        EXPECTED_CLASS_NAME_VIOLATIONS,
+    )} fixture violations.\n`,
 )
