@@ -17,6 +17,10 @@
  * The old tile grid is gone with #66 — navigation carries every Destination
  * now — so its labels are asserted absent rather than merely dropped from the
  * fixtures, which is the difference between a claim and an omission.
+ *
+ * **And the heading is the rescue's, not the application's** (#88): whatever
+ * `orgs.name` says, off the same one read, with *Caballus* and *Signed in
+ * as …* asserted gone — the sidebar says both on every screen.
  */
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -46,10 +50,19 @@ function renderHome() {
 const TODAY = '2026-08-18'
 const TOMORROW = '2026-08-19'
 
+/**
+ * The rescue whose name the screen is headed with (#88). Deliberately not
+ * *Caballus*: the claim is that the heading is whatever `orgs.name` says and
+ * never the application's own name, and a fixture naming them the same thing
+ * could not tell the two apart.
+ */
+const RESCUE = 'Days End Farm Horse Rescue'
+
 /** A quiet morning: signed in, and nothing in any of the four sections. */
 function page(overrides: Record<string, unknown> = {}) {
   return {
     today: TODAY,
+    organisation: RESCUE,
     me: { volunteerId: 'beth', name: 'Beth Ann', domainScopes: [] },
     nextShift: null,
     announcements: [],
@@ -111,11 +124,24 @@ describe('the Home screen', () => {
     stubApi({ '/home': page() })
     renderHome()
 
-    await screen.findByText('Signed in as Beth Ann.')
+    await screen.findByText(RESCUE)
     // Not "at most one /home": one call in total, because a second read the
     // phone could have composed this from is the thing #67 removed.
     expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1)
     expect(String(vi.mocked(fetch).mock.calls[0]?.[0])).toBe(`${API_BASE}/home`)
+  })
+
+  it('is headed with the rescue’s own name, and says the application’s nowhere', async () => {
+    stubApi({ '/home': page() })
+    renderHome()
+
+    const heading = await screen.findByRole('heading', { level: 1 })
+    expect(heading.textContent).toBe(RESCUE)
+    // The two things the navy band said, both of which the sidebar has said on
+    // every screen since #66. Asserted absent rather than merely dropped from
+    // the fixtures, which is the difference between a claim and an omission.
+    expect(screen.queryByText('Caballus')).toBeNull()
+    expect(screen.queryByText('Signed in as Beth Ann.')).toBeNull()
   })
 
   it('drops all four sections on a morning with nothing in them, and says so in one sentence', async () => {
@@ -312,7 +338,7 @@ describe('the Home screen', () => {
       stubApi({ '/home': page() })
       renderHome()
 
-      await screen.findByText('Signed in as Beth Ann.')
+      await screen.findByText(RESCUE)
       expect(screen.queryByText('What we send by text')).toBeNull()
       expect(screen.queryByText('How to stop')).toBeNull()
     })
@@ -322,7 +348,7 @@ describe('the Home screen', () => {
     stubApi({ '/home': page({ me: me(['roster', 'horse_care']) }) })
     renderHome()
 
-    await screen.findByText('Signed in as Beth Ann.')
+    await screen.findByText(RESCUE)
     for (const label of ['Read the whiteboard', 'Audit log', 'Release versions']) {
       expect(screen.queryByText(label)).toBeNull()
     }
