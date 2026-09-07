@@ -78,7 +78,17 @@ export const Route = createRootRoute({
       { charSet: 'utf-8' },
       // Built for gloves and sunlight (ADR 0007): the work surface is a phone
       // in a barn, so the viewport is never scaled away from the device.
-      { name: 'viewport', content: 'width=device-width, initial-scale=1' },
+      //
+      // `interactive-widget=resizes-content` is about the on-screen keyboard.
+      // Android's default is to leave the page exactly as tall as it was and
+      // slide the keyboard over the top of it, which puts the bottom of a
+      // sheet — where its Save button is — underneath the keys the person is
+      // typing on. Resizing the content instead shortens the page, and every
+      // `dvh` in the stylesheet shortens with it.
+      {
+        name: 'viewport',
+        content: 'width=device-width, initial-scale=1, interactive-widget=resizes-content',
+      },
       { title: 'Caballus' },
       // The installable half of ADR 0004 (#48): a theme colour for the
       // browser chrome and the status bar of a standalone install alike.

@@ -32,7 +32,6 @@ import { Alert as AlertBox, AlertTitle } from './ui/alert'
 import { Button } from './ui/button'
 import { Dialog, DialogContent, DialogHeader } from './ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'
-import { cn } from '../shared/cn'
 import { refusalText } from '../shared/refusals'
 
 /** What a tab's form hands the modal, so the dirty-tab rule can hold. */
@@ -136,10 +135,7 @@ export function RecordModal({
         if (!open) attempt({ kind: 'close' })
       }}
     >
-      <DialogContent
-        className={cn('max-h-[90dvh]', className)}
-        {...{ 'aria-describedby': undefined }}
-      >
+      <DialogContent className={className} {...{ 'aria-describedby': undefined }}>
         <DialogHeader>{header}</DialogHeader>
 
         {pending !== null && (
