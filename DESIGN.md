@@ -1,145 +1,162 @@
 ---
 version: alpha
-name: Notion-design-analysis
-description: Notion presents itself as the all-in-one workspace through a confident, illustration-rich brand voice — anchored by a deep navy hero band ({colors.brand-navy}) decorated with brand-colored sticky-note dots and mesh wire illustrations, a signature purple pill primary CTA ({colors.primary}), and a rich palette of pastel-tinted feature cards that echo the colorful database properties of the live product. The system uses a Notion-Sans (Inter-based) typeface across every UI surface, anchors a 4-tier pricing comparison (Free / Plus / Business / Enterprise), and presents the live workspace UI mockup directly inside the hero band. Coverage spans homepage, Enterprise, Product AI, Product Agents, Startups, and Pricing surfaces.
+name: Field-Signal
+description: >
+  Field Signal is the visual direction Caballus carries, drawn on the canvas in
+  `design/` and picked out of three. It is built for the surface it is read on —
+  a phone held in a barn, outdoors, in sunlight, with a glove on — and it makes
+  four commitments. Space Grotesk carries everything a person reads and DM Mono
+  carries anything countable, because a figure set in the text face has to be
+  found before it can be read. Signal orange is the one primary action and the
+  one warning, and teal is the second action and every link, so a screen never
+  has two things shouting. A status is a fully rounded pill in the mono face and
+  a control is a 12px-radius rectangle in the text face, which is the whole of
+  how a reader tells one from the other. And a hit target never goes under 44px
+  on the phone, where the primary action is 52px, while at the desk a control is
+  40px because it is pressed with a mouse.
 
+  This file replaced a scrape of Notion's marketing site, which #61-#63 built
+  the token layer against. The token *names* survived that change and the values
+  did not: `src/styles/tailwind.css` is the live system and this file is its
+  description, so the two are edited together. `design/build.py` draws the same
+  tokens onto the twenty-eight artboards in `design/`.
 colors:
-  primary: '#5645d4'
-  primary-pressed: '#4534b3'
-  primary-deep: '#3a2a99'
+  primary: '#ff5a1f'
+  primary-pressed: '#e04a12'
+  primary-deep: '#b8380a'
   on-primary: '#ffffff'
-  brand-navy: '#0a1530'
-  brand-navy-deep: '#070f24'
-  brand-navy-mid: '#1a2a52'
-  link-blue: '#0075de'
-  link-blue-pressed: '#005bab'
-  brand-orange: '#dd5b00'
-  brand-orange-deep: '#793400'
-  brand-pink: '#ff64c8'
-  brand-pink-deep: '#a02e6d'
-  brand-purple: '#7b3ff2'
-  brand-purple-300: '#d6b6f6'
-  brand-purple-800: '#391c57'
-  brand-teal: '#2a9d99'
-  brand-green: '#1aae39'
-  brand-yellow: '#f5d75e'
-  brand-brown: '#523410'
-  card-tint-peach: '#ffe8d4'
-  card-tint-rose: '#fde0ec'
-  card-tint-mint: '#d9f3e1'
-  card-tint-lavender: '#e6e0f5'
-  card-tint-sky: '#dcecfa'
-  card-tint-yellow: '#fef7d6'
-  card-tint-yellow-bold: '#f9e79f'
-  card-tint-cream: '#f8f5e8'
-  card-tint-gray: '#f0eeec'
+  brand-navy: '#101418'
+  brand-navy-deep: '#0a0d10'
+  brand-navy-mid: '#1e262d'
+  link-blue: '#0e7c7b'
+  link-blue-pressed: '#0a5f5e'
+  brand-orange: '#ff5a1f'
+  brand-orange-deep: '#a8320a'
+  brand-pink: '#d94f7d'
+  brand-pink-deep: '#8f2f4f'
+  brand-purple: '#0e7c7b'
+  brand-purple-300: '#7cc9c5'
+  brand-purple-800: '#0a5f5e'
+  brand-teal: '#0e7c7b'
+  brand-green: '#1f7a4d'
+  brand-yellow: '#d9a520'
+  brand-brown: '#6b4a2f'
+  card-tint-peach: '#ffe4d9'
+  card-tint-rose: '#ffe0da'
+  card-tint-mint: '#dcefe4'
+  card-tint-lavender: '#dbeeed'
+  card-tint-sky: '#dbeeed'
+  card-tint-yellow: '#fff2e0'
+  card-tint-yellow-bold: '#ffe4d9'
+  card-tint-cream: '#f7f9fa'
+  card-tint-gray: '#e6edf1'
   canvas: '#ffffff'
-  surface: '#f6f5f4'
-  surface-soft: '#fafaf9'
-  hairline: '#e5e3df'
-  hairline-soft: '#ede9e4'
-  hairline-strong: '#c8c4be'
+  surface: '#e6edf1'
+  surface-soft: '#f7f9fa'
+  hairline: '#dce3e8'
+  hairline-soft: '#e6edf1'
+  hairline-strong: '#b9c4cc'
   ink-deep: '#000000'
-  ink: '#1a1a1a'
-  charcoal: '#37352f'
-  slate: '#5d5b54'
-  steel: '#787671'
-  stone: '#a4a097'
-  muted: '#bbb8b1'
+  ink: '#101418'
+  charcoal: '#1c242b'
+  slate: '#41505a'
+  steel: '#5b6b76'
+  stone: '#8b99a3'
+  muted: '#b0bcc4'
   on-dark: '#ffffff'
-  on-dark-muted: '#a4a097'
-  semantic-success: '#1aae39'
-  semantic-warning: '#dd5b00'
-  semantic-error: '#e03131'
+  on-dark-muted: '#b7c2ca'
+  semantic-success: '#1f7a4d'
+  semantic-warning: '#a8320a'
+  semantic-error: '#c8321a'
 
 typography:
   hero-display:
-    fontFamily: Notion Sans
+    fontFamily: Space Grotesk
     fontSize: 80px
     fontWeight: 600
     lineHeight: 1.05
     letterSpacing: -2px
   display-lg:
-    fontFamily: Notion Sans
+    fontFamily: Space Grotesk
     fontSize: 56px
     fontWeight: 600
     lineHeight: 1.10
     letterSpacing: -1px
   heading-1:
-    fontFamily: Notion Sans
+    fontFamily: Space Grotesk
     fontSize: 48px
     fontWeight: 600
     lineHeight: 1.15
     letterSpacing: -0.5px
   heading-2:
-    fontFamily: Notion Sans
+    fontFamily: Space Grotesk
     fontSize: 36px
     fontWeight: 600
     lineHeight: 1.20
     letterSpacing: -0.5px
   heading-3:
-    fontFamily: Notion Sans
+    fontFamily: Space Grotesk
     fontSize: 28px
     fontWeight: 600
     lineHeight: 1.25
   heading-4:
-    fontFamily: Notion Sans
+    fontFamily: Space Grotesk
     fontSize: 22px
     fontWeight: 600
     lineHeight: 1.30
   heading-5:
-    fontFamily: Notion Sans
+    fontFamily: Space Grotesk
     fontSize: 18px
     fontWeight: 600
     lineHeight: 1.40
   subtitle:
-    fontFamily: Notion Sans
+    fontFamily: Space Grotesk
     fontSize: 18px
     fontWeight: 400
     lineHeight: 1.50
   body-md:
-    fontFamily: Notion Sans
+    fontFamily: Space Grotesk
     fontSize: 16px
     fontWeight: 400
     lineHeight: 1.55
   body-md-medium:
-    fontFamily: Notion Sans
+    fontFamily: Space Grotesk
     fontSize: 16px
     fontWeight: 500
     lineHeight: 1.55
   body-sm:
-    fontFamily: Notion Sans
+    fontFamily: Space Grotesk
     fontSize: 14px
     fontWeight: 400
     lineHeight: 1.50
   body-sm-medium:
-    fontFamily: Notion Sans
+    fontFamily: Space Grotesk
     fontSize: 14px
     fontWeight: 500
     lineHeight: 1.50
   caption:
-    fontFamily: Notion Sans
+    fontFamily: Space Grotesk
     fontSize: 13px
     fontWeight: 400
     lineHeight: 1.40
   caption-bold:
-    fontFamily: Notion Sans
+    fontFamily: Space Grotesk
     fontSize: 13px
     fontWeight: 600
     lineHeight: 1.40
   micro:
-    fontFamily: Notion Sans
+    fontFamily: Space Grotesk
     fontSize: 12px
     fontWeight: 500
     lineHeight: 1.40
   micro-uppercase:
-    fontFamily: Notion Sans
+    fontFamily: Space Grotesk
     fontSize: 11px
     fontWeight: 600
     lineHeight: 1.40
     letterSpacing: 1px
   button-md:
-    fontFamily: Notion Sans
+    fontFamily: Space Grotesk
     fontSize: 14px
     fontWeight: 500
     lineHeight: 1.30

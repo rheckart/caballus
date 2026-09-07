@@ -126,7 +126,13 @@ type State =
   | { readonly state: 'signed-out' }
   | { readonly state: 'broken'; readonly because: string }
 
-const SECTION_HEADING = 'mb-3 mt-6 text-foreground'
+/**
+ * Field Signal's section heading is a **mono label** rather than a heading in
+ * the text face: the dashboard is a stack of four unrelated lists, and what
+ * separates them has to read as furniture rather than as something to read.
+ */
+const SECTION_HEADING =
+  'mb-3 mt-6 font-mono text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground'
 const PANEL = 'mb-4 rounded-lg border border-border bg-background p-4 sm:p-6'
 const ROW =
   'flex items-center justify-between gap-4 border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0'
@@ -145,22 +151,22 @@ function NextShiftCard({ shift, today }: { shift: NextShift; today: string }) {
 
   return (
     <section
-      className="mb-5 rounded-lg border-0 bg-card-tint-lavender p-5 dark:border dark:border-card-tint-lavender/40 dark:bg-transparent"
+      className="mb-5 rounded-lg bg-brand-navy p-5 text-on-dark"
       aria-label="Your next shift"
     >
-      <p className="m-0 mb-1 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-widest text-brand-purple-800 dark:text-card-tint-lavender">
-        {when(today, shift.day)}
+      <p className="m-0 mb-2 flex items-center gap-2 font-mono text-[11px] font-medium uppercase tracking-[0.15em] text-on-dark-muted">
+        <span className="rounded-full bg-primary px-2.5 py-0.5 text-primary-foreground">
+          {when(today, shift.day)}
+        </span>
         {started && (
-          <span className="rounded-full bg-success px-2 py-0.5 text-[11px] tracking-widest text-primary-foreground">
-            Underway
-          </span>
+          <span className="rounded-full border border-brand-navy-mid px-2.5 py-0.5">Underway</span>
         )}
       </p>
-      <h2 className="m-0 text-[26px] leading-tight tracking-tight text-foreground">
+      <h2 className="m-0 text-[28px] font-bold leading-tight tracking-tight text-on-dark">
         {SHIFT_TYPE_LABEL[shift.shiftType]} at {shift.startTime}
       </h2>
       {shift.purpose !== null && (
-        <p className="m-0 mt-1 text-sm text-muted-foreground">{shift.purpose}</p>
+        <p className="m-0 mt-1 text-sm text-on-dark-muted">{shift.purpose}</p>
       )}
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <Button asChild size="lg">
@@ -169,7 +175,7 @@ function NextShiftCard({ shift, today }: { shift: NextShift; today: string }) {
           </Link>
         </Button>
         {shift.more > 0 && (
-          <Link to="/shifts" className="text-sm text-muted-foreground">
+          <Link to="/shifts" className="text-sm text-on-dark-muted">
             {shift.more} more after this
           </Link>
         )}
@@ -322,9 +328,20 @@ function Home() {
           they opened, and what this screen can say that the sidebar cannot is
           whose barn it is. */}
       {page !== null && (
-        <h1 className="mb-6 mt-2 text-4xl leading-tight tracking-tight text-foreground min-[600px]:mb-8 min-[600px]:mt-4 min-[600px]:text-5xl">
-          {page.organisation}
-        </h1>
+        <div className="mb-6 mt-2 min-[600px]:mb-8 min-[600px]:mt-4">
+          {/* The day, in the mono face, above the name. It is the one fact on
+              this screen that everything else is relative to — *tomorrow*,
+              *Thu 4 Sep*, *in a fortnight* are all read against it — and the
+              server already resolved it in the organisation's own timezone
+              (ADR 0007, ADR 0016), so putting it here costs nothing and stops
+              a volunteer working out which *today* the page means. */}
+          <p className="m-0 mb-1 font-mono text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground">
+            {page.today}
+          </p>
+          <h1 className="m-0 text-4xl leading-tight tracking-tight text-foreground min-[600px]:text-5xl">
+            {page.organisation}
+          </h1>
+        </div>
       )}
 
       {state.state === 'broken' && (

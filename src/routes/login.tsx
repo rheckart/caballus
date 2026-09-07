@@ -23,6 +23,7 @@
  * mistyped character guaranteed would never arrive.
  */
 import { createFileRoute, useRouter } from '@tanstack/react-router'
+import { PawPrint } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 
 import { Alert, AlertTitle } from '../components/ui/alert'
@@ -130,7 +131,19 @@ function Login() {
 
   return (
     <main className="grid min-h-dvh max-w-none content-center justify-items-center px-4 py-8">
-      <h1 className="w-full max-w-[400px] text-center">Caballus</h1>
+      {/* The mark, then the name. Field Signal's one piece of identity on a
+          screen that is otherwise a single field: a volunteer opening this in
+          a barn is checking they are in the right app before they type an
+          address into it. */}
+      <div className="mb-2 flex w-full max-w-[400px] flex-col items-center">
+        <span
+          aria-hidden="true"
+          className="flex size-14 items-center justify-center rounded-xl bg-primary text-primary-foreground"
+        >
+          <PawPrint className="size-8" strokeWidth={2} />
+        </span>
+        <h1 className="mb-1 mt-4 text-center">Caballus</h1>
+      </div>
 
       {step.name === 'address' ? (
         <form
