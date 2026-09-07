@@ -32,6 +32,7 @@ import { Alert as AlertBox, AlertTitle } from './ui/alert'
 import { Button } from './ui/button'
 import { Dialog, DialogContent, DialogHeader } from './ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'
+import { cn } from '../shared/cn'
 import { refusalText } from '../shared/refusals'
 
 /** What a tab's form hands the modal, so the dirty-tab rule can hold. */
@@ -135,7 +136,10 @@ export function RecordModal({
         if (!open) attempt({ kind: 'close' })
       }}
     >
-      <DialogContent className={className} {...{ 'aria-describedby': undefined }}>
+      <DialogContent
+        className={cn('max-h-[90dvh]', className)}
+        {...{ 'aria-describedby': undefined }}
+      >
         <DialogHeader>{header}</DialogHeader>
 
         {pending !== null && (
@@ -166,7 +170,15 @@ export function RecordModal({
         )}
 
         <RegisterContext.Provider value={register}>
+          {/*
+            The tab panel is the one thing that scrolls, so the record's name
+            and its tab bar stay where the thumb left them. `min-h-0` is what
+            lets a flex child be shorter than its content and scroll at all;
+            without it the whole sheet grows and the tab bar leaves the screen
+            on the first swipe.
+          */}
           <Tabs
+            className="min-h-0 flex-1"
             value={tab}
             onValueChange={(next) => {
               if (next !== tab) attempt({ kind: 'switch', to: next })
@@ -181,7 +193,11 @@ export function RecordModal({
             </TabsList>
 
             {tabs.map((one) => (
-              <TabsContent key={one.id} value={one.id}>
+              <TabsContent
+                key={one.id}
+                value={one.id}
+                className="min-h-0 overflow-y-auto overscroll-contain"
+              >
                 {one.content}
               </TabsContent>
             ))}
