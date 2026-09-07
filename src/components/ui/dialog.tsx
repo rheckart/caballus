@@ -66,8 +66,16 @@ function DialogContent({
         className={cn(
           // The phone's sheet: full width, risen from the bottom, actions in
           // thumb reach. From 640px up it is the centred panel.
-          'fixed bottom-0 left-0 right-0 z-50 grid max-h-[92dvh] w-full gap-4 overflow-y-auto rounded-t-xl border border-border bg-background p-5 pb-[calc(--spacing(5)+env(safe-area-inset-bottom,0px))] shadow-lg',
-          'sm:bottom-auto sm:left-1/2 sm:right-auto sm:top-1/2 sm:max-h-[86dvh] sm:w-full sm:max-w-[640px] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:p-6',
+          //
+          // `bottom` is not 0, because a fixed element is positioned against
+          // the *large* viewport — the one with the browser's own toolbar
+          // hidden — so on a phone showing that toolbar the last few
+          // centimetres of the sheet sit behind it, whether the bar is at the
+          // top (the page is pushed down) or at the bottom (it covers). The
+          // gap is exactly `100lvh - 100dvh`, which is zero the moment the
+          // toolbar goes away and on every desktop.
+          'fixed bottom-[calc(100lvh-100dvh)] left-0 right-0 z-50 flex max-h-[90dvh] w-full flex-col gap-3 overflow-y-auto overscroll-contain rounded-t-xl border border-border bg-background p-4 pb-[calc(--spacing(4)+env(safe-area-inset-bottom,0px))] shadow-lg',
+          'sm:bottom-auto sm:left-1/2 sm:right-auto sm:top-1/2 sm:max-h-[86dvh] sm:w-full sm:max-w-[640px] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:gap-4 sm:rounded-lg sm:p-6',
           'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0',
           className,
         )}
@@ -77,7 +85,7 @@ function DialogContent({
         {showCloseButton && (
           <DialogClosePrimitive
             data-slot="dialog-close"
-            className="absolute right-4 top-4 inline-flex min-h-11 items-center gap-1.5 rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring outline-none disabled:pointer-events-none"
+            className="absolute right-3 top-3 inline-flex min-h-11 items-center gap-1.5 rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring outline-none disabled:pointer-events-none sm:right-4 sm:top-4"
           >
             <X aria-hidden="true" className="size-4" />
             Close
