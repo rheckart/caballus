@@ -66,6 +66,14 @@ export type Refusal =
    */
   | 'shift_closed'
   /**
+   * Moving the start time or the headcount of a Shift that has already
+   * closed (#70). What was planned for it is a fact recorded at the time, and
+   * changing it afterwards is the retroactive edit ADR 0001 rejected live
+   * resolution to avoid. Its own refusal rather than `already_closed`, whose
+   * sentence answers a second press of Close.
+   */
+  | 'shift_has_closed'
+  /**
    * Unsent-and-visible-here work, an Open Attendance, or an undispositioned
    * Observation still stands (ADR 0013, ADR 0014, #45) — the single refusal a
    * retry cannot fix by itself; `closeBlockers` in `src/shared/shift-close.ts`

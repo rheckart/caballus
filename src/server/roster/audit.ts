@@ -43,6 +43,7 @@ export const AUDIT_ENTITIES = [
   'supplier',
   'shift_pattern',
   'shift_pattern_roster',
+  'shift',
   'shift_roster',
   'task',
   'contact',
