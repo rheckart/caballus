@@ -509,7 +509,7 @@ describe.skipIf(!reachable)('Closing a Shift, through the API', () => {
 
       const again = await post(apiAs(lead, []), '/shifts/close', { shiftId })
       expect(again.status).toBe(409)
-      expect(again.body.error).toBe('already_closed')
+      expect(again.body.error).toBe('shift_already_closed')
     })
   })
 

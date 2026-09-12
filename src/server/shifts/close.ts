@@ -82,7 +82,7 @@ export async function closeShift(
     .where(eq(shifts.id, about.shiftId))
     .limit(1)
   if (shift === undefined) return refused('shift_not_found')
-  if (shift.closedAt !== null) return refused('already_closed')
+  if (shift.closedAt !== null) return refused('shift_already_closed')
 
   const counts = await closeCountsFor(db, about.shiftId)
   const blockers = closeBlockers({ unsentCount: 0, ...counts })

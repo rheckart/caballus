@@ -516,7 +516,7 @@ describe.skipIf(!reachable)('Days-of-Supply and Reorders, through the API', () =
 
       const reclosed = await post(holder.api, '/reorders/close', { reorderId, note: 'Again' })
       expect(reclosed.status).toBe(409)
-      expect(reclosed.body.error).toBe('already_closed')
+      expect(reclosed.body.error).toBe('reorder_already_closed')
     })
 
     it('refuses closing without a note', async () => {

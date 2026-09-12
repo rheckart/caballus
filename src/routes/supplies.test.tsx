@@ -10,7 +10,7 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { answeredNothing, stubApi } from '../test/api-stub'
+import { answeredNothing, refused, stubApi } from '../test/api-stub'
 import { chooseOption, renderRoutes } from '../test/route-harness'
 import { Route } from './supplies'
 
@@ -339,6 +339,53 @@ describe('the Supplies screen', () => {
     await waitFor(() => {
       expect(closed).toMatchObject({ reorderId: 'reorder-1', note: 'Arrived Thursday.' })
     })
+  })
+
+  it('says the Reorder is already closed when somebody else closed it first (#97)', async () => {
+    stubApi({
+      '/me': {
+        volunteerId: 'bm',
+        name: 'Barn Manager',
+        email: 'someone@barn.test',
+        mobile: null,
+        smsConsentAt: null,
+        smsStoppedAt: null,
+        domainScopes: ['supplies'],
+      },
+      '/supplies': { today: '2026-08-18', products: [SENIOR_COUNTED] },
+      '/reorders': {
+        reorders: [
+          {
+            id: 'reorder-1',
+            productId: 'prod-1',
+            productName: 'Senior',
+            escalationId: null,
+            openedBy: 'bm',
+            openedByName: 'Barn Manager',
+            openedAt: 0,
+            closedAt: null,
+            closedBy: null,
+            closedByName: null,
+            closingNote: null,
+            comments: [],
+          },
+        ],
+      },
+      '/escalations': EMPTY_ESCALATIONS,
+      '/shifts': EMPTY_SHIFTS,
+      '/reorders/close': () => refused('reorder_already_closed'),
+    })
+    renderSupplies()
+
+    fireEvent.change(await screen.findByLabelText('Close with a note'), {
+      target: { value: 'Arrived Thursday.' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+
+    // The screen echoes a Reorder's refusal in its page-level alert as well as
+    // on the card, so this asks for at least one rather than exactly one.
+    expect((await screen.findAllByText(/That reorder is already closed/)).length).toBeGreaterThan(0)
+    expect(screen.queryByText(/escalation is already closed/)).toBeNull()
   })
 
   it('withholds the close form on a Reorder from a reader with no supplies scope', async () => {

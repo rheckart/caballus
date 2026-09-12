@@ -441,6 +441,20 @@ describe('closing a Shift (#45)', () => {
     expect(await screen.findByText('Closed.')).toBeTruthy()
   })
 
+  it('says the Shift is already closed when somebody else closed it first (#97)', async () => {
+    stubApiWith(
+      { '/shifts/shift-1': checklistBody() },
+      { '/shifts/close': () => jsonResponse({ error: 'shift_already_closed' }, 409) },
+    )
+    renderAt('shift-1')
+
+    fireEvent.click(await screen.findByText('Close Shift'))
+
+    expect(await screen.findByText(/This Shift is already closed/)).toBeTruthy()
+    // The sentence it used to borrow, about a record nobody closing a Shift has open.
+    expect(screen.queryByText(/escalation/i)).toBeNull()
+  })
+
   it('shows Shift Notes and lets Shift Authority add one', async () => {
     let noted = false
     stubApiWith(

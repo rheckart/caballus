@@ -554,7 +554,7 @@ describe.skipIf(!reachable)('Observations and Escalations, through the API', () 
         note: 'Again',
       })
       expect(reclose.status).toBe(409)
-      expect(reclose.body.error).toBe('already_closed')
+      expect(reclose.body.error).toBe('escalation_already_closed')
     })
   })
 
