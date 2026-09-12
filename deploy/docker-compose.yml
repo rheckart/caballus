@@ -37,6 +37,13 @@ services:
       postgres:
         condition: service_healthy
     env_file: .env
+    environment:
+      # Where deploy/backup.sh writes its stamps, which `/health` reads. Set
+      # here as a literal rather than in the template, because it is this
+      # file's mount that makes it true.
+      BACKUP_STATE_DIR: /backup-state
+    volumes:
+      - ./backup-state:/backup-state:ro
     labels:
       # Traefik on this box runs with host networking and the Docker provider,
       # with exposedbydefault off — so a container is routed only when it says

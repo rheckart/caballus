@@ -1,0 +1,12 @@
+# Last night's dump, restored into a scratch database and counted — an hour
+# after the nightly, and well before the morning feed.
+[Unit]
+Description=Caballus restore check of last night's dump
+
+[Timer]
+OnCalendar=*-*-* 03:50:00 America/New_York
+Persistent=true
+Unit=caballus-backup@restore-check.service
+
+[Install]
+WantedBy=timers.target

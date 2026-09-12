@@ -32,6 +32,8 @@ import postgres from 'postgres'
 
 import handler from '../dist/server/server.js'
 
+import { backupFreshness, readBackupState } from './backup-freshness.mjs'
+
 const port = Number(process.env.PORT ?? 3000)
 
 /** The browser's half of the build, which this process is the only server of. */
@@ -106,30 +108,48 @@ function probeSocket() {
   return probe
 }
 
-/**
- * ADR 0006 asks this to prove the application *and* its data path *and* that
- * last night's dump happened. The first two are here; the age of the last
- * successful backup lands with the backup job itself, since a field reporting
- * on a job that does not exist would report a reassuring nothing.
- */
-async function health() {
+async function databaseAnswers() {
   try {
     await probeSocket()`select 1`
-    return new Response(JSON.stringify({ status: 'ok', database: 'ok' }), {
-      status: 200,
-      headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
-    })
+    return 'ok'
   } catch (error) {
     // Unauthenticated, so it says up or down and never why (ADR 0006). The
     // reason goes to stdout, where the operator can already grep for it.
     process.stdout.write(
       `${JSON.stringify({ level: 'error', event: 'health.failed', message: String(error) })}\n`,
     )
-    return new Response(JSON.stringify({ status: 'down', database: 'down' }), {
-      status: 503,
-      headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
-    })
+    return 'down'
   }
+}
+
+/**
+ * The backup half, when this process is told where `deploy/backup.sh` writes
+ * its stamps — which the production compose file does, and a laptop and CI do
+ * not, because neither runs backups for a check to find missing.
+ */
+async function backupsIfWatched() {
+  const dir = process.env.BACKUP_STATE_DIR
+  if (dir === undefined || dir === '') return undefined
+  return backupFreshness({ ...(await readBackupState(dir)), now: Date.now() })
+}
+
+/**
+ * ADR 0006 asks this to prove the application *and* its data path *and* that
+ * last night's dump happened. A stale backup or restore check is a 503 like a
+ * dead database, because that is what the monitor sees; the deploy and the
+ * container's own healthcheck read `database` out of the body instead, so a
+ * broken backup does not roll back a working image.
+ */
+async function health() {
+  const database = await databaseAnswers()
+  const backups = await backupsIfWatched()
+  const healthy =
+    database === 'ok' &&
+    (backups === undefined || (backups.backup === 'ok' && backups.restoreCheck === 'ok'))
+  return new Response(JSON.stringify({ status: healthy ? 'ok' : 'down', database, ...backups }), {
+    status: healthy ? 200 : 503,
+    headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+  })
 }
 
 serve(

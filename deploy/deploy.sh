@@ -77,11 +77,14 @@ docker compose up -d app
 
 say "waiting for health"
 # Polled from outside rather than from the container, so a green answer proves
-# Traefik, the certificate and the database as well as the process.
+# Traefik, the certificate and the database as well as the process. It reads
+# `database` out of the body rather than the status code: `/health` is also a
+# 503 when the backups are stale, and a broken backup job is not a reason to
+# roll back a working image.
 for attempt in $(seq 1 30); do
-  if curl -fsS -m 5 https://caballus.tech/health >/dev/null 2>&1; then
+  if curl -sS -m 5 https://caballus.tech/health 2>/dev/null | grep -q '"database":"ok"'; then
     say "healthy after ${attempt}0s or less"
-    curl -fsS https://caballus.tech/health; echo
+    curl -sS https://caballus.tech/health; echo
     say "deployed $IMAGE"
     exit 0
   fi

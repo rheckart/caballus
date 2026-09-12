@@ -4,8 +4,10 @@ What is installed at `/docker/caballus/` on the box, kept here so that a change
 to it is reviewed and versioned like anything else. `docs/deploy.md` is the
 runbook that explains it.
 
-The box's copy is installed by hand — `scp` these five files, then
-`chmod 755` the scripts. There is no mechanism that keeps the two in step yet,
+The box's copy is installed by hand — `scp` the files, then
+`chmod 755` the scripts. `backup.sh` and `backup.env.tpl` live beside the rest,
+and `systemd/` goes to `/etc/systemd/system/` rather than into the stack
+(`docs/deploy.md`, Backups). There is no mechanism that keeps the two in step yet,
 so a change here is not live until it is copied; that is a real gap and it is
 named rather than papered over. `.env.tpl` is now one of the five, which makes
 the gap bite harder: a variable added to the template in the repository is not

@@ -24,7 +24,13 @@ export default defineConfig({
     projects: [
       {
         extends: true,
-        test: { name: 'unit', environment: 'node', include: ['src/**/*.test.ts'] },
+        test: {
+          name: 'unit',
+          environment: 'node',
+          // `scripts/` too: what `serve.mjs` decides about `/health` is plain
+          // JavaScript outside the bundle, and still tested.
+          include: ['src/**/*.test.ts', 'scripts/**/*.test.mjs'],
+        },
       },
       {
         extends: true,

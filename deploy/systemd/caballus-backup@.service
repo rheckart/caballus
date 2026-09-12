@@ -1,0 +1,19 @@
+# One run of deploy/backup.sh. The instance is the mode: frequent, nightly or
+# restore-check. Started by the three timers beside this file, or by hand:
+#
+#   systemctl start caballus-backup@frequent.service
+#   journalctl -u 'caballus-backup@*' -n 50
+#
+# A failure here sends nothing. `/health` reads the stamp a success writes and
+# goes unhealthy when it ages, which is what the monitor watches (ADR 0006).
+[Unit]
+Description=Caballus backup (%i)
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/docker/caballus/backup.sh %i
+TimeoutStartSec=45min
+Nice=10
+IOSchedulingClass=idle
