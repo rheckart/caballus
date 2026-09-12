@@ -41,7 +41,18 @@ function DialogOverlay({ className, ...props }: ComponentProps<typeof DialogOver
     <DialogOverlayPrimitive
       data-slot="dialog-overlay"
       className={cn(
-        'fixed inset-0 z-50 bg-black/45',
+        // The overlay is also the frame the panel is laid out in, which is
+        // what keeps a sheet from ever running off the bottom of a phone.
+        //
+        // A fixed box's *bottom* is the bottom of the large viewport — the
+        // one measured with the browser's own toolbar hidden — so anything
+        // anchored to it hides behind that toolbar. Its *top* is never wrong.
+        // So the frame is measured downward from the top, `100dvh` tall, which
+        // is the height actually on screen right now; the panel is a flex item
+        // sitting at the end of it and inherits a bottom that is always
+        // visible, with no viewport arithmetic of its own.
+        'fixed inset-0 z-50 flex h-[100dvh] items-end justify-center overflow-hidden bg-black/45',
+        'sm:items-center sm:p-6',
         'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0',
         className,
       )}
@@ -60,38 +71,40 @@ function DialogContent({
 }) {
   return (
     <DialogPortal>
-      <DialogOverlay />
-      <DialogContentPrimitive
-        data-slot="dialog-content"
-        className={cn(
-          // The phone's sheet: full width, risen from the bottom, actions in
-          // thumb reach. From 640px up it is the centred panel.
-          //
-          // `bottom` is not 0, because a fixed element is positioned against
-          // the *large* viewport — the one with the browser's own toolbar
-          // hidden — so on a phone showing that toolbar the last few
-          // centimetres of the sheet sit behind it, whether the bar is at the
-          // top (the page is pushed down) or at the bottom (it covers). The
-          // gap is exactly `100lvh - 100dvh`, which is zero the moment the
-          // toolbar goes away and on every desktop.
-          'fixed bottom-[calc(100lvh-100dvh)] left-0 right-0 z-50 flex max-h-[90dvh] w-full flex-col gap-3 overflow-y-auto overscroll-contain rounded-t-xl border border-border bg-background p-4 pb-[calc(--spacing(4)+env(safe-area-inset-bottom,0px))] shadow-lg',
-          'sm:bottom-auto sm:left-1/2 sm:right-auto sm:top-1/2 sm:max-h-[86dvh] sm:w-full sm:max-w-[640px] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:gap-4 sm:rounded-lg sm:p-6',
-          'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0',
-          className,
-        )}
-        {...props}
-      >
-        {children}
-        {showCloseButton && (
-          <DialogClosePrimitive
-            data-slot="dialog-close"
-            className="absolute right-3 top-3 inline-flex min-h-11 items-center gap-1.5 rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring outline-none disabled:pointer-events-none sm:right-4 sm:top-4"
-          >
-            <X aria-hidden="true" className="size-4" />
-            Close
-          </DialogClosePrimitive>
-        )}
-      </DialogContentPrimitive>
+      {/*
+        The panel is nested *inside* the overlay rather than sitting beside
+        it, which is Radix's own arrangement for a dialog that has to fit a
+        viewport. `max-h-full` is then the frame's height and nothing else —
+        no `dvh` on the panel, no `translate`, no `bottom` — so the sheet
+        cannot be taller than the screen it is on, whatever the browser is
+        doing with its toolbar. Clicking the overlay still closes: the target
+        is outside the content node, which is all Radix asks.
+      */}
+      <DialogOverlay>
+        <DialogContentPrimitive
+          data-slot="dialog-content"
+          className={cn(
+            // The phone's sheet: full width, risen from the bottom, actions in
+            // thumb reach. From 640px up it is the centred panel.
+            'relative flex max-h-full w-full flex-col gap-3 overflow-y-auto overscroll-contain rounded-t-xl border border-border bg-background p-4 pb-[calc(--spacing(4)+env(safe-area-inset-bottom,0px))] shadow-lg',
+            'sm:max-w-[640px] sm:gap-4 sm:rounded-lg sm:p-6',
+            'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0',
+            className,
+          )}
+          {...props}
+        >
+          {children}
+          {showCloseButton && (
+            <DialogClosePrimitive
+              data-slot="dialog-close"
+              className="absolute right-3 top-3 inline-flex min-h-11 items-center gap-1.5 rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring outline-none disabled:pointer-events-none sm:right-4 sm:top-4"
+            >
+              <X aria-hidden="true" className="size-4" />
+              Close
+            </DialogClosePrimitive>
+          )}
+        </DialogContentPrimitive>
+      </DialogOverlay>
     </DialogPortal>
   )
 }
