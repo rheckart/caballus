@@ -14,7 +14,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { API_BASE } from '../shared/api-client'
-import { stubApi } from '../test/api-stub'
+import { answeredNothing, stubApi } from '../test/api-stub'
 import { renderRoutes } from '../test/route-harness'
 import { ShiftChecklist } from './shifts.$shiftId'
 
@@ -67,6 +67,8 @@ function checklistBody(overrides: Record<string, unknown> = {}) {
     shiftId: 'shift-1',
     day: '2026-08-18',
     shiftType: 'feed_am',
+    startTime: '06:30',
+    targetHeadcount: 3,
     materialized: true,
     items: [],
     prepOwed: [],
@@ -277,11 +279,12 @@ describe('opening a Shift', () => {
     renderAt('shift-1')
 
     const headings = await screen.findAllByRole('heading', { level: 2 })
-    // Shift Notes carries its own heading now (#45) — this asserts the horse
-    // cards' own order among whatever else the screen puts on the page.
+    // Shift Notes (#45) and the start time (#70) carry their own headings —
+    // this asserts the horse cards' own order among whatever else the screen
+    // puts on the page.
     const names = headings
       .map((heading) => heading.textContent)
-      .filter((text) => text !== 'Shift Notes')
+      .filter((text) => text !== 'Shift Notes' && text !== 'When it starts')
     expect(names).toEqual(['Nora', 'Blue'])
   })
 
@@ -495,5 +498,51 @@ describe('closing a Shift (#45)', () => {
     fireEvent.click(screen.getByText('Save'))
 
     expect(await screen.findByText(/Dawson is off his feed\./)).toBeTruthy()
+  })
+})
+
+describe('changing just this Shift (#70)', () => {
+  it("sends this Shift's new start time and headcount, and opens on what the server holds", async () => {
+    const posted: unknown[] = []
+    stubApi({
+      '/shifts/shift-1': () =>
+        checklistBody(posted.length > 0 ? { startTime: '07:00', targetHeadcount: 4 } : {}),
+      '/shifts/edit': (init: RequestInit) => {
+        posted.push(JSON.parse(String(init.body)) as unknown)
+        return answeredNothing()
+      },
+    })
+    renderAt('shift-1')
+
+    expect(await screen.findByText('Starts at 06:30, 3 people wanted.')).toBeTruthy()
+    fireEvent.change(screen.getByLabelText('Starts'), { target: { value: '07:00' } })
+    fireEvent.change(screen.getByLabelText('People wanted'), { target: { value: '4' } })
+    fireEvent.click(screen.getByText('Change this Shift'))
+
+    // Read back from the server rather than from what was typed.
+    expect(await screen.findByText('Starts at 07:00, 4 people wanted.')).toBeTruthy()
+    expect(posted).toEqual([
+      expect.objectContaining({ shiftId: 'shift-1', startTime: '07:00', targetHeadcount: 4 }),
+    ])
+  })
+
+  it('says why in words when the server refuses', async () => {
+    stubApiWith(
+      { '/shifts/shift-1': () => checklistBody() },
+      { '/shifts/edit': () => jsonResponse({ error: 'shift_has_closed' }, 409) },
+    )
+    renderAt('shift-1')
+
+    fireEvent.click(await screen.findByText('Change this Shift'))
+
+    expect(await screen.findByText(/start time and headcount stay what was planned/)).toBeTruthy()
+  })
+
+  it('offers nothing to change once the Shift has closed', async () => {
+    stubApi({ '/shifts/shift-1': checklistBody({ closedAt: 1_700_000_000_000 }) })
+    renderAt('shift-1')
+
+    expect(await screen.findByText('Starts at 06:30, 3 people wanted.')).toBeTruthy()
+    expect(screen.queryByText('Change this Shift')).toBeNull()
   })
 })

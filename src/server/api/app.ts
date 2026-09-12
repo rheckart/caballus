@@ -114,6 +114,7 @@ import {
   removeFromShift,
 } from '../shifts/roster'
 import { declareShort } from '../shifts/short'
+import { editShift } from '../shifts/edit'
 import { reachFor, sendAnnouncementText, sendShortText } from '../urgent/send'
 import type { Refusal as UrgentRefusal } from '../urgent/outcome'
 import { sendText } from '../sms'
@@ -1263,6 +1264,8 @@ export function buildApi(
       readonly id: string
       readonly day: DayString
       readonly shiftType: ShiftType
+      readonly startTime: string
+      readonly targetHeadcount: number
       readonly closedAt: number | null
       readonly checklist: Checklist
       readonly openAttendanceCount: number
@@ -1300,6 +1303,8 @@ export function buildApi(
           id: shift.id,
           day: shift.day,
           shiftType,
+          startTime: shift.startTime,
+          targetHeadcount: shift.targetHeadcount,
           closedAt: shift.closedAt,
           checklist,
           openAttendanceCount: counts.openAttendanceCount,
@@ -1315,6 +1320,8 @@ export function buildApi(
       shiftId: found.id,
       day: found.day,
       shiftType: found.shiftType,
+      startTime: found.startTime,
+      targetHeadcount: found.targetHeadcount,
       materialized: found.checklist.materialized,
       items: found.checklist.items.map((item) => ({ ...item })),
       prepOwed: found.checklist.prepOwed.map((item) => ({ ...item })),
@@ -1975,6 +1982,23 @@ export function buildApi(
     const outcome = await declareShort(db, actor.volunteerId, {
       shiftId: input.shiftId,
       short: input.short,
+    })
+    return outcome.ok ? noContent() : shiftRefusal(outcome.because)
+  })
+
+  /**
+   * *Change just Thursday* (ADR 0001, #70). `shiftAuthority(['roster'])`, the
+   * declaration `/shifts/short` already makes: the Lead standing on the Shift,
+   * or an officer reaching one they are not on. `mutation` runs the roster join
+   * before this handler, so nothing here decides who may.
+   */
+  api.mutation('/shifts/edit', shiftAuthority(['roster']), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await editShift(db, context.orgId, actor.volunteerId, {
+      shiftId: input.shiftId,
+      startTime: input.startTime,
+      targetHeadcount: input.targetHeadcount,
+      reason: input.reason ?? null,
     })
     return outcome.ok ? noContent() : shiftRefusal(outcome.because)
   })

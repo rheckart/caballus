@@ -1340,6 +1340,146 @@ describe.skipIf(!reachable)('Shift Patterns and Shifts, through the API', () => 
     })
   })
 
+  describe('changing just Thursday (#70)', () => {
+    /** Two Thursdays in the horizon from one Pattern, and the first of them. */
+    async function twoThursdays() {
+      const desk = await coordinator()
+      const patternId = await patternOn(desk.api, inHorizon(1).weekday, {
+        startTime: '06:30',
+        targetHeadcount: 3,
+      })
+      await post(desk.api, '/shifts/generation')
+      const shifts = (await schedule(desk.api)).shifts
+      return { desk, patternId, shiftId: shifts[0]?.id ?? '', laterId: shifts[1]?.id ?? '' }
+    }
+
+    it('moves the one Shift and leaves the Pattern, and next week, where they were', async () => {
+      const { desk, patternId, shiftId, laterId } = await twoThursdays()
+      const beth = await rosterableVolunteer('Beth Ann')
+      await post(desk.api, '/shifts/roster', { shiftId, volunteerId: beth, position: 'lead' })
+
+      const moved = await post(apiAs(beth, []), '/shifts/edit', {
+        shiftId,
+        startTime: '07:00',
+        targetHeadcount: 4,
+        reason: 'The farrier is coming',
+      })
+      expect(moved.status).toBe(204)
+
+      const listed = (await schedule(desk.api)).shifts
+      expect(listed.find((one) => one.id === shiftId)).toMatchObject({
+        startTime: '07:00',
+        targetHeadcount: 4,
+      })
+      // The copy is the design: the next occurrence keeps what it was made with.
+      expect(listed.find((one) => one.id === laterId)).toMatchObject({
+        startTime: '06:30',
+        targetHeadcount: 3,
+      })
+      const patterns = shiftPatternList.parse((await get(desk.api, '/shift-patterns')).body)
+      expect(patterns.patterns.find((one) => one.id === patternId)).toMatchObject({
+        startTime: '06:30',
+        targetHeadcount: 3,
+      })
+
+      // And generating again neither undoes the move nor makes a second Thursday.
+      expect((await post(desk.api, '/shifts/generation')).body.created).toBe(0)
+      expect((await schedule(desk.api)).shifts.find((one) => one.id === shiftId)?.startTime).toBe(
+        '07:00',
+      )
+    })
+
+    it('shows the new time on the Shift the Lead has open', async () => {
+      const { desk, shiftId } = await twoThursdays()
+      await post(desk.api, '/shifts/edit', { shiftId, startTime: '07:15' })
+
+      const opened = await get(desk.api, `/shifts/${shiftId}`)
+      expect(opened.status).toBe(200)
+      expect(opened.body).toMatchObject({ startTime: '07:15', targetHeadcount: 3 })
+    })
+
+    it('takes `roster` for a Shift the officer is not on', async () => {
+      const { desk, shiftId } = await twoThursdays()
+      expect((await post(desk.api, '/shifts/edit', { shiftId, targetHeadcount: 2 })).status).toBe(
+        204,
+      )
+    })
+
+    it('refuses a rostered volunteer, and somebody not on the Shift holding no Scope', async () => {
+      const { desk, shiftId } = await twoThursdays()
+      const nora = await rosterableVolunteer('Nora Webb')
+      await post(desk.api, '/shifts/roster', { shiftId, volunteerId: nora, position: 'volunteer' })
+      const stranger = await rosterableVolunteer('Grace Adeyemi')
+
+      const volunteer = await post(apiAs(nora, []), '/shifts/edit', { shiftId, startTime: '07:00' })
+      expect(volunteer.status).toBe(403)
+      expect(volunteer.body.wanted).toBe('shift authority or roster')
+      expect(
+        (await post(apiAs(stranger, []), '/shifts/edit', { shiftId, startTime: '07:00' })).status,
+      ).toBe(403)
+
+      expect((await schedule(desk.api)).shifts.find((one) => one.id === shiftId)?.startTime).toBe(
+        '06:30',
+      )
+    })
+
+    it('refuses a closed Shift, in words', async () => {
+      const { desk, shiftId } = await twoThursdays()
+      await owner`
+        update shifts set closed_at = now(), closed_by = ${desk.volunteerId}
+        where id = ${shiftId}
+      `
+
+      const refused = await post(desk.api, '/shifts/edit', { shiftId, startTime: '07:00' })
+      expect(refused.status).toBe(409)
+      expect(refused.body.error).toBe('shift_has_closed')
+    })
+
+    it('audits the actor, the Shift and both fields that moved — and nothing when neither did', async () => {
+      const { desk, shiftId } = await twoThursdays()
+
+      // The time it already has, spelled the way the barn writes it: no entry.
+      await post(desk.api, '/shifts/edit', { shiftId, startTime: '06:30', targetHeadcount: 3 })
+      await post(desk.api, '/shifts/edit', {
+        shiftId,
+        startTime: '07:00',
+        targetHeadcount: 4,
+        reason: 'The farrier is coming',
+      })
+
+      const entries = await owner`
+        select actor_volunteer_id, entity, entity_id, field, before, after, reason
+        from audit_entries
+        where org_id = ${FIELD_BARN} and entity = 'shift'
+        order by field
+      `
+      expect(entries.map((entry) => ({ ...entry }))).toEqual([
+        {
+          actor_volunteer_id: desk.volunteerId,
+          entity: 'shift',
+          entity_id: shiftId,
+          field: 'start_time',
+          before: '06:30',
+          after: '07:00',
+          reason: 'The farrier is coming',
+        },
+        {
+          actor_volunteer_id: desk.volunteerId,
+          entity: 'shift',
+          entity_id: shiftId,
+          field: 'target_headcount',
+          before: '3',
+          after: '4',
+          reason: 'The farrier is coming',
+        },
+      ])
+    })
+
+    it('declares neverQueued, because a start time is not true until people have read it', () => {
+      expect(contract.writes['/shifts/edit'].neverQueued).toBe(true)
+    })
+  })
+
   describe('the evening digest — the one thing the app sends about staffing', () => {
     let posted: OutgoingEmail[] = []
 

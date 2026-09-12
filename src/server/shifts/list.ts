@@ -356,6 +356,9 @@ export async function shiftById(
   id: string
   day: DayString
   shiftType: AnyShiftType
+  /** `HH:MM`, normalised from the column's `HH:MM:SS`. */
+  startTime: string
+  targetHeadcount: number
   closedAt: Instant | null
 } | null> {
   const [row] = await db
@@ -363,6 +366,8 @@ export async function shiftById(
       id: shifts.id,
       day: shifts.day,
       shiftType: shifts.shiftType,
+      startTime: shifts.startTime,
+      targetHeadcount: shifts.targetHeadcount,
       closedAt: shifts.closedAt,
     })
     .from(shifts)
@@ -373,6 +378,8 @@ export async function shiftById(
     id: row.id,
     day: dayString(row.day),
     shiftType: row.shiftType,
+    startTime: asTimeOfDay(row.startTime),
+    targetHeadcount: row.targetHeadcount,
     closedAt: row.closedAt === null ? null : instantOfTimestamp(row.closedAt),
   }
 }
