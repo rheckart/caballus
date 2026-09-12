@@ -1,0 +1,3 @@
+# The seeded canvas is a 3 MB bundle of the editor plus every artboard, and
+# `design/build.py` followed by the seeder rebuilds it exactly. Not source.
+caballus-redesign.html
