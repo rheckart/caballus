@@ -55,7 +55,7 @@ export type Refusal =
   /** Clearing a Shift nobody declared Short. Nothing to take back. */
   | 'not_short'
   /** A Shift already closed — immutable domain fact, and there is no reopen (ADR 0013, ADR 0014, #45). */
-  | 'already_closed'
+  | 'shift_already_closed'
   /** An empty Shift Note — there is nothing to append (#45). */
   | 'text_required'
   /**

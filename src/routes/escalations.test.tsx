@@ -9,7 +9,7 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { stubApi } from '../test/api-stub'
+import { refused, stubApi } from '../test/api-stub'
 import { renderRoutes } from '../test/route-harness'
 import { Route } from './escalations'
 
@@ -110,6 +110,30 @@ describe('the Escalations screen', () => {
     await waitFor(() => {
       expect(closed).toMatchObject({ escalationId: 'esc-1', note: 'Farrier booked for Tuesday.' })
     })
+  })
+
+  it('says the escalation is already closed when somebody else closed it first (#97)', async () => {
+    stubApi({
+      '/me': {
+        volunteerId: 'welfare',
+        name: 'Head Welfare',
+        email: 'someone@barn.test',
+        mobile: null,
+        smsConsentAt: null,
+        smsStoppedAt: null,
+        domainScopes: ['horse_care'],
+      },
+      '/escalations': { escalations: [OPEN_ESCALATION] },
+      '/escalations/close': () => refused('escalation_already_closed'),
+    })
+    renderEscalations()
+
+    fireEvent.change(await screen.findByLabelText('Close with a note'), {
+      target: { value: 'Farrier booked for Tuesday.' },
+    })
+    fireEvent.click(screen.getAllByRole('button', { name: 'Close' })[0] as HTMLElement)
+
+    expect(await screen.findByText(/That escalation is already closed/)).toBeTruthy()
   })
 
   it('appends a thread comment for anyone, whether or not they hold the Scope', async () => {

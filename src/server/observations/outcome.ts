@@ -34,7 +34,7 @@ export type Refusal =
   /** Neither Shift Authority over the Observation's Shift, nor a holder of the named Scope. */
   | 'not_authorized_to_escalate'
   | 'escalation_not_found'
-  | 'already_closed'
+  | 'escalation_already_closed'
   /** Closing belongs to a holder of the Escalation's own addressed Scope. */
   | 'not_the_addressed_scope'
 

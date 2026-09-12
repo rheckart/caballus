@@ -189,7 +189,7 @@ export async function closeEscalation(
   if (row === undefined) return refused('escalation_not_found')
   if (!actor.domainScopes.includes(row.scope as DomainScope))
     return refused('not_the_addressed_scope')
-  if (row.closedAt !== null) return refused('already_closed')
+  if (row.closedAt !== null) return refused('escalation_already_closed')
 
   await db
     .update(escalations)

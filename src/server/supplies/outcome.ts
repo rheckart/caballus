@@ -15,7 +15,7 @@ export type Refusal =
   | 'not_authorized_to_record_reading'
   | 'reorder_not_found'
   | 'escalation_not_found'
-  | 'already_closed'
+  | 'reorder_already_closed'
   | 'note_required'
   | 'text_required'
 

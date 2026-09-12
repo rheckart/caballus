@@ -199,7 +199,7 @@ export async function closeReorder(
     .where(eq(reorders.id, about.reorderId))
     .limit(1)
   if (row === undefined) return refused('reorder_not_found')
-  if (row.closedAt !== null) return refused('already_closed')
+  if (row.closedAt !== null) return refused('reorder_already_closed')
 
   await db
     .update(reorders)

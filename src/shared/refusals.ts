@@ -106,7 +106,12 @@ const REFUSALS: Record<string, string> = {
     'The photograph could not be read. Nothing was created. Try a straighter, brighter shot of the panel.',
   not_authorized_for_panel:
     'You do not hold every scope that panel writes into. The horse grid needs horse care; the phone numbers need roster.',
-  already_closed: 'That escalation is already closed.',
+  // One per record rather than one `already_closed` for all three (#97): a
+  // shared code has one sentence, and it named an escalation to a Lead closing
+  // a Shift.
+  escalation_already_closed: 'That escalation is already closed. Reload to see its closing note.',
+  shift_already_closed: 'This Shift is already closed. Reload to see what was recorded.',
+  reorder_already_closed: 'That reorder is already closed. Reload to see its closing note.',
   not_the_addressed_scope: 'Only a holder of the Scope this was sent to may close it.',
   observations_undispositioned:
     'Every Observation on this Visit needs a decision — Escalate, or note with no action — before signing out.',
