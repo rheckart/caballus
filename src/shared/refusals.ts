@@ -72,6 +72,7 @@ const REFUSALS: Record<string, string> = {
   already_rostered: 'They are already on this shift.',
   not_rostered: 'They are not on this shift.',
   shift_is_over: 'That shift is over.',
+  shift_has_closed: 'This shift has closed, so its start time and headcount stay what was planned.',
   already_short:
     'Somebody has already called this shift short. Clear it first if that has changed.',
   not_short: 'Nobody has called this shift short.',

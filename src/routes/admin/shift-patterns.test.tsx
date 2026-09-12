@@ -15,7 +15,7 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { stubApi } from '../../test/api-stub'
+import { answeredNothing, stubApi } from '../../test/api-stub'
 import { renderRoute } from '../../test/route-harness'
 import { Route } from './shift-patterns'
 
@@ -141,5 +141,49 @@ describe('adding a week of Patterns', () => {
     // contract, which is a refusal nobody standing at the desk can read.
     const add = await screen.findByRole('button', { name: 'Add' })
     expect(add.hasAttribute('disabled')).toBe(true)
+  })
+})
+
+describe('changing just Thursday from the fortnight (#70)', () => {
+  /** One generated Shift, with nothing on it and nothing missing said. */
+  function thursday() {
+    return {
+      id: 'thursday',
+      patternId: 'thursday-am',
+      day: '2026-08-27',
+      shiftType: 'feed_am',
+      startTime: '06:30',
+      targetHeadcount: 3,
+      staffingMode: 'standing_roster',
+      purpose: null,
+      state: 'scheduled',
+      roster: [],
+      staffing: { gaps: [], suggestedActingLead: null },
+      short: null,
+      attendance: [],
+    }
+  }
+
+  it('sends that one Shift, not its Pattern, in one request', async () => {
+    const posted: unknown[] = []
+    stubApi({
+      ...emptyDesk(),
+      '/shifts': { today: '2026-08-25', shifts: [thursday()] },
+      '/shifts/edit': (init: RequestInit) => {
+        posted.push(JSON.parse(String(init.body)) as unknown)
+        return answeredNothing()
+      },
+    })
+    renderPatterns()
+
+    fireEvent.change(await screen.findByLabelText('Starts, Feed AM on 2026-08-27'), {
+      target: { value: '07:00' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Change this Shift' }))
+
+    await waitFor(() => {
+      expect(posted.length).toBe(1)
+    })
+    expect(posted[0]).toMatchObject({ shiftId: 'thursday', startTime: '07:00', targetHeadcount: 3 })
   })
 })

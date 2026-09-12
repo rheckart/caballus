@@ -67,6 +67,110 @@ const BLOCKER_LABEL: Record<CloseBlockerKind, string> = {
 /** The card every grouped section of the checklist sits in. */
 const CARD = 'mb-4 rounded-lg border border-border bg-background p-4 sm:p-6'
 
+/** A label that sits above its control. */
+const LABEL = 'mb-1 block text-sm font-medium text-foreground'
+
+/**
+ * *Change just Thursday* (ADR 0001, #70): this Shift's start time and
+ * headcount, and never the Pattern behind it.
+ *
+ * Offered to anyone who has the Shift open, the way Shift Notes and Close
+ * are — Shift Authority is a join the server runs, and a volunteer pressing it
+ * is told in words. Once the Shift has closed there is nothing to offer: what
+ * was planned stays what was planned.
+ */
+function ShiftTiming({
+  checklist,
+  shiftId,
+  onChanged,
+}: {
+  readonly checklist: Checklist
+  readonly shiftId: string
+  readonly onChanged: () => void
+}) {
+  const [startTime, setStartTime] = useState(checklist.startTime)
+  const [headcount, setHeadcount] = useState(String(checklist.targetHeadcount))
+  const [busy, setBusy] = useState(false)
+  const [problem, setProblem] = useState<string | null>(null)
+
+  const submit = useCallback(
+    async (event: FormEvent) => {
+      event.preventDefault()
+      setBusy(true)
+      setProblem(null)
+      try {
+        await client.post('/shifts/edit', {
+          shiftId,
+          startTime,
+          targetHeadcount: Number(headcount),
+        })
+        onChanged()
+      } catch (error: unknown) {
+        setProblem(refusalText(error))
+      } finally {
+        setBusy(false)
+      }
+    },
+    [shiftId, startTime, headcount, onChanged],
+  )
+
+  const planned = `Starts at ${checklist.startTime}, ${checklist.targetHeadcount} ${
+    checklist.targetHeadcount === 1 ? 'person' : 'people'
+  } wanted.`
+
+  if (checklist.closedAt !== null) return <p className="mb-4">{planned}</p>
+
+  return (
+    <section className={CARD}>
+      <h2 className="m-0 mb-3">When it starts</h2>
+      <p className="m-0 mb-3">{planned}</p>
+      <form onSubmit={(event) => void submit(event)}>
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label htmlFor="shift-start-time" className={LABEL}>
+              Starts
+            </label>
+            <Input
+              id="shift-start-time"
+              type="time"
+              required
+              value={startTime}
+              onChange={(event) => setStartTime(event.target.value)}
+            />
+          </div>
+          <div>
+            <label htmlFor="shift-headcount" className={LABEL}>
+              People wanted
+            </label>
+            <Input
+              id="shift-headcount"
+              type="number"
+              inputMode="numeric"
+              min="1"
+              required
+              value={headcount}
+              onChange={(event) => setHeadcount(event.target.value)}
+            />
+          </div>
+          <Button type="submit" disabled={busy}>
+            Change this Shift
+          </Button>
+        </div>
+        <p className="m-0 mt-2 text-sm text-muted-foreground">
+          This Shift only. The pattern it came from, and every other week, stay as they are.
+        </p>
+      </form>
+      {problem !== null && (
+        <AlertBox variant="destructive" className="mt-3">
+          <AlertTitle>
+            <Refusal>{problem}</Refusal>
+          </AlertTitle>
+        </AlertBox>
+      )}
+    </section>
+  )
+}
+
 /**
  * One `TickQueue` for the life of this component. A page reload — the case
  * "survives a reload" means — makes a fresh one over the same durable store,
@@ -651,6 +755,14 @@ export function ShiftChecklist() {
         <h1>
           {SHIFT_TYPE_LABEL[checklist.shiftType]} — {checklist.day}
         </h1>
+        {/* Before the checklist is fixed, too: a farrier coming at seven is
+            known the evening before, when nothing has materialized yet. */}
+        <ShiftTiming
+          key={`${checklist.startTime}-${checklist.targetHeadcount}`}
+          checklist={checklist}
+          shiftId={shiftId}
+          onChanged={() => void load()}
+        />
         <Empty>The checklist has not been fixed for today yet.</Empty>
         <Link to="/shifts">Back to my shifts</Link>
       </main>
@@ -688,6 +800,15 @@ export function ShiftChecklist() {
           </AlertDescription>
         </AlertBox>
       )}
+
+      {/* Keyed on what the server holds, so a successful change re-opens the
+          form on the new numbers rather than on what was typed. */}
+      <ShiftTiming
+        key={`${checklist.startTime}-${checklist.targetHeadcount}`}
+        checklist={checklist}
+        shiftId={shiftId}
+        onChanged={() => void load()}
+      />
 
       <ShiftNotes checklist={checklist} shiftId={shiftId} onChanged={() => void load()} />
 

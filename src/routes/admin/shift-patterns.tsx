@@ -305,7 +305,47 @@ function ShiftPatterns() {
                     {shift.staffingMode === 'sign_up' && <em> — open to sign-up</em>}
                     {shift.purpose !== null && <span> — {shift.purpose}</span>}
                   </TableCell>
-                  <TableCell>{shift.startTime}</TableCell>
+                  <TableCell>
+                    {/* *Change just Thursday* (ADR 0001, #70): this one Shift,
+                        never the Pattern — that is the card below, with its
+                        own apply-to-upcoming prompt. Keyed on what the server
+                        holds so a change re-opens on the new numbers. */}
+                    <form
+                      key={`${shift.startTime}-${shift.targetHeadcount}`}
+                      className="flex flex-wrap items-center gap-2"
+                      onSubmit={(event: FormEvent<HTMLFormElement>) => {
+                        event.preventDefault()
+                        const data = new FormData(event.currentTarget)
+                        void act(() =>
+                          client.post('/shifts/edit', {
+                            shiftId: shift.id,
+                            startTime: String(data.get('startTime') ?? ''),
+                            targetHeadcount: Number(data.get('targetHeadcount') ?? ''),
+                          }),
+                        )
+                      }}
+                    >
+                      <Input
+                        aria-label={`Starts, ${SHIFT_TYPE_LABEL[shift.shiftType]} on ${shift.day}`}
+                        name="startTime"
+                        type="time"
+                        required
+                        defaultValue={shift.startTime}
+                      />
+                      <Input
+                        aria-label={`People wanted, ${SHIFT_TYPE_LABEL[shift.shiftType]} on ${shift.day}`}
+                        name="targetHeadcount"
+                        type="number"
+                        inputMode="numeric"
+                        min="1"
+                        required
+                        defaultValue={shift.targetHeadcount}
+                      />
+                      <Button type="submit" variant="outline" size="sm" disabled={busy}>
+                        Change this Shift
+                      </Button>
+                    </form>
+                  </TableCell>
                   <TableCell>
                     {shift.roster.filter((member) => member.endedAs === null).length === 0 ? (
                       // Nobody at all, said out loud: a Shift nobody can staff

@@ -1304,6 +1304,13 @@ export const shiftChecklist = z.object({
   shiftId: z.string(),
   day: dayOfTheOrganisation,
   shiftType,
+  /**
+   * What this Shift was planned to start at and how many it wants, as it
+   * stands now — the Lead changes Thursday from here (#70), so the form has to
+   * open on Thursday's own numbers rather than the Pattern's.
+   */
+  startTime: timeOfDay,
+  targetHeadcount: z.number(),
   materialized: z.boolean(),
   items: z.array(checklistItem),
   prepOwed: z.array(checklistItem),
@@ -2281,6 +2288,30 @@ export const contract = {
         purpose: z.string().min(1).max(500),
       }),
       answers: z.object({ shiftId: z.string() }),
+    },
+    /**
+     * *Change just Thursday* (ADR 0001, #70): one dated Shift's start time or
+     * headcount, and never the Pattern behind it. Setting the start time is
+     * first in ADR 0010's list of what Shift Authority carries, and `roster` is
+     * the other door, for a Shift the officer is not on.
+     *
+     * No `applyToScheduled`, because there is nothing forward of one dated
+     * Shift to apply to. A closed Shift is refused.
+     *
+     * `neverQueued`, by ADR 0018's rule: a start time is not true in the barn
+     * until the people coming have read it — the app is the medium here, not
+     * the ledger — and a move to seven o'clock that arrives at half past six
+     * is worse than one refused while the Lead can still say it out loud.
+     */
+    '/shifts/edit': {
+      accepts: z.object({
+        shiftId: z.uuid(),
+        startTime: timeOfDay.optional(),
+        targetHeadcount: z.number().int().positive().optional(),
+        reason,
+      }),
+      answers: z.void(),
+      neverQueued: true,
     },
     /** The Coordinator putting somebody on one dated Shift — the gates' second door. */
     '/shifts/roster': {
