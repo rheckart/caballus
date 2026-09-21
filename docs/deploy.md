@@ -14,47 +14,38 @@ and `websecure` (:443), and a `letsencrypt` resolver over the HTTP challenge.
 Caballus adds one stack at `/docker/caballus/`, following the box's own
 convention — Traefik lives at `/docker/traefik/`.
 
-**CI is at home, on OMV8**, which is where Forgejo itself runs. ADR 0007 puts
-it there and never on the VPS: a dependency install, a Docker build and a
-Postgres-backed suite are real contention, and evening shift is exactly when
-code gets pushed. The VPS only ever pulls.
+**CI is on GitHub's hosted runners.** ADR 0007 put it on the OMV8 box at
+home, beside Forgejo, and never on the VPS. On 2026-09-12 that box rebooted and
+Forgejo's database came back ten days behind its git data — PRs #93–#98 and
+issues #97 and #99–#101 were gone from it — and its nightly backup had been
+deleting its own output since the 8th. The repository moved to
+`github.com/rheckart/caballus` with every issue recreated under its old number,
+and CI moved with it. The half of ADR 0007 that matters holds: **the VPS only
+ever pulls.**
 
-The runner is `forgejo_runner` in the `forgejo` compose stack, with a
-`docker:dind` sidecar. Two facts about it are load-bearing and neither is
-obvious:
+`runs-on: ubuntu-latest` is GitHub's own Ubuntu image, so `docker` and `psql`
+are already there and nothing is installed by hand. The one difference that
+bites when reading an older workflow: a job runs on the VM, not in a container
+on the services' network, so the Postgres service is `localhost:5432` rather
+than `postgres:5432`.
 
-- **`runs-on: ubuntu-latest` gets `data.forgejo.org/oci/node:20-bullseye`** —
-  Debian 11, running as root, with Node 20, `git` and `curl`, and **without**
-  `docker` or `psql`. Both are installed by the workflow that needs them.
-  Node 24 comes from `actions/setup-node`, which reaches GitHub and works.
-- **The Docker daemon a job can reach is the workflow network's own gateway.**
-  The runner creates job containers on its DinD sidecar, so from inside one the
-  daemon answers on `tcp://<gateway>:2375`. The gateway is read out of
-  `/proc/net/route` at runtime rather than hard-coded, because the network is
-  created fresh per workflow and the address moves with it.
+## The workflows' secrets
 
-## The three workflows-worth of secrets
+| Secret        | What it is                                          |
+| ------------- | --------------------------------------------------- |
+| `VPS_SSH_KEY` | The private half of the deploy key described below. |
 
-Actions secrets must be set by the repository **owner**; a token belonging to
-anyone else gets `403 user should be the owner of the repo` from the API.
+Publishing needs no stored secret: `ci.yml` grants its `publish` job
+`packages: write`, and the built-in `GITHUB_TOKEN` writes
+`ghcr.io/rheckart/caballus` with it. (On Forgejo that token could not write
+packages and a personal token had to be stored instead; that is no longer
+true here.) Set a secret with `gh secret set VPS_SSH_KEY < <file>`.
 
-| Secret           | What it is                                               |
-| ---------------- | -------------------------------------------------------- |
-| `REGISTRY_USER`  | A Forgejo username that may write packages under `rob/`. |
-| `REGISTRY_TOKEN` | That user's access token, with package read and write.   |
-| `VPS_SSH_KEY`    | The private half of the deploy key described below.      |
-
-**A token may only write packages under its own user's namespace.** Before
-`REGISTRY_TOKEN` existed the `claude` token logged in fine and got `401` pushing
-to `rob/caballus`, while `claude/caballus` succeeded — so the first images were
-published there. `deploy.sh` reads `REGISTRY_IMAGE` out of `.env` rather than
-fixing the repository in the script, which is what made moving to
-`git.heckart.me/rob/caballus` one line on the box once the owner's token was a
-secret.
-
-The built-in `secrets.GITHUB_TOKEN` was tried first and **does not work**: it
-logs in to the registry and then gets `401 Unauthorized` on the first blob
-upload. It has no package-write scope, so a real token is required.
+**The VPS pulls from `ghcr.io` with a token of its own.** The package is private
+because the repository is, so the box needs a classic token with
+`read:packages` and nothing else, logged in once as root:
+`docker login ghcr.io -u rheckart`. `deploy/.env.tpl` names the image as
+`REGISTRY_IMAGE`, which is what made the registry move one line.
 
 The VPS host key is written into `deploy.yml` in the clear rather than kept as
 a secret. A public key is public, and pinning it means a box that was silently
@@ -68,10 +59,10 @@ key changed with it.
 command:
 
 ```
-command="/docker/caballus/deploy-ssh.sh",restrict ssh-ed25519 AAAA… forgejo-actions-deploy@caballus
+command="/docker/caballus/deploy-ssh.sh",restrict ssh-ed25519 AAAA… github-actions-deploy@caballus
 ```
 
-So a key that leaks out of a Forgejo secret can deploy a tag and cannot open a
+So a key that leaks out of an Actions secret can deploy a tag and cannot open a
 shell, read `/docker` or reach the database. `deploy-ssh.sh` extracts the tag
 out of `SSH_ORIGINAL_COMMAND` and refuses anything else, and `deploy.sh` checks
 the tag against a tag's own alphabet before it becomes part of a command.
@@ -311,7 +302,7 @@ never change — is `immutable, max-age=31536000`; everything else is `no-cache`
 ## A routine deploy
 
 Push to `main`. `ci.yml` runs `verify` and, if it passes, publishes
-`git.heckart.me/rob/caballus:<twelve-character commit>` and `:latest`.
+`ghcr.io/rheckart/caballus:<twelve-character commit>` and `:latest`.
 
 Then press **deploy** — Actions → deploy → Run workflow — and give it the tag.
 Publishing does not deploy. ADR 0007 makes migrations a deliberate step, and a
@@ -330,31 +321,16 @@ from outside — so a green answer proves Traefik, the certificate and the
 database as well as the process. If health never comes, it puts the previous
 image back and says which one failed.
 
-## Two things about this runner, learned by running into them
+## The image, and why it is the size it is
 
-**`ci.yml` is not dispatchable, on purpose.** It carried `workflow_dispatch` and
-the button could not work: a dispatched run failed to plan the workflow at all —
-_'runs-on' key not defined in ci/verify_, before a step executed — and skipped
-`publish` on a `github.ref` it evaluated differently from a push. `deploy.yml`
-dispatches correctly, and the difference is shape: one job, no `needs`, no `if`.
-So `ci.yml` answers a push and nothing else, and the broken button is gone
-rather than documented.
-
-**The push retries, because the registry is behind a home tunnel.** Publishing
-failed once with every layer uploaded and then `failed commit on ref
-"layer-sha256:…": net/http: timeout awaiting response headers` — the blob commit
-took longer than the client's thirty-second wait. The heavy layer is
-`node_modules`; the runtime stage now installs `--omit=dev` fresh instead of
-copying the build stage's tree, which took the image from 751 MB to 676 MB, and
-`drizzle-kit` and `jiti` moved to `dependencies` because a migration and the
-bootstrap are production acts run from this image.
+The heavy layer is `node_modules`; the runtime stage installs `--omit=dev`
+fresh instead of copying the build stage's tree, which took the image from
+751 MB to 676 MB, and `drizzle-kit` and `jiti` are in `dependencies` because a
+migration and the bootstrap are production acts run from this image.
 
 676 MB is less of a saving than it looks like it should be: `better-auth`
 depends on `vitest` and `@tanstack/react-start` on `prettier`, so both are
-genuinely in the production tree. The rest is a five-attempt retry, which
-resumes against blobs the registry already holds. It bites at most once per
-dependency change — a push that does not move `package-lock.json` never sends
-that layer again.
+genuinely in the production tree.
 
 ## Changing a secret
 

@@ -1,97 +1,80 @@
-# Issue tracker: Forgejo (self-hosted)
+# Issue tracker: GitHub
 
-Issues, specs and PRs for this repo live on the self-hosted Forgejo at
-**`https://git.heckart.me/rob/caballus`**.
+Issues, specs and PRs for this repo live on GitHub at
+**`https://github.com/rheckart/caballus`** (private).
 
-**Use the `fj` CLI for all of it.** It is installed at `~/.cargo/bin/fj` and already
-authenticated — `fj whoami` says `claude@git.heckart.me`. Run it from inside the repo and it
-resolves the host and repo from the git remote, so no `--repo` or `--host` flag is needed.
+**Use the `gh` CLI for all of it.** It is installed through mise and authenticated as
+`rheckart`; if `gh` is not on the PATH, prefix every command with `mise exec gh --`. Run it
+from inside the repo and it resolves the repo from the `origin` remote, so no `-R` flag is
+needed.
 
-There is no `gh`, `glab` or `tea` CLI here, and none is wanted.
+## History, before anything else
 
-> The `forgejo-mcp` MCP tools are still connected and still work. Prefer `fj`: it is one Bash
-> call against the same API, it needs no `ToolSearch` round-trip to load a deferred schema, and
-> it reads the remote instead of taking `owner` and `repo` on every call. Reach for the MCP
-> tools only for something `fj` has no verb for.
+The repo lived on a self-hosted Forgejo until 2026-09-21, when that Forgejo's database was
+found ten days behind its git data. **Issues #1–#101 were recreated here under their original
+numbers**, so a `#n` in a commit message or an ADR still points at the right thing. Old PRs
+could not be recreated as PRs: they are **closed issues titled `[PR] …`**, carrying the
+original description and a link to the Forgejo record. Each imported issue ends with an
+_Imported from Forgejo_ footer, and each imported comment names its Forgejo author.
 
-## Two gotchas, before anything else
+The `forgejo` git remote is kept for reference and is **not** the tracker. Never file an issue
+there, and never use `fj` or the `forgejo-mcp` tools for this repo.
 
-**`fj` wraps every value it prints in Unicode directional isolates** — U+2068 before and U+2069
-after — in _every_ style, `--style minimal` included. So `#78` comes back as `#⁨78⁩`, and a
-naive parse of the issue number picks up two invisible characters.
-
-Strip them before using output as data, and **never paste `fj` output verbatim into a file in
-this repo**:
-
-```
-fj issue search -s open | perl -CSD -pe 's/[\x{2066}-\x{2069}]//g'
-```
-
-`npm run check:control-bytes` will not catch these — they are not C0/C1 control bytes — so
-nothing downstream saves you.
-
-**Forgejo shares one number space across issues and PRs** (`#54` is a PR here, `#48` an issue).
-`fj issue view <n>` on a PR number fails; try `fj pr view <n>`.
+**GitHub shares one number space across issues and PRs**, as Forgejo did. `gh issue view <n>`
+on a PR number may not show it as a PR; use `gh pr view <n>`.
 
 ## Issues
 
 ```
-fj issue search                          # open issues, the default
-fj issue search -s all                   # every issue
-fj issue search -s open -l ready-for-agent
-fj issue search "landing page"           # text query
-fj issue view 68                         # title and body
-fj issue view 68 comments                # the thread
-fj issue view 68 assignees
+gh issue list                               # open issues, the default
+gh issue list --state all --limit 200       # every issue
+gh issue list --label ready-for-agent
+gh issue list --search "landing page"
+gh issue view 68                            # title, body, labels
+gh issue view 68 --comments                 # and the thread
 ```
 
 Writing:
 
 ```
-fj issue create "<title>" --body-file <path> --no-template
-fj issue comment 68 --body-file <path>
-fj issue edit 68 title "<new title>"
-fj issue edit 68 body --body-file <path>          # or pass the body inline
-fj issue edit 68 labels -a ready-for-agent -r needs-triage
-fj issue close 68 -w "done in #77"
-fj issue assign 68 <user>
+gh issue create --title "<title>" --body-file <path>
+gh issue comment 68 --body-file <path>
+gh issue edit 68 --title "<new title>"
+gh issue edit 68 --body-file <path>
+gh issue edit 68 --add-label ready-for-agent --remove-label needs-triage
+gh issue close 68 --comment "done in #77"
+gh issue edit 68 --add-assignee <user>
 ```
 
-**Always pass `--body-file` or an inline body.** Leaving the body out opens `$EDITOR`, which in
-a non-interactive session hangs.
-
-**Always pass `--no-template` on create** unless you mean to use a template
-(`fj issue templates` lists them).
+**Always pass `--title` and `--body-file`** (or `--body`) on create. Leaving them out opens an
+interactive prompt, which in a non-interactive session hangs.
 
 **Write the body to a file first.** Issue bodies here run to several hundred words of Markdown
-with backticks and `#n` references; a heredoc to `/tmp` and then `--body-file` avoids every
-shell-quoting problem.
-
-`fj issue view` has no `labels` subcommand — to check an issue's labels, search by label, or
-use `fj pr view <n> labels` for a PR.
+with backticks and `#n` references; a heredoc to the scratchpad and then `--body-file` avoids
+every shell-quoting problem.
 
 ## Pull requests
 
 ```
-fj pr search
-fj pr view 54                # title and body
-fj pr view 54 diff
-fj pr view 54 files
-fj pr view 54 commits
-fj pr view 54 comments
-fj pr status 54              # mergeability and CI
-fj pr create ...
-fj pr checkout 54
-fj pr comment 54 --body-file <path>
-fj pr review ...
-fj pr merge 54
+gh pr list
+gh pr view 54                # title and body
+gh pr diff 54
+gh pr view 54 --json files
+gh pr view 54 --json commits
+gh pr view 54 --comments
+gh pr checks 54              # CI
+gh pr create --base main --title "<title>" --body-file <path>
+gh pr checkout 54
+gh pr comment 54 --body-file <path>
+gh pr review 54 ...
+gh pr merge 54 --merge       # a merge commit, as the history has always used
 ```
 
 ## Labels
 
 ```
-fj repo labels view
-fj repo labels create ...
+gh label list
+gh label create <name> --color <hex> --description "<text>"
 ```
 
 The five canonical triage labels are in `docs/agents/triage-labels.md`. The `wayfinder:*`
@@ -101,7 +84,7 @@ labels already exist in this repo.
 
 ### Blocking edges
 
-Forgejo has no native issue-dependency API. This repo's established convention — used across
+This repo's established convention — kept from its Forgejo years rather than swapped for GitHub's sub-issues, and used across
 `#34`–`#48` and again on `#74`–`#78` — is a **`## Blocked by` section at the bottom of the child
 issue body**, listing one `- #<n>` per blocker:
 
@@ -130,16 +113,16 @@ ending in `npm run verify` passes, and a `## Blocked by` section when there is o
 _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this
 flag.)_
 
-This is a solo repo behind a private Forgejo — every PR is authored by the owner or by Claude
+This is a solo, private repo — every PR is authored by the owner or by Claude
 on the owner's behalf, so there is no external request queue to triage.
 
 ### When a skill says "publish to the issue tracker"
 
-`fj issue create "<title>" --body-file <path> --no-template`.
+`gh issue create --title "<title>" --body-file <path>`.
 
 ### When a skill says "fetch the relevant ticket"
 
-`fj issue view <n>`, then `fj issue view <n> comments`.
+`gh issue view <n> --comments`.
 
 ## Wayfinding operations
 
@@ -151,8 +134,8 @@ it.
   map body's task list. Labels: `wayfinder:research`, `wayfinder:prototype`,
   `wayfinder:grilling`, or `wayfinder:task`.
 - **Blocking**: the `## Blocked by` convention above.
-- **Frontier query**: `fj issue search -s open`, scoped to the map's task list; drop any with an
+- **Frontier query**: `gh issue list --state open`, scoped to the map's task list; drop any with an
   open blocker or an assignee; first in map order wins.
-- **Claim**: `fj issue assign <n> <user>` — the session's first write.
-- **Resolve**: `fj issue comment <n>` with the answer, `fj issue close <n>`, then append a
+- **Claim**: `gh issue edit <n> --add-assignee <user>` — the session's first write.
+- **Resolve**: `gh issue comment <n> --body-file <path>` with the answer, `gh issue close <n>`, then append a
   context pointer to the map's Decisions-so-far.

@@ -1,0 +1,114 @@
+# The gate and the artefact.
+#
+# ADR 0007 put CI on the OMV8 box at home and never on the VPS: a dependency
+# install, a Docker build and a Postgres-backed suite are real contention, and
+# evening shift is exactly when code gets pushed. The repository moved to GitHub
+# after Forgejo's database lost ten days of records (2026-09-12), so CI now runs
+# on GitHub's hosted runners — which keeps the half of ADR 0007 that matters:
+# the VPS still only ever pulls.
+#
+# Two jobs, and the second is not the deploy. `publish` puts an image in the
+# registry; taking traffic is `deploy.yml`, pressed by a person, because ADR
+# 0007 makes migrations a deliberate step and a 6am restart is on the critical
+# path of a Lead waiting for the medication list.
+name: ci
+
+# Push alone: this workflow answers a push and has no reason to be pressed.
+# `deploy.yml` is the one a person presses.
+on:
+  push:
+
+env:
+  IMAGE: ghcr.io/rheckart/caballus
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    services:
+      # ADR 0007 pins Postgres 18 everywhere, having been burned once by a
+      # compose file that said 17 while the running container was 18. The
+      # database is tested rather than mocked: RLS policies, the idempotency
+      # index and versioned reads are database behaviour and a fake proves
+      # nothing about any of them.
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: caballus
+          POSTGRES_PASSWORD: caballus
+          POSTGRES_DB: caballus
+        # A hosted runner runs the job on the VM itself, not in a container on
+        # the service's network, so the database is reached through a published
+        # port on localhost rather than by the service's name.
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U caballus"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # The application role, which the policies apply to, and the owner, which
+      # migrations and the test seeding use. Two roles, deliberately, because
+      # an application connecting as the owner passes every test here and leaks
+      # in production (ADR 0007).
+      DATABASE_URL: postgres://caballus_app:caballus@localhost:5432/caballus
+      ADMIN_DATABASE_URL: postgres://caballus:caballus@localhost:5432/caballus
+      APP_ORG_ID: '00000000-0000-0000-0000-000000000001'
+      APP_URL: http://localhost:3000
+      # Not a secret and not pretending to be one: this database is thrown away
+      # at the end of the job. A real one would be a secret that every fork of
+      # the log can read.
+      BETTER_AUTH_SECRET: ci-only-this-database-is-discarded
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - run: npm ci
+
+      - name: The application role
+        # `scripts/provision-database.sql` uses `\gexec` and `:'variable'`,
+        # which are psql's and not the wire protocol's, so it needs psql rather
+        # than any Postgres client. GitHub's Ubuntu image ships one.
+        run: psql "$ADMIN_DATABASE_URL" -v app_password="caballus" -f scripts/provision-database.sql
+
+      - name: Migrate
+        run: npm run db:migrate
+
+      - name: Verify
+        # typecheck, lint, the ADR 0016 fixtures, control bytes, tests and the
+        # migration check. One command, no partial green (ADR 0007).
+        run: npm run verify
+
+  publish:
+    needs: verify
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # The built-in token writes packages under this repository's owner, which
+    # is the whole of what publishing needs; no stored registry secret exists.
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sign in to the registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build and push
+        # Two tags for one image: the commit, which is what a deploy names and
+        # what a rollback comes back to, and `latest`, which is only ever a
+        # convenience for a human typing the deploy form.
+        run: |
+          TAG="${GITHUB_SHA:0:12}"
+          docker build -t "$IMAGE:$TAG" -t "$IMAGE:latest" .
+          docker push "$IMAGE:$TAG"
+          docker push "$IMAGE:latest"
+          echo "pushed $IMAGE:$TAG"

@@ -23,11 +23,6 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: An SSH client
-        run: |
-          apt-get update -qq
-          apt-get install -y -qq openssh-client
-
       - name: The key and the host it is allowed to reach
         # The host key is written here rather than kept as a secret: a public
         # key is public, and pinning it means a box that was silently recreated

@@ -41,12 +41,12 @@ else
 fi
 
 # Which repository in the registry the tag names, read from the file that was
-# just rendered. It was box-local configuration until the template carried it,
-# because a Forgejo access token may only write packages under its own user's
-# namespace and the images lived under `claude/` until the owner's token was an
-# Actions secret. The fallback stays for a box rendered by an older template.
+# just rendered, because the registry has moved once already — from Forgejo's
+# to GitHub's, with the repository — and a move should be one line of the
+# template rather than an edit here. The fallback stays for a box rendered by
+# an older template.
 REGISTRY_IMAGE=$(grep -E '^REGISTRY_IMAGE=' .env | cut -d= -f2-)
-REGISTRY_IMAGE="${REGISTRY_IMAGE:-git.heckart.me/rob/caballus}"
+REGISTRY_IMAGE="${REGISTRY_IMAGE:-ghcr.io/rheckart/caballus}"
 
 IMAGE="$REGISTRY_IMAGE:$TAG"
 PREVIOUS=$(grep -E '^CABALLUS_IMAGE=' .env | cut -d= -f2-)

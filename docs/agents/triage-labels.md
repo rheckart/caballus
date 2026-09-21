@@ -16,9 +16,9 @@ Edit the right-hand column to match whatever vocabulary you actually use.
 
 ## This repo
 
-The defaults are used verbatim — every label string equals its role name. All five exist in
-Forgejo at `git.heckart.me/rob/caballus`; apply them with
-`mcp__forgejo-mcp__add_issue_labels`.
+The defaults are used verbatim — every label string equals its role name. All five exist on
+GitHub at `github.com/rheckart/caballus`; apply them with
+`gh issue edit <n> --add-label <label>`.
 
 Note that `ready-for-agent` predates this setup and is already applied across the #34–#48
 ticket series.
