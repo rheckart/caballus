@@ -685,7 +685,7 @@ describe.skipIf(!reachable)('your own contact details, through the API', () => {
     })
 
     it('refuses a number another live Volunteer already holds', async () => {
-      await seedVolunteer('Joy Marsden', `joy${OURS}`, '+14105550199')
+      await seedVolunteer('Ruth Calloway', `joy${OURS}`, '+14105550199')
       const volunteerId = await seedVolunteer('Kate Ellery', `kate${OURS}`, '+14105550117')
 
       const refused = await post(apiAs(volunteerId), '/me/mobile/code', { mobile: '410-555-0199' })

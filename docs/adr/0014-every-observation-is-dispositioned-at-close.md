@@ -91,7 +91,7 @@ This is the one place the two-step model collapses to one step, and it is a wide
 
 A volunteer with a dead phone, no Account, or gloves and one bar of signal tells the Lead _"the trough in D is cracked"_ out loud. Without a path for that, it either dies in the air or is recorded as the Lead's own sighting, which is a small lie in the record.
 
-So whoever holds Shift Authority may record an Observation **naming another rostered volunteer as the observer**, with actor and observer stored as two separate fields. The record then reads _recorded by Kate, observed by Joy_, which is more truthful than either alternative.
+So whoever holds Shift Authority may record an Observation **naming another rostered volunteer as the observer**, with actor and observer stored as two separate fields. The record then reads _recorded by Grace, observed by Beth_, which is more truthful than either alternative.
 
 ADR 0012 set this precedent exactly — the Lead may close an Attendance on a volunteer's behalf, because that is what the Lead already does with the paper. It is a small integrity hole, in that words can be attributed to someone who did not say them, and it is accepted for the same reason 0012 accepted its version: the failure it prevents is the one that actually happens.
 
@@ -161,7 +161,7 @@ Closed drops off the home section immediately, the browse screen defaults to ope
 
 # The Contacts screen
 
-The board routes by name and number, with hours: _Horse Care Questions on Feed Shifts: text Lori, Joy M., Kate S._ Maintenance is Terry H. Barn supplies is Cathy H. Wolf Creek Equine Clinic's office is marked _9am–5pm M–F_, with a separate emergency line and the property owner beneath it.
+The board routes by name and number, with hours: _Horse Care Questions on Feed Shifts: text_ three named volunteers. Maintenance is a fourth, and barn supplies a fifth. Wolf Creek Equine Clinic's office is marked _9am–5pm M–F_, with a separate emergency line and the property owner beneath it.
 
 ADR 0010 refused to store any of that as **routing**, and that refusal stands — a routing table of people is the fact that outlives its truth. But refusing to route to a number is not refusing to show it.
 
@@ -179,11 +179,11 @@ A process with a catalogue behind it and a forecast in front of it is not a repo
 
 # The log book stays, and gets no entity
 
-River's stall card reads: _"On cold rainy days if congested, give 5 mL Ventipulmin. Text Lori — note in Log book."_ One instruction, three actions, one of them a trip to a second physical artifact.
+River's stall card reads: _"On cold rainy days if congested, give 5 mL Ventipulmin. Text [the horse-care contact] — note in Log book."_ One instruction, three actions, one of them a trip to a second physical artifact.
 
 The app models **no log book**. Whatever is written in it is already either a care event on the horse under ADR 0003's tiers, or an Observation. A third container is where things go to not be read.
 
-What the app does do is collapse River's ending: _text Lori and note in the log book_ becomes **one filed Observation**, escalated to `horse_care`. #10 named that as the clearest case on the whole board of the app removing work rather than adding it, and it is met.
+What the app does do is collapse River's ending: _text [the horse-care contact] and note in the log book_ becomes **one filed Observation**, escalated to `horse_care`. #10 named that as the clearest case on the whole board of the app removing work rather than adding it, and it is met.
 
 V1 does not claim to have replaced the book. It stays in parallel exactly like the whiteboard, under ADR 0006's tripwire, and the printed instruction card gets rewritten when that tripwire fires rather than on launch day.
 

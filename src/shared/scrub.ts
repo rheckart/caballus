@@ -15,7 +15,7 @@
  *
  * What this cannot do: find a volunteer's name inside free text. A phone
  * number has a shape and a name does not, and a rule that guessed would either
- * redact `Field D` or miss `Cathy`. The rule that follows is for callers — a
+ * redact `Field D` or miss `Nell`. The rule that follows is for callers — a
  * report names no volunteer in its message — and it is a review comment rather
  * than a mechanism, because it fails ADR 0016's zero-false-positives test.
  */

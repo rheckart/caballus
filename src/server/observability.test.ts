@@ -11,14 +11,14 @@ describe('beforeSend', () => {
   it('takes a volunteer name and a mobile number out of an error event', () => {
     const event = {
       message: 'texting the shift lead on (410) 555-0134 failed',
-      user: { id: 'v_01J8', username: 'Cathy Hollandsworth', ip_address: '10.0.0.4' },
-      extra: { volunteerName: 'Cathy Hollandsworth', mobile: '(410) 555-0134', shiftId: 'sh_01J8' },
+      user: { id: 'v_01J8', username: 'Nell Farraday', ip_address: '10.0.0.4' },
+      extra: { volunteerName: 'Nell Farraday', mobile: '(410) 555-0134', shiftId: 'sh_01J8' },
     }
 
     const sent = beforeSend(event)
     const wire = JSON.stringify(sent)
 
-    expect(wire).not.toContain('Cathy')
+    expect(wire).not.toContain('Nell')
     expect(wire).not.toContain('555-0134')
     expect(wire).not.toContain('10.0.0.4')
     expect(sent.user).toEqual({ id: 'v_01J8' })
@@ -67,8 +67,8 @@ describe('beforeSend', () => {
   // interpolates a volunteer into its message — and the day that stops being
   // enough, this test is where the decision to do something stronger lands.
   it('cannot find a name written into free text, which is why reports must not put one there', () => {
-    const sent = beforeSend({ message: 'Cathy Hollandsworth could not sign in' })
-    expect(sent.message).toContain('Cathy')
+    const sent = beforeSend({ message: 'Nell Farraday could not sign in' })
+    expect(sent.message).toContain('Nell')
   })
 })
 
@@ -83,7 +83,7 @@ describe('log', () => {
     log('info', 'mutation', {
       route: 'POST /shifts/:id/items',
       idempotencyKey: '019267c0-6f7e-7a3d-9c2f-2f9a1c7e5b10',
-      actorName: 'Cathy Hollandsworth',
+      actorName: 'Nell Farraday',
     })
 
     expect(written).toHaveLength(1)

@@ -197,7 +197,7 @@ describe.skipIf(!reachable)('the Urgent Send, through the API', () => {
   describe('who it reaches, answered before anybody presses send', () => {
     it('counts a number, consent and no STOP — and nothing else', async () => {
       const officer = await reachablePerson('Kate Ellery', '+14105550101')
-      await reachablePerson('Joy Marsden', '+14105550102')
+      await reachablePerson('Ruth Calloway', '+14105550102')
       await volunteer('No Number', { consented: true })
       await volunteer('No Consent', { mobile: '+14105550104' })
       await volunteer('Replied Stop', { mobile: '+14105550105', consented: true, stopped: true })
@@ -222,7 +222,7 @@ describe.skipIf(!reachable)('the Urgent Send, through the API', () => {
 
     it('counts a Shift by who could cover it, not by everybody', async () => {
       const officer = await reachablePerson('Kate Ellery', '+14105550101')
-      const rostered = await reachablePerson('Joy Marsden', '+14105550102')
+      const rostered = await reachablePerson('Ruth Calloway', '+14105550102')
       await reachablePerson('Free Volunteer', '+14105550103')
       // Could cover, cannot be reached: in the total and out of the reachable,
       // which is the shortfall the sender has to see.
@@ -256,7 +256,7 @@ describe.skipIf(!reachable)('the Urgent Send, through the API', () => {
   describe('a Shift declared Short', () => {
     it('sends nothing until somebody asks for it', async () => {
       const officer = await reachablePerson('Kate Ellery', '+14105550101')
-      await reachablePerson('Joy Marsden', '+14105550102')
+      await reachablePerson('Ruth Calloway', '+14105550102')
 
       // Declaring Short is one act; the text is another. Declining the second
       // sends nothing, which is what two endpoints make true by construction.
@@ -267,7 +267,7 @@ describe.skipIf(!reachable)('the Urgent Send, through the API', () => {
 
     it('texts the people who could cover, in words a volunteer can act on', async () => {
       const officer = await reachablePerson('Kate Ellery', '+14105550101')
-      await reachablePerson('Joy Marsden', '+14105550102')
+      await reachablePerson('Ruth Calloway', '+14105550102')
       const shiftId = await shortShift(officer)
 
       const sent = await post(apiAs(officer, ['roster']), '/shifts/short/text', { shiftId })
@@ -377,7 +377,7 @@ describe.skipIf(!reachable)('the Urgent Send, through the API', () => {
   describe('an Announcement whose news will not keep', () => {
     it('sends nothing when it is posted, and everything when somebody asks', async () => {
       const officer = await reachablePerson('Kate Ellery', '+14105550101')
-      await reachablePerson('Joy Marsden', '+14105550102')
+      await reachablePerson('Ruth Calloway', '+14105550102')
       const announcementId = await announcement(officer)
 
       // ADR 0018 said the app sends nothing about an Announcement. Posting still
@@ -442,7 +442,7 @@ describe.skipIf(!reachable)('the Urgent Send, through the API', () => {
         return true
       })
       const officer = await reachablePerson('Kate Ellery', '+14105550101')
-      await reachablePerson('Joy Marsden', '+14105550102')
+      await reachablePerson('Ruth Calloway', '+14105550102')
       const shiftId = await shortShift(officer)
       // The cap is process-wide and rolling; spend all but one of it.
       let spent = 0
@@ -464,7 +464,7 @@ describe.skipIf(!reachable)('the Urgent Send, through the API', () => {
 
     it('writes down a STOP the carrier reports, so the next count is right', async () => {
       const officer = await reachablePerson('Kate Ellery', '+14105550101')
-      const gone = await reachablePerson('Joy Marsden', '+14105550102')
+      const gone = await reachablePerson('Ruth Calloway', '+14105550102')
       const shiftId = await shortShift(officer)
       setSmsTransport((message) => {
         if (message.to === '+14105550102') {
@@ -565,7 +565,7 @@ describe.skipIf(!reachable)('the Urgent Send, through the API', () => {
   describe('clearing a recorded STOP, which the carrier never tells us about', () => {
     it('lets a roster holder clear it, and counts them again immediately', async () => {
       const officer = await reachablePerson('Kate Ellery', '+14105550101')
-      const back = await volunteer('Joy Marsden', {
+      const back = await volunteer('Ruth Calloway', {
         mobile: '+14105550102',
         consented: true,
         stopped: true,
@@ -617,7 +617,7 @@ describe.skipIf(!reachable)('the Urgent Send, through the API', () => {
 
     it('lets the carrier win again: a later 21610 re-stamps the column', async () => {
       const officer = await reachablePerson('Kate Ellery', '+14105550101')
-      const back = await volunteer('Joy Marsden', {
+      const back = await volunteer('Ruth Calloway', {
         mobile: '+14105550102',
         consented: true,
         stopped: true,
@@ -644,7 +644,7 @@ describe.skipIf(!reachable)('the Urgent Send, through the API', () => {
 
     it('is quiet about a Volunteer who has no STOP recorded, rather than writing noise', async () => {
       const officer = await reachablePerson('Kate Ellery', '+14105550101')
-      const fine = await reachablePerson('Joy Marsden', '+14105550102')
+      const fine = await reachablePerson('Ruth Calloway', '+14105550102')
 
       const cleared = await post(apiAs(officer, ['roster']), '/volunteers/sms-stop-clearance', {
         volunteerId: fine,
@@ -662,7 +662,7 @@ describe.skipIf(!reachable)('the Urgent Send, through the API', () => {
 
     it('audits the clearance as a current-state edit, with no reason', async () => {
       const officer = await reachablePerson('Kate Ellery', '+14105550101')
-      const back = await volunteer('Joy Marsden', {
+      const back = await volunteer('Ruth Calloway', {
         mobile: '+14105550102',
         consented: true,
         stopped: true,
@@ -686,7 +686,7 @@ describe.skipIf(!reachable)('the Urgent Send, through the API', () => {
 
     it('refuses a roster clearance from somebody without the Scope', async () => {
       const officer = await reachablePerson('Kate Ellery', '+14105550101')
-      const back = await volunteer('Joy Marsden', {
+      const back = await volunteer('Ruth Calloway', {
         mobile: '+14105550102',
         consented: true,
         stopped: true,

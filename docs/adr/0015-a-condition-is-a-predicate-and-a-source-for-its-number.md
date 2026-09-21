@@ -98,7 +98,7 @@ _Especially if windy/Rainy_ and _on cold rainy days_ are the same hedge, and the
 
 On the Sheets and Blankets panel the hedge **softens a threshold that already exists**: the sheet item is generated anyway at 38 °, and the sentence tells a volunteer to lean toward yes. Turning it into a predicate would require inventing a wind speed and a rainfall amount the rescue has never stated, which is putting words in the barn's mouth about a judgement the volunteer is already making well. It stays **instruction text on the item**.
 
-On River's cell it is the **entire trigger** — _On cold rainy days, if congested, give 5 mL Ventipulmin. Text Lori — note in log book._ With no predicate, that guidance either appears every single day, where it becomes wallpaper, or never. So **Cold and Wet** is a real Condition with numbers the rescue supplies once and owns.
+On River's cell it is the **entire trigger** — _On cold rainy days, if congested, give 5 mL Ventipulmin. Text [the horse-care contact] — note in log book._ With no predicate, that guidance either appears every single day, where it becomes wallpaper, or never. So **Cold and Wet** is a real Condition with numbers the rescue supplies once and owns.
 
 This is the split ADR 0013 anticipated when it said the engine must surface _arbitrary_ per-horse guidance rather than select from a fixed action set. It does, and it needs nothing new: the guidance is instruction text on a Task Assignment, gated on a Condition. The app still cannot judge whether River is congested. It guarantees the question is asked on the right morning, which was always the value.
 
