@@ -1,0 +1,12 @@
+# The nightly full and the thirty-day prune, in the barn's own night rather
+# than UTC's, which is the evening feed.
+[Unit]
+Description=Caballus nightly dump to S4, and the thirty-day prune
+
+[Timer]
+OnCalendar=*-*-* 02:50:00 America/New_York
+Persistent=true
+Unit=caballus-backup@nightly.service
+
+[Install]
+WantedBy=timers.target

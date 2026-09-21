@@ -1,0 +1,10 @@
+# Every fifteen minutes (ADR 0006: RPO ≤ 1 hour).
+[Unit]
+Description=Caballus dump to S4 every fifteen minutes
+
+[Timer]
+OnCalendar=*:00/15
+Unit=caballus-backup@frequent.service
+
+[Install]
+WantedBy=timers.target

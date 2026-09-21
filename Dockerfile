@@ -53,10 +53,11 @@ COPY tsconfig.json drizzle.config.ts ./
 
 EXPOSE 3000
 
-# The same probe the deploy script polls from outside, so `docker compose ps`
-# and the deploy agree about what healthy means.
+# The same probe the deploy script polls from outside, read the same way — the
+# `database` field rather than the status, which is also a 503 when backups are
+# stale — so `docker compose ps` and the deploy agree about what healthy means.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+  CMD node -e "fetch('http://127.0.0.1:3000/health').then(r=>r.json()).then(b=>process.exit(b.database==='ok'?0:1)).catch(()=>process.exit(1))"
 
 USER node
 

@@ -94,3 +94,29 @@ mv "$NEXT" "$TARGET"
 chmod 600 "$TARGET"
 trap - EXIT
 say "wrote $TARGET"
+
+# The backup job's own file, rendered only when its template has been copied
+# onto the box — which is the step that says the S4 bucket and its vault item
+# exist. Before then there is nothing to render, and a deploy must not fail on
+# a vault item nobody has made yet (docs/deploy.md, Backups).
+BACKUP_TEMPLATE="$STACK/backup.env.tpl"
+BACKUP_TARGET="$STACK/backup.env"
+if [ -r "$BACKUP_TEMPLATE" ]; then
+  BACKUP_NEXT="$STACK/backup.env.next"
+  trap 'rm -f "$BACKUP_NEXT"' EXIT
+  say "rendering $BACKUP_TEMPLATE through 1Password"
+  if ! op inject --in-file "$BACKUP_TEMPLATE" --out-file "$BACKUP_NEXT" --force; then
+    die "op inject failed for backup.env — .env is written, backup.env is untouched"
+  fi
+  if grep -q '{{' "$BACKUP_NEXT"; then
+    die "backup.env still contains a template reference — backup.env is untouched"
+  fi
+  for required in RCLONE_CONFIG_S4_ACCESS_KEY_ID RCLONE_CONFIG_S4_SECRET_ACCESS_KEY CABALLUS_BACKUP_BUCKET; do
+    value=$(sed -nE "s/^${required}=(.*)\$/\1/p" "$BACKUP_NEXT" | tail -n 1)
+    [ -n "$value" ] || die "$required rendered empty — backup.env is untouched"
+  done
+  mv "$BACKUP_NEXT" "$BACKUP_TARGET"
+  chmod 600 "$BACKUP_TARGET"
+  trap - EXIT
+  say "wrote $BACKUP_TARGET"
+fi
