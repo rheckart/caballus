@@ -22,4 +22,6 @@ RCLONE_CONFIG_S4_SECRET_ACCESS_KEY={{ op://Caballus/s4/secret-access-key }}
 # try creating it on every upload.
 RCLONE_CONFIG_S4_NO_CHECK_BUCKET=true
 
-CABALLUS_BACKUP_BUCKET={{ op://Caballus/s4/bucket }}
+# A literal, by the rule above: the name was chosen, not issued, and a box
+# rebuilt from nothing reads it off the checkout.
+CABALLUS_BACKUP_BUCKET=caballus-backups

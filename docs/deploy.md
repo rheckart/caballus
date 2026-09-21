@@ -114,7 +114,7 @@ deploy stops there with `.env` untouched.
 | `smtp`       | `url`                                                                                         |
 | `openrouter` | `api-key`                                                                                     |
 | `twilio`     | `account-sid`, `auth-token`, `from-number`, `verify-service-sid`, `verify-change-service-sid` |
-| `s4`         | `access-key-id`, `secret-access-key`, `bucket` — read by `backup.env.tpl` only (_Backups_)    |
+| `s4`         | `access-key-id`, `secret-access-key` — read by `backup.env.tpl` only (_Backups_)              |
 
 The values come out of the `.env` already on the box, which is the only place
 some of them exist. Copy them in **before** touching anything else — a
@@ -476,7 +476,8 @@ vault item that does not exist yet.
 # 1. In the MEGA S4 console: a bucket in ca-central-1 (Montreal), and an access
 #    key scoped to that bucket alone. Then, on a workstation:
 op item create --vault Caballus --category login --title s4 \
-  'access-key-id[text]=…' 'secret-access-key[password]=…' 'bucket[text]=…'
+  'access-key-id[text]=…' 'secret-access-key[password]=…'
+# The bucket, caballus-backups, is a literal in backup.env.tpl.
 # The service account reads the vault, so nothing about it changes.
 
 # 2. From the repository, onto the box.
