@@ -24,4 +24,4 @@ RCLONE_CONFIG_S4_NO_CHECK_BUCKET=true
 
 # A literal, by the rule above: the name was chosen, not issued, and a box
 # rebuilt from nothing reads it off the checkout.
-CABALLUS_BACKUP_BUCKET=caballus-backups
+CABALLUS_BACKUP_BUCKET=caballus-db-backup

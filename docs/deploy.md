@@ -432,10 +432,11 @@ it — a laptop and CI run no backups for a check to find missing.
 
 ## Backups
 
-> **Built, not yet installed, and not yet rehearsed.** Everything below up to
-> _Restoring_ is procedure until the S4 bucket exists. The restore section is
-> the part ADR 0006 is actually about, and it gets rewritten with the commands
-> as they actually ran — the ticket (#73) is not closed by a cron job.
+> **Installed 2026-09-21, and a restore rehearsed by hand the same evening.**
+> _Installing it_ and _Restoring_ below are the commands as they actually ran,
+> with what they printed. One step is still outstanding: the application image
+> running at the time (`a22753cceb6c`) predates the stamps, so `/health` starts
+> carrying the backup's age at the first deploy of the image that merges #73.
 
 ADR 0006: `pg_dump` every fifteen minutes plus a nightly full, to MEGA S4
 `ca-central-1`, thirty days kept, last night's restored on a schedule, and
@@ -472,80 +473,128 @@ vault item that does not exist yet.
 
 ### Installing it
 
+As it ran on 2026-09-21. The box's copies of `docker-compose.yml`,
+`render-env.sh` and `deploy.sh` were diffed against `main` first — identical —
+and kept as `*.pre-73` before being replaced.
+
 ```sh
-# 1. In the MEGA S4 console: a bucket in ca-central-1 (Montreal), and an access
-#    key scoped to that bucket alone. Then, on a workstation:
+# 1. In the MEGA S4 console: bucket caballus-db-backup in ca-central-1
+#    (Montreal), and an access key scoped to that bucket alone. The key goes in
+#    the vault as the s4 item; the bucket name is a literal in backup.env.tpl.
 op item create --vault Caballus --category login --title s4 \
   'access-key-id[text]=…' 'secret-access-key[password]=…'
-# The bucket, caballus-backups, is a literal in backup.env.tpl.
 # The service account reads the vault, so nothing about it changes.
 
-# 2. From the repository, onto the box.
-scp deploy/backup.sh deploy/backup.env.tpl deploy/render-env.sh \
+# 2. From the repository, onto the box. deploy.sh travels too, and before any
+#    image that carries the stamps is deployed: the old one polls /health with
+#    `curl -f`, so the first stale-backup 503 would roll a working image back.
+ssh root@caballus.tech 'cd /docker/caballus && for f in docker-compose.yml render-env.sh deploy.sh; do cp -p $f $f.pre-73; done'
+scp deploy/backup.sh deploy/backup.env.tpl deploy/render-env.sh deploy/deploy.sh \
   deploy/docker-compose.yml root@caballus.tech:/docker/caballus/
 scp deploy/systemd/* root@caballus.tech:/etc/systemd/system/
 
 # 3. On the box.
 cd /docker/caballus
-chmod 755 backup.sh render-env.sh
-./render-env.sh                                  # now writes backup.env as well
-systemctl daemon-reload
+chmod 755 backup.sh render-env.sh deploy.sh
+chmod 600 backup.env.tpl
+./render-env.sh              # -> wrote /docker/caballus/.env, then backup.env
+systemctl daemon-reload      # -> four caballus-backup units, timers disabled
 
 # 4. One of each by hand, before any timer, and read what they say.
 systemctl start caballus-backup@frequent.service
 systemctl start caballus-backup@nightly.service
 systemctl start caballus-backup@restore-check.service
 journalctl -u 'caballus-backup@*' -n 80 --no-pager
-cat backup-state/last-backup backup-state/last-restore-check
+# -> nightly/20260921T222041Z.dump is offsite
+# -> pruned everything older than thirty days
+# -> tables: live 45, restored 45
+# -> orgs: live 1, restored 1
+# -> volunteers: live 4, restored 4
+# -> horses: live 10, restored 10
+# -> audit_entries: live 167, restored 167
+# -> 20260921T222041Z.dump restored and counted
 
-# 5. The application picks up the mount, then the timers.
-docker compose up -d app
-curl -s https://caballus.tech/health; echo      # backup and restoreCheck "ok"
+# 5. The timers.
 systemctl enable --now caballus-backup-frequent.timer \
   caballus-backup-nightly.timer caballus-backup-restore-check.timer
 systemctl list-timers 'caballus-*'
+# -> frequent next at 22:30 UTC; nightly 06:50 UTC and restore-check 07:50 UTC,
+#    which are 02:50 and 03:50 in New York
+
+# 6. Outstanding: the application picks up the mount at the next deploy of an
+#    image carrying #73, and then
+curl -s https://caballus.tech/health; echo   # backup and restoreCheck "ok"
 ```
 
-Step 5 comes after step 4 on purpose: the compose change is what makes
+Step 6 comes after step 4 on purpose: the compose change is what makes
 `/health` look for stamps, so bringing it up before a backup has run is a 503
 for no reason.
 
+**Two things went wrong on the way, and both are worth knowing.**
+
+The first upload failed with `NoSuchBucket: The specified bucket does not
+exist` — the template named a bucket that had been planned rather than the one
+that was made. The key authenticated, which is what the error proves: a bad key
+is `AccessDenied`, not `NoSuchBucket`. Checking the name with `rclone lsd s4:`
+does **not** work and should not be made to: the key is scoped to one bucket,
+so `ListBuckets` answers `AccessDenied: Request not allowed by policy`, which is
+the key being as narrow as it should be. Read the name off the console.
+
+The first successful run took **8 minutes 44 seconds** — started 22:00:37,
+finished 22:09:21 — with nothing in the journal between. Every run since has
+taken one to two seconds: the dump is about 200 KB, `pg_dump` 0.3 s, the
+upload 1.6 s. It did not reproduce under `bash -x` or under systemd, and the
+likeliest cause is S4 itself on the first write to a new bucket. It is recorded
+because the fifteen-minute cadence has room for it — `flock -w 900` stops two
+runs overlapping, and a dump that is late is `/health` going red rather than a
+silent gap — and because a second one is a real signal rather than a mystery.
+
 ### Restoring
 
-**Not yet rehearsed.** This is the plan, and it is replaced with the commands as
-they actually ran. The rehearsal restores into a scratch database on the box
-rather than over production; a real restore after losing the box is the same
-steps against a fresh stack built from _First boot_, with the same `.env`
-rendered from 1Password — the `BETTER_AUTH_SECRET` above all, so nobody is
-signed out.
+**Rehearsed by hand on 2026-09-21, against the real bucket, in fifteen
+seconds** — from listing S4 to every table counted against live. ADR 0006's
+one-hour RTO holds with room to spare for a restore on a box that still exists.
+The rehearsal restores into a scratch database beside production rather than
+over it; a real restore after losing the box is the same steps against a fresh
+stack built from _First boot_, with the same `.env` rendered from 1Password —
+the `BETTER_AUTH_SECRET` above all, so nobody is signed out.
+
+The commands as they ran, as root in `/docker/caballus`. `RCLONE_CONFIG=/dev/null`
+is not optional: without it rclone looks for a config file on every call and
+says so.
 
 ```sh
 cd /docker/caballus
-set -a; . ./backup.env; set +a
-RCLONE="docker run --rm --env-file backup.env -v $PWD/backup-work:/work rclone/rclone:1.74.0"
+R="docker run --rm --env-file backup.env -e RCLONE_CONFIG=/dev/null -v $PWD/backup-work:/work rclone/rclone:1.74.0"
+P="docker compose exec -T postgres psql -U caballus -v ON_ERROR_STOP=1 -At"
 
 # Which dumps there are, newest last.
-$RCLONE lsf --files-only s4:$CABALLUS_BACKUP_BUCKET/frequent | sort | tail -n 5
-$RCLONE lsf --files-only s4:$CABALLUS_BACKUP_BUCKET/nightly | sort | tail -n 5
+$R lsf --files-only s4:caballus-db-backup/frequent | sort | tail -n 3
+# -> 20260921T220037Z.dump
+# -> 20260921T221924Z.dump
+# -> 20260921T221949Z.dump
 
-# Fetch one.
-DUMP=…Z.dump
-$RCLONE copyto s4:$CABALLUS_BACKUP_BUCKET/frequent/$DUMP /work/$DUMP
+# Fetch the newest.
+DUMP=$($R lsf --files-only s4:caballus-db-backup/frequent | sort | tail -n 1)
+$R copyto s4:caballus-db-backup/frequent/$DUMP /work/$DUMP
 
 # Into a database of its own.
-docker compose exec -T postgres psql -U caballus -d postgres -c 'create database caballus_rehearsal'
+$P -d postgres -c "create database caballus_rehearsal"
 docker compose exec -T postgres pg_restore -U caballus -d caballus_rehearsal \
   --no-owner --no-privileges --exit-on-error < backup-work/$DUMP
 
-# Compare it against live.
-for t in orgs volunteers horses audit_entries shifts item_outcomes; do
-  printf '%s live=%s restored=%s\n' "$t" \
-    "$(docker compose exec -T postgres psql -U caballus -d caballus -At -c "select count(*) from $t")" \
-    "$(docker compose exec -T postgres psql -U caballus -d caballus_rehearsal -At -c "select count(*) from $t")"
+# Every table, against live.
+for t in $($P -d caballus -c "select table_name from information_schema.tables where table_schema = 'public' order by 1"); do
+  printf "%-32s live=%-6s restored=%s\n" $t \
+    $($P -d caballus -c "select count(*) from $t") \
+    $($P -d caballus_rehearsal -c "select count(*) from $t")
 done
+# -> 45 tables, every one equal: audit_entries 167, feed_schedule_lines 51,
+#    horse_space_assignments 35, standing_rules 34, spaces 26, products 21,
+#    horses 10, volunteers 4, orgs 1 … and the empty ones empty on both sides.
 
 # And clean up.
-docker compose exec -T postgres psql -U caballus -d postgres -c 'drop database caballus_rehearsal'
+$P -d postgres -c "drop database caballus_rehearsal"
 rm -f backup-work/$DUMP
 ```
 
@@ -553,8 +602,9 @@ For a real restore over production, the application is stopped first
 (`docker compose stop app`), the dump is restored into `caballus` **with**
 ownership — `pg_restore --clean --if-exists` as the owner — the nightly's
 `globals.sql` is applied first on a fresh cluster so `caballus_app` exists, and
-`scripts/provision-database.sql` sets its password again from `.env`. Time it:
-ADR 0006's one-hour RTO is only real once somebody has.
+`scripts/provision-database.sql` sets its password again from `.env`. That path
+has **not** been rehearsed: it overwrites production, and the scratch-database
+rehearsal is the part that proves the dumps are good.
 
 ## Texting: what has to exist before a message can leave
 
