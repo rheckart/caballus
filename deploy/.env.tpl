@@ -95,5 +95,5 @@ VITE_SENTRY_DSN=
 # after the render, which is what keeps this file the record of what is
 # actually running — `render-env.sh` carries the current value across so a
 # render on its own never loses it.
-REGISTRY_IMAGE=git.heckart.me/rob/caballus
+REGISTRY_IMAGE=ghcr.io/rheckart/caballus
 CABALLUS_IMAGE=
