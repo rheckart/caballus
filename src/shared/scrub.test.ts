@@ -5,12 +5,12 @@ import { REDACTED, scrub } from './scrub'
 describe('scrub', () => {
   it('removes a volunteer name, wherever it was put', () => {
     const scrubbed = scrub({
-      user: { id: 'v_01J8', username: 'Cathy Hollandsworth', email: 'cathy@example.org' },
-      extra: { volunteerName: 'Cathy Hollandsworth', supervisingAdultName: 'Dana Reyes' },
+      user: { id: 'v_01J8', username: 'Nell Farraday', email: 'nell@example.org' },
+      extra: { volunteerName: 'Nell Farraday', supervisingAdultName: 'Dana Reyes' },
       tags: { shiftId: 'sh_2026_08_15_am' },
     })
 
-    expect(JSON.stringify(scrubbed)).not.toContain('Cathy')
+    expect(JSON.stringify(scrubbed)).not.toContain('Nell')
     expect(JSON.stringify(scrubbed)).not.toContain('Dana')
     expect(scrubbed.user).toEqual({ id: 'v_01J8' })
     expect(scrubbed.extra).toEqual({ volunteerName: REDACTED, supervisingAdultName: REDACTED })
@@ -31,7 +31,7 @@ describe('scrub', () => {
   )
 
   it('removes an email address in free text', () => {
-    const scrubbed = scrub({ message: 'code to cathy@example.org bounced' })
+    const scrubbed = scrub({ message: 'code to nell@example.org bounced' })
     expect(scrubbed.message).toBe(`code to ${REDACTED} bounced`)
   })
 

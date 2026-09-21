@@ -82,7 +82,7 @@ function announcement(overrides: Record<string, unknown> = {}) {
     text: 'The hay comes Thursday.',
     expiresOn: '2026-08-25',
     authoredBy: 'lori',
-    authoredByName: 'Lori',
+    authoredByName: 'Grace',
     authoredAt: 1_768_366_800_000,
     lastEditedBy: null,
     lastEditedByName: null,
@@ -186,7 +186,7 @@ describe('the Home screen', () => {
 
     expect(await screen.findByText(/The hay comes Thursday\./)).toBeTruthy()
     expect(screen.getByText('Announcements')).toBeTruthy()
-    expect(screen.getByText(/posted by Lori/)).toBeTruthy()
+    expect(screen.getByText(/posted by Grace/)).toBeTruthy()
   })
 
   it('shows the Shifts short of people that this reader could cover', async () => {

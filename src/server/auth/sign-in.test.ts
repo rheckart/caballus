@@ -181,7 +181,7 @@ describe.skipIf(!reachable)('email codes, sessions and revocation, against the d
    */
   describe('the second door: a code by text', () => {
     async function invitedWithMobile(mobile: string, email = 'joy@example.invalid') {
-      return createVolunteer(orgId(), { name: 'Joy Marsden', email, mobile })
+      return createVolunteer(orgId(), { name: 'Ruth Calloway', email, mobile })
     }
 
     it('texts a code to a number the rescue knows, and hands over a session', async () => {

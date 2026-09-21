@@ -22,7 +22,7 @@ Five are live in v1:
 
 Two more are declared and grantable but guard nothing: `financial` and `events`. The rescue has a Treasurer and an Event Coordinator today, and they should appear correctly in the app's people list before their domains exist. Their later maps then add grants rather than a migration.
 
-`supplies` is an addition to the brief, which does not have it. The whiteboard does: barn supplies route to Cathy H., who is neither the maintenance contact nor one of the three horse-care contacts. The brief's four-way partition — welfare, maintenance, financial, volunteer management — was drawn from the officer list rather than from what volunteers actually report, and the board is the better evidence.
+`supplies` is an addition to the brief, which does not have it. The whiteboard does: barn supplies route to one named volunteer, who is neither the maintenance contact nor one of the three horse-care contacts. The brief's four-way partition — welfare, maintenance, financial, volunteer management — was drawn from the officer list rather than from what volunteers actually report, and the board is the better evidence.
 
 ## The roles
 

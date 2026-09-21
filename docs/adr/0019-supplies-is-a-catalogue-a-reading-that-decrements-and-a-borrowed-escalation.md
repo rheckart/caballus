@@ -65,7 +65,7 @@ ADR 0014 has already litigated this exact trade and its reasoning is imported wh
 
 Two states buy the one derived fact worth having: **on order**. That is what the board is doing when it writes _"grain order next week"_ on the wall next to the forecast table, and it is the difference between a Lead reporting low grain a fourth time and trusting that it is handled.
 
-**"Joy notified 7/29" is not modelled, because the app already sends it.** ADR 0014 mails `supplies` holders when an Escalation lands, timestamped and coalesced per recipient. That line exists on the whiteboard because a text message leaves no trace. What made the reorder log look like a workflow was mostly this one field, and against an app that logs its own outbound mail it simply evaporates.
+**"[Name] notified 7/29" is not modelled, because the app already sends it.** ADR 0014 mails `supplies` holders when an Escalation lands, timestamped and coalesced per recipient. That line exists on the whiteboard because a text message leaves no trace. What made the reorder log look like a workflow was mostly this one field, and against an app that logs its own outbound mail it simply evaporates.
 
 **No quantity and no horse reference.** The board has never written a quantity in any row, there is no pack size and no unit anywhere in the model, and a field that is always blank teaches people the form is optional. On the horse: _"Storm —"_ appears because the glucosamine is his SmartPak, and #10 already ruled on this shape when it kept horse-specific supply instances — _"only use the yellow bottle by his stall labelled with his name"_ — as free text, _"since nothing acts on them."_ Nothing acts on this either, and a horse reference makes _is glucosamine on order?_ ambiguous across eleven horses for a question with one answer. Both go in the note, where the board already puts them.
 
@@ -85,7 +85,7 @@ The link earns its keep read backwards as well: _this reorder exists because a v
 
 `supplies` gets a holder. ADR 0010 said adding the role would be _"one row in the constant and one grant"_ once the rescue named the position, and the rescue's name for it is **Barn Manager**.
 
-**President and Board Member keep `supplies` in their enumeration.** Cathy is one person, and a rescue where the only human who can close a supplies report is on holiday is a rescue that goes back to texting. The added mail volume is real and it is not new — Board Members already receive every `horse_care` and `maintenance` Escalation through the same enumeration, and nothing about supplies makes it the one worth carving out. ADR 0010 refused a President wildcard exactly so that this row stays deliberate rather than inherited silently, and here the enumeration is doing its job.
+**President and Board Member keep `supplies` in their enumeration.** The supplies contact is one person, and a rescue where the only human who can close a supplies report is on holiday is a rescue that goes back to texting. The added mail volume is real and it is not new — Board Members already receive every `horse_care` and `maintenance` Escalation through the same enumeration, and nothing about supplies makes it the one worth carving out. ADR 0010 refused a President wildcard exactly so that this row stays deliberate rather than inherited silently, and here the enumeration is doing its job.
 
 The admin screen's standing prompt — _no non-officer holds `supplies`_ — stops firing, having done what it was built to do.
 

@@ -285,7 +285,7 @@ describe.skipIf(!reachable)('Announcements and Contacts, through the API', () =>
     it('edits a Contact in place, auditing only the changed fields', async () => {
       const roster = await scopeHolder('roster')
       const posted = await post(roster, '/contacts', {
-        name: 'Cathy H.',
+        name: 'Dana H.',
         number: '555-0102',
         purpose: 'Barn supplies',
       })
@@ -300,7 +300,7 @@ describe.skipIf(!reachable)('Announcements and Contacts, through the API', () =>
 
       const listed = await get(await reader(), '/contacts')
       expect(listed.body.contacts).toEqual([
-        expect.objectContaining({ name: 'Cathy H.', number: '555-0199' }),
+        expect.objectContaining({ name: 'Dana H.', number: '555-0199' }),
       ])
     })
 

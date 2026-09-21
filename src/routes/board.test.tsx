@@ -317,7 +317,7 @@ describe('the Board', () => {
             text: 'The hay comes Thursday.',
             expiresOn: '2026-08-25',
             authoredBy: 'v1',
-            authoredByName: 'Lori',
+            authoredByName: 'Grace',
             authoredAt: 1_768_366_800_000,
             lastEditedBy: null,
             lastEditedByName: null,

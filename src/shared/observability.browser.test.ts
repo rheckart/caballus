@@ -98,12 +98,12 @@ describe('startObservability', () => {
 
     const sent = beforeSend?.({
       message: 'texting the shift lead on (410) 555-0134 failed',
-      user: { id: 'v_01J8', username: 'Cathy Hollandsworth', ip_address: '10.0.0.4' },
-      extra: { volunteerName: 'Cathy Hollandsworth', mobile: '(410) 555-0134', shiftId: 'sh_01J8' },
+      user: { id: 'v_01J8', username: 'Nell Farraday', ip_address: '10.0.0.4' },
+      extra: { volunteerName: 'Nell Farraday', mobile: '(410) 555-0134', shiftId: 'sh_01J8' },
     })
 
     const wire = JSON.stringify(sent)
-    expect(wire).not.toContain('Cathy')
+    expect(wire).not.toContain('Nell')
     expect(wire).not.toContain('555-0134')
     expect(wire).not.toContain('10.0.0.4')
     expect(sent?.user).toEqual({ id: 'v_01J8' })
@@ -118,7 +118,7 @@ describe('report', () => {
     startObservability({ dsn: 'https://key@sentry.example/42' })
 
     report(new Error('could not save the tick'), {
-      volunteerName: 'Cathy Hollandsworth',
+      volunteerName: 'Nell Farraday',
       shiftId: 'sh_01J8',
     })
 
