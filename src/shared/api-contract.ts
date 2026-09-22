@@ -33,10 +33,16 @@ import {
 } from './materialization'
 import { MEASUREMENT_KINDS, MEASUREMENT_METHODS } from './measurements'
 import { OBSERVATION_DISPOSITIONS, OBSERVATION_SUBJECT_KINDS } from './observations'
+import {
+  HORSE_BATCH_SKIPS,
+  MOST_AT_ONCE,
+  VOLUNTEER_BATCH_SKIPS,
+  type VolunteerBatchAct,
+} from './batch'
 import { PRODUCT_KINDS } from './products'
 import { ROLES } from './roles'
 import { ROSTER_GAPS } from './rostering'
-import { MOST_SPACES_AT_ONCE, SPACE_KINDS } from './spaces'
+import { HERD_KINDS, MOST_SPACES_AT_ONCE, SPACE_KINDS } from './spaces'
 import {
   MOST_IMAGE_BASE64_CHARS,
   WHITEBOARD_IMAGE_TYPES,
@@ -1336,6 +1342,23 @@ const reason = z.string().max(500).nullish()
 const volunteerId = z.uuid()
 const horseId = z.uuid()
 const spaceId = z.uuid()
+
+/** The people a batch names: one change applied to each, never a spreadsheet (#100). */
+const volunteerIds = z.array(volunteerId).min(1).max(MOST_AT_ONCE)
+
+/**
+ * What every volunteer batch answers: who it landed on, and who it left alone
+ * with the reason each — `/spaces/batch`'s rule, so one already-oriented
+ * person never refuses a class of eight (#100).
+ */
+function volunteerBatchAnswer<A extends VolunteerBatchAct>(act: A) {
+  return z.object({
+    done: z.array(z.string()),
+    skipped: z.array(
+      z.object({ volunteerId: z.string(), because: z.enum(VOLUNTEER_BATCH_SKIPS[act]) }),
+    ),
+  })
+}
 const supplierId = z.uuid()
 const productId = z.uuid()
 const shiftId = z.uuid()
@@ -1913,6 +1936,54 @@ export const contract = {
       accepts: z.object({ volunteerId, granted: z.boolean(), reason }),
       answers: z.void(),
     },
+    /**
+     * An Orientation is a class: one date for everyone in it (#100). One key
+     * for the whole batch (ADR 0020), each person the single write's effect
+     * and audit entry.
+     */
+    '/volunteers/orientation/batch': {
+      accepts: z.object({ volunteerIds, orientedOn: dayOfTheOrganisation }),
+      answers: volunteerBatchAnswer('orientation'),
+    },
+    /**
+     * A room signing one Release Version on one day (#100). **`byParent` is
+     * not sent**: the app decides it per person from their age on `signedOn`,
+     * because a list mixes minors and adults and one box for all of them is
+     * wrong for somebody. No date of birth is a skip, since there is then no
+     * answer to decide it from.
+     */
+    '/volunteers/release/batch': {
+      accepts: z.object({
+        volunteerIds,
+        releaseVersionId: z.uuid(),
+        signedOn: dayOfTheOrganisation,
+      }),
+      answers: volunteerBatchAnswer('release'),
+    },
+    /**
+     * One Role to many people, with one reason stamped on every entry (#100).
+     * **Grant only**: a bulk revocation locks twelve people out mid-week.
+     */
+    '/volunteers/roles/batch': {
+      accepts: z.object({ volunteerIds, role: z.enum(ROLES), reason }),
+      answers: volunteerBatchAnswer('roles'),
+    },
+    /** Either direction, as the single write — a course passes or lapses for a list (#100). */
+    '/volunteers/medication-authority/batch': {
+      accepts: z.object({ volunteerIds, granted: z.boolean(), reason }),
+      answers: volunteerBatchAnswer('medicationAuthority'),
+    },
+    /**
+     * **Off only.** The A2P campaign was approved on consent collected from the
+     * person at invitation (ADR 0028, #76), and a Coordinator ticking forty
+     * boxes *on* is exactly what carrier vetting rejects. Off in bulk is fine —
+     * nobody is filtered for being taken off a list. `consented: true` does
+     * not parse.
+     */
+    '/volunteers/sms-consent/batch': {
+      accepts: z.object({ volunteerIds, consented: z.literal(false) }),
+      answers: volunteerBatchAnswer('smsConsent'),
+    },
     '/release-versions': {
       accepts: z.object({
         label: z.string().min(1).max(200),
@@ -1996,6 +2067,25 @@ export const contract = {
     '/horses/space': {
       accepts: z.object({ horseId, kind: spaceKind, spaceId: spaceId.nullable() }),
       answers: z.void(),
+    },
+    /**
+     * A herd moved in one act (#99): the single write above, repeated under
+     * one key, one audit entry per horse. **Only the kinds that hold a herd** —
+     * twelve horses into one stall is only ever a mistake, so `stall` does not
+     * parse. Partial: a Departed horse or one not found is skipped and named,
+     * while a Space that is missing or of another kind refuses the whole batch,
+     * because it is the same for everyone. `spaceId: null` brings them in.
+     */
+    '/horses/space/batch': {
+      accepts: z.object({
+        horseIds: z.array(horseId).min(1).max(MOST_AT_ONCE),
+        kind: z.enum(HERD_KINDS),
+        spaceId: spaceId.nullable(),
+      }),
+      answers: z.object({
+        assigned: z.array(z.string()),
+        skipped: z.array(z.object({ horseId: z.string(), because: z.enum(HORSE_BATCH_SKIPS) })),
+      }),
     },
     /** `departedOn: null` corrects a mistaken Departure — a date, never a delete (ADR 0002, #32). */
     '/horses/departure': {

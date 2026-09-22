@@ -496,6 +496,141 @@ describe.skipIf(!reachable)('horses and Spaces, through the API', () => {
       expect(profile.body.departedOn).toBeNull()
     })
 
+    describe('a herd moved in one act (#99)', () => {
+      async function herd(api: ReturnType<typeof apiAs>, names: readonly string[]) {
+        const ids: string[] = []
+        for (const name of names) {
+          const horse = await post(api, '/horses', { name })
+          ids.push(horse.body.horseId as string)
+        }
+        return ids
+      }
+
+      const EIGHT = ['Ash', 'Birch', 'Cedar', 'Dune', 'Elm', 'Fern', 'Gale', 'Hazel']
+
+      it('turns eight horses out into one Pasture, one audit entry each, under one key', async () => {
+        const api = await holder()
+        const horseIds = await herd(api, EIGHT)
+        const pasture = await post(api, '/spaces', { kind: 'pasture', name: 'North' })
+
+        const moved = await post(api, '/horses/space/batch', {
+          horseIds,
+          kind: 'pasture',
+          spaceId: pasture.body.spaceId,
+        })
+        expect(moved.status).toBe(200)
+        expect(moved.body).toEqual({ assigned: horseIds, skipped: [] })
+
+        const held = await owner`
+          select horse_id from horse_space_assignments
+          where org_id = ${FIELD_BARN} and kind = 'pasture' and space_id = ${pasture.body.spaceId as string}
+        `
+        expect(held).toHaveLength(8)
+        const audited = await owner`
+          select entity_id, after from audit_entries
+          where org_id = ${FIELD_BARN} and entity = 'horse_space_assignment' and field = 'pasture'
+        `
+        expect(audited).toHaveLength(8)
+        expect(audited.every((row) => row.after === 'North')).toBe(true)
+        const keys = await owner`
+          select route from idempotency_keys
+          where org_id = ${FIELD_BARN} and route like '%/horses/space/batch'
+        `
+        expect(keys).toHaveLength(1)
+      })
+
+      it('brings the same eight in with spaceId null', async () => {
+        const api = await holder()
+        const horseIds = await herd(api, EIGHT)
+        const pasture = await post(api, '/spaces', { kind: 'pasture', name: 'North' })
+        await post(api, '/horses/space/batch', {
+          horseIds,
+          kind: 'pasture',
+          spaceId: pasture.body.spaceId,
+        })
+
+        const cleared = await post(api, '/horses/space/batch', {
+          horseIds,
+          kind: 'pasture',
+          spaceId: null,
+        })
+        expect(cleared.status).toBe(200)
+        expect(cleared.body).toEqual({ assigned: horseIds, skipped: [] })
+        const held = await owner`
+          select 1 from horse_space_assignments where org_id = ${FIELD_BARN} and kind = 'pasture'
+        `
+        expect(held).toHaveLength(0)
+      })
+
+      it('skips a Departed horse and one not found, naming each, and lands the rest', async () => {
+        const api = await holder()
+        const horseIds = await herd(api, EIGHT)
+        const departedId = horseIds[3] as string
+        await post(api, '/horses/departure', { horseId: departedId, departedOn: '2026-01-01' })
+        const missingId = crypto.randomUUID()
+        const paddock = await post(api, '/spaces', { kind: 'paddock', name: 'Paddock A' })
+
+        const moved = await post(api, '/horses/space/batch', {
+          horseIds: [...horseIds, missingId],
+          kind: 'paddock',
+          spaceId: paddock.body.spaceId,
+        })
+        expect(moved.status).toBe(200)
+        expect(moved.body).toEqual({
+          assigned: horseIds.filter((id) => id !== departedId),
+          skipped: [
+            { horseId: departedId, because: 'horse_departed' },
+            { horseId: missingId, because: 'horse_not_found' },
+          ],
+        })
+      })
+
+      it('refuses the whole batch for a Space of another kind, since it is the same for everyone', async () => {
+        const api = await holder()
+        const horseIds = await herd(api, ['Ivy'])
+        const barn = await post(api, '/spaces', { kind: 'barn', name: 'Big Barn' })
+
+        const mismatched = await post(api, '/horses/space/batch', {
+          horseIds,
+          kind: 'pasture',
+          spaceId: barn.body.spaceId,
+        })
+        expect(mismatched.status).toBe(409)
+        expect(mismatched.body.error).toBe('space_kind_mismatch')
+      })
+
+      it('refuses a stall in the contract, and more than two hundred at once', async () => {
+        const api = await holder()
+        const horseIds = await herd(api, ['Juniper'])
+        const stall = await post(api, '/spaces', { kind: 'stall', name: 'Stall 1' })
+
+        const stalled = await post(api, '/horses/space/batch', {
+          horseIds,
+          kind: 'stall',
+          spaceId: stall.body.spaceId,
+        })
+        expect(stalled.status).toBe(400)
+
+        const tooMany = await post(api, '/horses/space/batch', {
+          horseIds: Array.from({ length: 201 }, () => crypto.randomUUID()),
+          kind: 'pasture',
+          spaceId: null,
+        })
+        expect(tooMany.status).toBe(400)
+      })
+
+      it('refuses a roster-only holder', async () => {
+        const id = await seedVolunteer('Rosa Roster', `rosa-${newIdempotencyKey()}@barn.test`)
+        const api = apiAs(id, ['roster'])
+        const refused = await post(api, '/horses/space/batch', {
+          horseIds: [crypto.randomUUID()],
+          kind: 'pasture',
+          spaceId: null,
+        })
+        expect(refused.status).toBe(403)
+      })
+    })
+
     it('refuses horse writes without horse_care', async () => {
       const api = await reader()
       const created = await post(api, '/horses', { name: 'Grady' })

@@ -263,3 +263,93 @@ describe('the horse record', () => {
     })
   })
 })
+
+describe('a herd moved in one act (#99)', () => {
+  const birch = { ...maple, id: 'h2', name: 'Birch', spaces: { ...maple.spaces, stall: null } }
+  const cedar = { ...maple, id: 'h3', name: 'Cedar', departedOn: '2026-01-01' }
+
+  function me(domainScopes: string[]) {
+    return {
+      volunteerId: 'v1',
+      name: 'Priya',
+      email: 'priya@barn.test',
+      mobile: null,
+      smsConsentAt: null,
+      smsStoppedAt: null,
+      domainScopes,
+    }
+  }
+
+  it('ticks horses, picks a Pasture, reviews the names, and lists the one skipped', async () => {
+    const user = userEvent.setup()
+    const posted: unknown[] = []
+    stubDesk({
+      '/horses': { horses: [maple, birch, cedar], attention: [] },
+      '/me': me(['horse_care']),
+      '/horses/space/batch': (init: RequestInit) => {
+        posted.push(JSON.parse(String(init.body)))
+        return { assigned: ['h1', 'h2'], skipped: [{ horseId: 'h3', because: 'horse_departed' }] }
+      },
+    })
+    renderDesk()
+
+    await user.click(await screen.findByRole('checkbox', { name: 'Select all showing' }))
+    const bar = await screen.findByRole('region', { name: 'With the ticked' })
+    expect(within(bar).getByText('3 horses ticked')).toBeTruthy()
+    // Only the kinds that hold a herd: twelve horses into one stall is a mistake.
+    await user.click(within(bar).getByRole('combobox', { name: 'Kind' }))
+    const kinds = await screen.findByRole('listbox')
+    expect(within(kinds).queryByRole('option', { name: 'Stall' })).toBeNull()
+    await user.click(within(kinds).getByRole('option', { name: 'Pasture' }))
+    await chooseOption('Move them to', 'North pasture')
+    await user.click(within(bar).getByRole('button', { name: 'Review' }))
+
+    const review = await screen.findByRole('dialog')
+    for (const name of ['Maple', 'Birch', 'Cedar']) {
+      expect(within(review).getByText(name)).toBeTruthy()
+    }
+    expect(posted).toHaveLength(0)
+    await user.click(within(review).getByRole('button', { name: 'Confirm for 3' }))
+
+    expect(await within(review).findByText('Done for 2 of 3.')).toBeTruthy()
+    expect(within(review).getByText('Cedar — has Departed')).toBeTruthy()
+    expect(posted[0]).toMatchObject({
+      horseIds: ['h1', 'h2', 'h3'],
+      kind: 'pasture',
+      spaceId: 'p1',
+    })
+  })
+
+  it('sends spaceId null for None, which brings the herd in', async () => {
+    const user = userEvent.setup()
+    const posted: unknown[] = []
+    stubDesk({
+      '/horses': { horses: [maple, birch], attention: [] },
+      '/me': me(['horse_care']),
+      '/horses/space/batch': (init: RequestInit) => {
+        posted.push(JSON.parse(String(init.body)))
+        return { assigned: ['h1'], skipped: [] }
+      },
+    })
+    renderDesk()
+
+    await user.click(await screen.findByRole('checkbox', { name: 'Select Maple' }))
+    await chooseOption('Kind', 'Pasture')
+    await chooseOption('Move them to', 'None')
+    await user.click(screen.getByRole('button', { name: 'Review' }))
+    await user.click(await screen.findByRole('button', { name: 'Confirm for 1' }))
+
+    await waitFor(() => {
+      expect(posted).toHaveLength(1)
+    })
+    expect(posted[0]).toMatchObject({ horseIds: ['h1'], kind: 'pasture', spaceId: null })
+  })
+
+  it('offers no ticking at all to somebody without horse_care', async () => {
+    stubDesk({ '/me': me(['roster']) })
+    renderDesk()
+
+    expect(await screen.findByText('Maple')).toBeTruthy()
+    expect(screen.queryByRole('checkbox', { name: 'Select all showing' })).toBeNull()
+  })
+})

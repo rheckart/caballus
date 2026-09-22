@@ -44,6 +44,15 @@ import {
   matches,
   useSaving,
 } from '../../components/forms'
+import {
+  BulkBar,
+  BulkReview,
+  SelectAllShowing,
+  SelectRow,
+  useSelection,
+  type BatchResult,
+  type Selection,
+} from '../../components/bulk'
 import { SMS_CONSENT } from '../../components/public'
 import {
   DANGER_CARD,
@@ -161,6 +170,8 @@ function Volunteers() {
       ),
     [people, filter],
   )
+  const shownIds = useMemo(() => shown.map((person) => person.id), [shown])
+  const selection = useSelection(shownIds)
 
   if (people === null) {
     return (
@@ -251,6 +262,16 @@ function Volunteers() {
         />
       )}
 
+      {selection.ticked.size > 0 && (
+        <ClassBar
+          selection={selection}
+          people={people.people}
+          today={people.today}
+          versions={versions?.versions ?? []}
+          reload={load}
+        />
+      )}
+
       {shown.length === 0 ? (
         <Empty>
           {people.people.length === 0 ? 'Nobody at the rescue yet.' : `Nobody matches “${filter}”.`}
@@ -259,6 +280,9 @@ function Volunteers() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead scope="col" className="w-10">
+                <SelectAllShowing selection={selection} />
+              </TableHead>
               <TableHead scope="col">Name</TableHead>
               <TableHead scope="col">State</TableHead>
               <TableHead scope="col">Rosterable</TableHead>
@@ -270,6 +294,9 @@ function Volunteers() {
           <TableBody>
             {shown.map((person) => (
               <TableRow key={person.id} data-state={openFor === person.id ? 'selected' : undefined}>
+                <TableCell>
+                  <SelectRow selection={selection} id={person.id} name={person.name} />
+                </TableCell>
                 <TableCell>
                   {person.name}
                   {person.isMinor && <Badge className="ml-2">Under 18</Badge>}
@@ -343,6 +370,269 @@ function Volunteers() {
         </Sheet>
       )}
     </main>
+  )
+}
+
+/**
+ * The five class acts (#100), offered while anybody is ticked.
+ *
+ * All five are always offered, whatever the reader holds: a control on a
+ * screen you are on is shown and refused (ADR 0011, as ADR 0026 leaves it),
+ * and the server's refusal names the Scope it wanted. **Two things are
+ * deliberately missing** — revoking a Role, because a bulk mistake there locks
+ * twelve people out mid-week, and texts *on*, because consent is collected
+ * from the person at invitation (ADR 0028). A Consent for a minor is not here
+ * either: its parent's name differs on every row, so it is not one change.
+ */
+const CLASS_ACTS = [
+  'orientation',
+  'release',
+  'role',
+  'medication_on',
+  'medication_off',
+  'sms_off',
+] as const
+type ClassAct = (typeof CLASS_ACTS)[number]
+
+const CLASS_ACT_LABEL: Record<ClassAct, string> = {
+  orientation: 'Record Orientation',
+  release: 'Record a Release',
+  role: 'Grant a Role',
+  medication_on: 'Grant Medication Authority',
+  medication_off: 'Revoke Medication Authority',
+  sms_off: 'Turn texts off',
+}
+
+function ClassBar({
+  selection,
+  people,
+  today,
+  versions,
+  reload,
+}: {
+  selection: Selection
+  people: People['people']
+  today: DayString
+  versions: Versions['versions']
+  reload: () => Promise<void>
+}) {
+  const [act, setAct] = useState<ClassAct>('orientation')
+  const [day, setDay] = useState<string>(today)
+  // The default is the current Version: newest first, so the first one already
+  // in force today — a Version published ahead of its valid-from is not
+  // current yet. Derived rather than seeded, so a list that arrives after the
+  // bar opens still lands on it.
+  const current = versions.find((candidate) => candidate.validFrom <= today) ?? versions[0]
+  const [chosenVersionId, setVersionId] = useState<string>('')
+  const versionId = chosenVersionId === '' ? (current?.id ?? '') : chosenVersionId
+  const [role, setRole] = useState<Role | ''>('')
+  const [reason, setReason] = useState('')
+  const [reviewing, setReviewing] = useState(false)
+
+  const names = new Map(
+    people
+      .filter((person) => selection.isTicked(person.id))
+      .map((person) => [person.id, person.name]),
+  )
+  const volunteerIds = [...names.keys()]
+  const version = versions.find((candidate) => candidate.id === versionId)
+
+  const ready =
+    (act === 'orientation' && day !== '') ||
+    (act === 'release' && day !== '' && version !== undefined) ||
+    (act === 'role' && role !== '') ||
+    act === 'medication_on' ||
+    act === 'medication_off' ||
+    act === 'sms_off'
+
+  const what: Record<ClassAct, string> = {
+    orientation: `Record an Orientation on ${day}.`,
+    release: `Record ${version?.label ?? ''} as signed on ${day}; a parent's signature for anybody under 18 that day.`,
+    role: `Grant ${role === '' ? '' : ROLE_NAMES[role]}.`,
+    medication_on: 'Grant Medication Authority.',
+    medication_off: 'Revoke Medication Authority.',
+    sms_off: 'Turn their texts off.',
+  }
+
+  /** One batch answer, in the shape the review sheet reads. */
+  function asResult(landed: {
+    done: string[]
+    skipped: { volunteerId: string; because: BatchResult['skipped'][number]['because'] }[]
+  }): BatchResult {
+    return {
+      done: landed.done,
+      skipped: landed.skipped.map((skip) => ({ id: skip.volunteerId, because: skip.because })),
+    }
+  }
+
+  async function confirm(): Promise<BatchResult> {
+    const why = reason.trim() === '' ? null : reason.trim()
+    switch (act) {
+      case 'orientation':
+        return asResult(
+          await client.post('/volunteers/orientation/batch', {
+            volunteerIds,
+            orientedOn: dayString(day),
+          }),
+        )
+      case 'release':
+        return asResult(
+          await client.post('/volunteers/release/batch', {
+            volunteerIds,
+            releaseVersionId: versionId,
+            signedOn: dayString(day),
+          }),
+        )
+      case 'role':
+        if (role === '') throw new Error('Review is disabled until a Role is chosen.')
+        return asResult(
+          await client.post('/volunteers/roles/batch', { volunteerIds, role, reason: why }),
+        )
+      case 'medication_on':
+      case 'medication_off':
+        return asResult(
+          await client.post('/volunteers/medication-authority/batch', {
+            volunteerIds,
+            granted: act === 'medication_on',
+            reason: why,
+          }),
+        )
+      case 'sms_off':
+        return asResult(
+          await client.post('/volunteers/sms-consent/batch', { volunteerIds, consented: false }),
+        )
+    }
+  }
+
+  const label = 'mb-1 block text-sm font-medium text-foreground'
+
+  return (
+    <BulkBar count={selection.ticked.size} noun={['person', 'people']} onClear={selection.clear}>
+      <div className="min-w-56">
+        <label htmlFor="class-act" className={label}>
+          Act
+        </label>
+        <Select
+          value={act}
+          onValueChange={(value) => {
+            setAct(value as ClassAct)
+          }}
+        >
+          <SelectTrigger id="class-act" aria-label="Act">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {CLASS_ACTS.map((choice) => (
+              <SelectItem key={choice} value={choice}>
+                {CLASS_ACT_LABEL[choice]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {act === 'release' && (
+        <div className="min-w-48">
+          <label htmlFor="class-version" className={label}>
+            Release Version
+          </label>
+          <Select value={versionId} onValueChange={setVersionId}>
+            <SelectTrigger id="class-version" aria-label="Release Version">
+              <SelectValue placeholder="None published" />
+            </SelectTrigger>
+            <SelectContent>
+              {versions.map((candidate) => (
+                <SelectItem key={candidate.id} value={candidate.id}>
+                  {candidate.label} (from {candidate.validFrom})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {(act === 'orientation' || act === 'release') && (
+        <div>
+          <label htmlFor="class-day" className={label}>
+            {act === 'orientation' ? 'Oriented on' : 'Signed on'}
+          </label>
+          <Input
+            id="class-day"
+            type="date"
+            required
+            value={day}
+            onChange={(event) => {
+              setDay(event.target.value)
+            }}
+          />
+        </div>
+      )}
+
+      {act === 'role' && (
+        <div className="min-w-48">
+          <label htmlFor="class-role" className={label}>
+            Role
+          </label>
+          <Select
+            value={role}
+            onValueChange={(value) => {
+              setRole(value as Role)
+            }}
+          >
+            <SelectTrigger id="class-role" aria-label="Role">
+              <SelectValue placeholder="Choose…" />
+            </SelectTrigger>
+            <SelectContent>
+              {ROLES.map((choice) => (
+                <SelectItem key={choice} value={choice}>
+                  {ROLE_NAMES[choice]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {(act === 'role' || act === 'medication_on' || act === 'medication_off') && (
+        <div className="min-w-64 flex-1">
+          <label htmlFor="class-reason" className={label}>
+            Reason <span className="font-normal text-muted-foreground">(on every entry)</span>
+          </label>
+          <Input
+            id="class-reason"
+            maxLength={500}
+            value={reason}
+            onChange={(event) => {
+              setReason(event.target.value)
+            }}
+          />
+        </div>
+      )}
+
+      <Button
+        type="button"
+        disabled={!ready}
+        onClick={() => {
+          setReviewing(true)
+        }}
+      >
+        Review
+      </Button>
+
+      {reviewing && (
+        <BulkReview
+          title={`${CLASS_ACT_LABEL[act]} for ${String(names.size)}`}
+          what={what[act]}
+          names={names}
+          confirm={confirm}
+          onDone={reload}
+          onClose={(landed) => {
+            setReviewing(false)
+            if (landed) selection.clear()
+          }}
+        />
+      )}
+    </BulkBar>
   )
 }
 

@@ -24,6 +24,18 @@ export function isSpaceKind(stored: string): stored is SpaceKind {
 }
 
 /**
+ * The kinds that hold a herd, and so the only kinds a batch assignment may
+ * name (#99).
+ *
+ * Never `stall`: nothing refuses two horses in one stall — `space_occupied` is
+ * only a check on re-kinding or retiring one — so the batch is where that
+ * mistake would be made twelve at a time, and the contract is where it stops.
+ */
+export const HERD_KINDS = ['pasture', 'paddock', 'barn'] as const satisfies readonly SpaceKind[]
+
+export type HerdKind = (typeof HERD_KINDS)[number]
+
+/**
  * How a run of Spaces is numbered when several are added at once.
  *
  * Two, because a barn names its stalls with numbers and its turnout with

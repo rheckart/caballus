@@ -11,12 +11,13 @@
  * that does not exist, a horse that does not exist — so a form gets *that
  * Space is gone* rather than a 500.
  */
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 
 import type { OrgId, OrgScopedDatabase } from '../../db/for-org'
 import { horseSpaceAssignments, horses, spaces } from '../../db/schema'
-import type { SpaceKind } from '../../shared/spaces'
+import type { HorseBatchSkip } from '../../shared/batch'
+import type { HerdKind, SpaceKind } from '../../shared/spaces'
 import type { DayString } from '../../shared/time'
 import { audit, type AuditEntry } from '../roster/audit'
 import { recorded, refused, type Recorded } from './outcome'
@@ -456,6 +457,80 @@ export async function assignHorseSpace(
   ])
 
   return recorded(null)
+}
+
+/**
+ * A herd moved in one act (#99): `assignHorseSpace`, repeated, inside the one
+ * transaction `mutation` opened under one key (ADR 0020).
+ *
+ * **The Space is checked once and refuses the whole batch**, because it is the
+ * same for every horse: a Space that is gone is gone for all twelve. **A horse
+ * is skipped and named**, because it is one row's fact — one Departed mare
+ * does not keep the other eleven in. The single write does not refuse a
+ * Departed horse, since correcting one's record is ordinary; a batch is the
+ * herd on the ground today, and a Departed horse is not in it.
+ *
+ * Each horse gets the single write's own audit entry and nothing more — no
+ * import log, no batch table (ADR 0019).
+ */
+export async function assignHerdSpace(
+  db: OrgScopedDatabase,
+  orgId: OrgId,
+  actorVolunteerId: string,
+  about: {
+    readonly horseIds: readonly string[]
+    readonly kind: HerdKind
+    readonly spaceId: string | null
+  },
+): Promise<
+  Recorded<{
+    assigned: string[]
+    skipped: { horseId: string; because: HorseBatchSkip }[]
+  }>
+> {
+  if (about.spaceId !== null) {
+    const [space] = await db
+      .select({ kind: spaces.kind })
+      .from(spaces)
+      .where(eq(spaces.id, about.spaceId))
+      .limit(1)
+    if (space === undefined) return refused('space_not_found')
+    if (space.kind !== about.kind) return refused('space_kind_mismatch')
+  }
+
+  const wanted = [...new Set(about.horseIds)]
+  const found = await db
+    .select({ id: horses.id, departedOn: horses.departedOn })
+    .from(horses)
+    .where(inArray(horses.id, wanted))
+  const departed = new Map(found.map((horse) => [horse.id, horse.departedOn !== null]))
+
+  const assigned: string[] = []
+  const skipped: { horseId: string; because: HorseBatchSkip }[] = []
+  for (const horseId of wanted) {
+    const isDeparted = departed.get(horseId)
+    if (isDeparted === undefined) {
+      skipped.push({ horseId, because: 'horse_not_found' })
+      continue
+    }
+    if (isDeparted) {
+      skipped.push({ horseId, because: 'horse_departed' })
+      continue
+    }
+    const outcome = await assignHorseSpace(db, orgId, actorVolunteerId, {
+      horseId,
+      kind: about.kind,
+      spaceId: about.spaceId,
+    })
+    // The Space was checked above and the horse was just read, inside this
+    // same transaction, so nothing the single write refuses can be true here.
+    // Thrown rather than answered, because an answered refusal commits the
+    // horses already moved and a thrown one rolls the whole batch back.
+    if (!outcome.ok) throw new Error(`assignHorseSpace refused ${outcome.because} mid-batch`)
+    assigned.push(horseId)
+  }
+
+  return recorded({ assigned, skipped })
 }
 
 /**
