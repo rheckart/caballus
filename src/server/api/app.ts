@@ -46,6 +46,13 @@ import { sendEmail } from '../email'
 import { homePage } from '../home/page'
 import { auditLog, peopleList, unstaffedScopes } from '../roster/people'
 import {
+  grantRoles,
+  recordOrientations,
+  recordReleaseSignatures,
+  setMedicationAuthorities,
+  withdrawSmsConsents,
+} from '../roster/batch'
+import {
   clearSmsStop,
   createVolunteerIn,
   recordConsent,
@@ -80,6 +87,7 @@ import {
 import { horseById, horseList, spaceList } from '../horses/list'
 import { horseTimeline, horsesNeedingAttention } from '../horses/timeline'
 import {
+  assignHerdSpace,
   assignHorseSpace,
   createHorse,
   createSpace,
@@ -998,6 +1006,73 @@ export function buildApi(
   )
 
   /**
+   * The five class acts (#100): each the single write above, repeated under one
+   * key, declaring the Scope its single write declares and nothing new (ADR
+   * 0010). What each person gets is decided in `src/server/roster/batch.ts`.
+   */
+  api.mutation(
+    '/volunteers/orientation/batch',
+    domainScope('roster'),
+    async (input, { context, db }) => {
+      const outcome = await recordOrientations(
+        db,
+        context.orgId,
+        actorOf(context).volunteerId,
+        input,
+      )
+      return outcome.ok ? json(outcome.value) : refusal(outcome.because)
+    },
+  )
+
+  api.mutation(
+    '/volunteers/release/batch',
+    domainScope('roster'),
+    async (input, { context, db }) => {
+      const outcome = await recordReleaseSignatures(
+        db,
+        context.orgId,
+        actorOf(context).volunteerId,
+        input,
+      )
+      return outcome.ok ? json(outcome.value) : refusal(outcome.because)
+    },
+  )
+
+  api.mutation('/volunteers/roles/batch', domainScope('grants'), async (input, { context, db }) => {
+    const outcome = await grantRoles(db, context.orgId, actorOf(context).volunteerId, {
+      volunteerIds: input.volunteerIds,
+      role: input.role,
+      reason: input.reason ?? null,
+    })
+    return outcome.ok ? json(outcome.value) : refusal(outcome.because)
+  })
+
+  api.mutation(
+    '/volunteers/medication-authority/batch',
+    domainScope('horse_care'),
+    async (input, { context, db }) => {
+      const outcome = await setMedicationAuthorities(
+        db,
+        context.orgId,
+        actorOf(context).volunteerId,
+        { volunteerIds: input.volunteerIds, granted: input.granted, reason: input.reason ?? null },
+      )
+      return outcome.ok ? json(outcome.value) : refusal(outcome.because)
+    },
+  )
+
+  api.mutation(
+    '/volunteers/sms-consent/batch',
+    domainScope('roster'),
+    async (input, { context, db }) => {
+      const outcome = await withdrawSmsConsents(db, context.orgId, actorOf(context).volunteerId, {
+        volunteerIds: input.volunteerIds,
+      })
+      return outcome.ok ? json(outcome.value) : refusal(outcome.because)
+    },
+  )
+
+  /**
    * Publishing a Release Version.
    *
    * **It removes nothing.** With `obsoletesPrior` set, every signature given
@@ -1537,6 +1612,13 @@ export function buildApi(
     const actor = actorOf(context)
     const outcome = await assignHorseSpace(db, context.orgId, actor.volunteerId, input)
     return outcome.ok ? noContent() : horseRefusal(outcome.because)
+  })
+
+  /** A herd moved in one act (#99): the write above, repeated under one key. */
+  api.mutation('/horses/space/batch', domainScope('horse_care'), async (input, { context, db }) => {
+    const actor = actorOf(context)
+    const outcome = await assignHerdSpace(db, context.orgId, actor.volunteerId, input)
+    return outcome.ok ? json(outcome.value) : horseRefusal(outcome.because)
   })
 
   api.mutation('/horses/departure', domainScope('horse_care'), async (input, { context, db }) => {

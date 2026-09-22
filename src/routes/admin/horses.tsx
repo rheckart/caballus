@@ -60,6 +60,14 @@ import {
   StickySaved,
   useRecordForm,
 } from '../../components/record-modal'
+import {
+  BulkBar,
+  BulkReview,
+  SelectAllShowing,
+  SelectRow,
+  useSelection,
+  type Selection,
+} from '../../components/bulk'
 import { Refusal } from '../../components/refusal'
 import { Alert as AlertBox, AlertTitle } from '../../components/ui/alert'
 import { Badge } from '../../components/ui/badge'
@@ -91,7 +99,7 @@ import {
 } from '../../shared/feed-schedule'
 import { refusalText } from '../../shared/refusals'
 import type { Answers, contract } from '../../shared/api-contract'
-import { SPACE_KINDS, type SpaceKind } from '../../shared/spaces'
+import { HERD_KINDS, SPACE_KINDS, type HerdKind, type SpaceKind } from '../../shared/spaces'
 import { dayString } from '../../shared/time'
 import { SHIFT_TYPE_LABEL } from '../../shared/shifts'
 
@@ -145,6 +153,21 @@ function Horses() {
   const [profileProblem, setProfileProblem] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
   const [filter, setFilter] = useState('')
+  // Whether the reader may move a herd at all (#99). Read on its own and
+  // allowed to fail: a desk that could not learn the reader's Scopes shows the
+  // list without the boxes, and the server refuses a batch regardless.
+  const [holdsHorseCare, setHoldsHorseCare] = useState(false)
+
+  useEffect(() => {
+    void client
+      .get('/me')
+      .then((me) => {
+        setHoldsHorseCare(me.domainScopes.includes('horse_care'))
+      })
+      .catch(() => {
+        setHoldsHorseCare(false)
+      })
+  }, [])
 
   const load = useCallback(async () => {
     const [listed, listedSpaces, listedProducts] = await Promise.all([
@@ -207,6 +230,8 @@ function Horses() {
       ),
     [horses, filter],
   )
+  const shownIds = useMemo(() => shown.map((horse) => horse.id), [shown])
+  const selection = useSelection(shownIds)
 
   if (horses === null || spaces === null || products === null) {
     return (
@@ -270,12 +295,26 @@ function Horses() {
             />
           )}
 
+          {holdsHorseCare && selection.ticked.size > 0 && (
+            <HerdBar
+              selection={selection}
+              horses={horses.horses}
+              spaces={spaces.spaces}
+              reload={load}
+            />
+          )}
+
           {shown.length === 0 ? (
             <Empty>No horse matches “{filter}”.</Empty>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
+                  {holdsHorseCare && (
+                    <TableHead scope="col" className="w-10">
+                      <SelectAllShowing selection={selection} />
+                    </TableHead>
+                  )}
                   <TableHead scope="col">Name</TableHead>
                   <TableHead scope="col">Halter</TableHead>
                   <TableHead scope="col">Stall</TableHead>
@@ -292,6 +331,11 @@ function Horses() {
                     key={horse.id}
                     data-state={openFor === horse.id ? 'selected' : undefined}
                   >
+                    {holdsHorseCare && (
+                      <TableCell>
+                        <SelectRow selection={selection} id={horse.id} name={horse.name} />
+                      </TableCell>
+                    )}
                     <TableCell>{horse.name}</TableCell>
                     <TableCell>{horse.halterColour ?? 'Not set'}</TableCell>
                     <TableCell>{horse.spaces.stall?.name ?? 'None'}</TableCell>
@@ -359,6 +403,119 @@ function Horses() {
         </Sheet>
       )}
     </main>
+  )
+}
+
+/**
+ * The action bar for a ticked herd (#99): a kind, a Space of that kind or
+ * None, and a review of the names before anything is sent.
+ *
+ * **Only the kinds that hold a herd.** Stall is not offered — nothing refuses
+ * two horses in one stall, so this is where twelve at once would happen — and
+ * the contract refuses it besides.
+ */
+function HerdBar({
+  selection,
+  horses,
+  spaces,
+  reload,
+}: {
+  selection: Selection
+  horses: HorseList['horses']
+  spaces: SpaceList['spaces']
+  reload: () => Promise<void>
+}) {
+  const [kind, setKind] = useState<HerdKind>('pasture')
+  const [spaceId, setSpaceId] = useState<string>('')
+  const [reviewing, setReviewing] = useState(false)
+
+  const choices = spaces.filter((space) => space.kind === kind && space.retiredOn === null)
+  const names = new Map(
+    horses.filter((horse) => selection.isTicked(horse.id)).map((horse) => [horse.id, horse.name]),
+  )
+  const target = choices.find((space) => space.id === spaceId)
+  const what =
+    spaceId === NO_SPACE
+      ? `Take them out of any ${KIND_LABEL[kind]}.`
+      : `Put them in ${target?.name ?? ''}.`
+
+  return (
+    <BulkBar count={selection.ticked.size} noun={['horse', 'horses']} onClear={selection.clear}>
+      <div className="min-w-40">
+        <label htmlFor="herd-kind" className="mb-1 block text-sm font-medium text-foreground">
+          Kind
+        </label>
+        <Select
+          value={kind}
+          onValueChange={(value) => {
+            setKind(value as HerdKind)
+            setSpaceId('')
+          }}
+        >
+          <SelectTrigger id="herd-kind" aria-label="Kind">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {HERD_KINDS.map((herdKind) => (
+              <SelectItem key={herdKind} value={herdKind}>
+                {KIND_LABEL[herdKind]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="min-w-48">
+        <label htmlFor="herd-space" className="mb-1 block text-sm font-medium text-foreground">
+          Move them to
+        </label>
+        <Select value={spaceId} onValueChange={setSpaceId}>
+          <SelectTrigger id="herd-space" aria-label="Move them to">
+            <SelectValue placeholder="Choose…" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={NO_SPACE}>None</SelectItem>
+            {choices.map((space) => (
+              <SelectItem key={space.id} value={space.id}>
+                {space.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <Button
+        type="button"
+        disabled={spaceId === ''}
+        onClick={() => {
+          setReviewing(true)
+        }}
+      >
+        Review
+      </Button>
+
+      {reviewing && (
+        <BulkReview
+          title={`Move ${String(names.size)} ${names.size === 1 ? 'horse' : 'horses'}`}
+          what={what}
+          names={names}
+          confirm={async () => {
+            const landed = await client.post('/horses/space/batch', {
+              horseIds: [...names.keys()],
+              kind,
+              spaceId: spaceId === NO_SPACE ? null : spaceId,
+            })
+            return {
+              done: landed.assigned,
+              skipped: landed.skipped.map((skip) => ({ id: skip.horseId, because: skip.because })),
+            }
+          }}
+          onDone={reload}
+          onClose={(landed) => {
+            setReviewing(false)
+            if (landed) selection.clear()
+          }}
+        />
+      )}
+    </BulkBar>
   )
 }
 

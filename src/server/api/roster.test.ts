@@ -685,6 +685,225 @@ describe.skipIf(!reachable)('the roster, through the API', () => {
     })
   })
 
+  describe('a class is one act (#100)', () => {
+    /** A Volunteer with a date of birth, or none when `dateOfBirth` is null. */
+    async function person(
+      api: ReturnType<typeof apiAs>,
+      name: string,
+      dateOfBirth: string | null = '1984-05-06',
+      smsConsent = false,
+    ): Promise<string> {
+      const created = await post(api, '/volunteers', {
+        name,
+        email: `${name.toLowerCase()}-${newIdempotencyKey()}@example.invalid`,
+        smsConsent,
+      })
+      const volunteerId = String(created.body.volunteerId)
+      if (dateOfBirth !== null) {
+        await post(api, '/volunteers/date-of-birth', {
+          volunteerId,
+          dateOfBirth,
+          provenance: 'photo_id',
+        })
+      }
+      return volunteerId
+    }
+
+    async function batchKeys(path: string) {
+      return owner`
+        select 1 from idempotency_keys where org_id = ${FRONT_BARN} and route like ${`%${path}`}
+      `
+    }
+
+    it('orients a class on one date under one key, naming the one already oriented', async () => {
+      const api = await coordinator()
+      const ids = [await person(api, 'Ada'), await person(api, 'Bo'), await person(api, 'Cy')]
+      await post(api, '/volunteers/orientation', { volunteerId: ids[2], orientedOn: '2026-08-01' })
+      const undated = await person(api, 'Dee', null)
+
+      const oriented = await post(api, '/volunteers/orientation/batch', {
+        volunteerIds: [...ids, undated],
+        orientedOn: '2026-09-20',
+      })
+      expect(oriented.status).toBe(200)
+      expect(oriented.body).toEqual({
+        done: [ids[0], ids[1]],
+        skipped: [
+          { volunteerId: ids[2], because: 'already_oriented' },
+          { volunteerId: undated, because: 'date_of_birth_not_established' },
+        ],
+      })
+      const entries = await owner`
+        select entity_id from audit_entries
+        where org_id = ${FRONT_BARN} and field = 'oriented_on' and after = '2026-09-20'
+      `
+      expect(entries).toHaveLength(2)
+      expect(await batchKeys('/volunteers/orientation/batch')).toHaveLength(1)
+    })
+
+    it('decides byParent per person from their age on the day, and skips self and undated', async () => {
+      const api = await coordinator()
+      const versionId = await publishVersion(api, '2020-01-01')
+      const adult = await person(api, 'Eve', '1990-01-01')
+      const minor = await person(api, 'Fin', '2012-03-04')
+      // Eighteen on the very day she signs: her own signature, not a parent's.
+      const birthday = await person(api, 'Gia', '2008-09-20')
+      const undated = await person(api, 'Hal', null)
+
+      const signed = await post(api, '/volunteers/release/batch', {
+        volunteerIds: [adult, minor, birthday, undated, coordinatorId],
+        releaseVersionId: versionId,
+        signedOn: '2026-09-20',
+      })
+      expect(signed.status).toBe(200)
+      expect(signed.body).toEqual({
+        done: [adult, minor, birthday],
+        skipped: [
+          { volunteerId: undated, because: 'date_of_birth_not_established' },
+          { volunteerId: coordinatorId, because: 'self_recorded' },
+        ],
+      })
+      const rows = await owner`
+        select volunteer_id, by_parent from release_signatures where org_id = ${FRONT_BARN}
+      `
+      const byParent = new Map(rows.map((row) => [String(row.volunteer_id), row.by_parent]))
+      expect(byParent).toEqual(
+        new Map([
+          [adult, false],
+          [minor, true],
+          [birthday, false],
+        ]),
+      )
+    })
+
+    it('names a room recorded twice back as already signed, rather than signing twice', async () => {
+      const api = await coordinator()
+      const versionId = await publishVersion(api, '2020-01-01')
+      const adult = await person(api, 'Jem')
+      const payload = { volunteerIds: [adult], releaseVersionId: versionId, signedOn: '2026-09-20' }
+      await post(api, '/volunteers/release/batch', payload)
+
+      const again = await post(api, '/volunteers/release/batch', payload)
+      expect(again.body).toEqual({
+        done: [],
+        skipped: [{ volunteerId: adult, because: 'already_signed' }],
+      })
+      const rows = await owner`select 1 from release_signatures where org_id = ${FRONT_BARN}`
+      expect(rows).toHaveLength(1)
+    })
+
+    it('refuses the whole Release batch for a Version that does not exist', async () => {
+      const api = await coordinator()
+      const adult = await person(api, 'Ivo')
+      const refused = await post(api, '/volunteers/release/batch', {
+        volunteerIds: [adult],
+        releaseVersionId: crypto.randomUUID(),
+        signedOn: '2026-09-20',
+      })
+      expect(refused.status).toBe(404)
+      expect(refused.body).toMatchObject({ error: 'release_version_not_found' })
+    })
+
+    it('grants one Role to many with one reason on every entry, skipping holder and self', async () => {
+      const api = await coordinator()
+      const ids = [await person(api, 'Jo'), await person(api, 'Kit'), await person(api, 'Lu')]
+      await post(api, '/volunteers/roles', { volunteerId: ids[2], role: 'event_coordinator' })
+
+      // Removed, with the Role row outliving them: not found, never *already holds it*.
+      const gone = await person(api, 'Max')
+      await post(api, '/volunteers/roles', { volunteerId: gone, role: 'event_coordinator' })
+      await owner`update volunteers set removed_at = now() where id = ${gone}`
+
+      const granted = await post(api, '/volunteers/roles/batch', {
+        volunteerIds: [...ids, coordinatorId, gone],
+        role: 'event_coordinator',
+        reason: 'Runs the October open house',
+      })
+      expect(granted.status).toBe(200)
+      expect(granted.body).toEqual({
+        done: [ids[0], ids[1]],
+        skipped: [
+          { volunteerId: ids[2], because: 'already_held' },
+          { volunteerId: coordinatorId, because: 'self_granted' },
+          { volunteerId: gone, because: 'volunteer_not_found' },
+        ],
+      })
+      const entries = await owner`
+        select reason from audit_entries
+        where org_id = ${FRONT_BARN} and entity = 'volunteer_role'
+          and reason = 'Runs the October open house'
+      `
+      expect(entries).toHaveLength(2)
+    })
+
+    it('refuses the Role batch under roster alone', async () => {
+      const id = await seedVolunteer('Rory', `rory-${newIdempotencyKey()}@barn.test`)
+      const refused = await post(apiAs(id, ['roster']), '/volunteers/roles/batch', {
+        volunteerIds: [crypto.randomUUID()],
+        role: 'event_coordinator',
+      })
+      expect(refused.status).toBe(403)
+    })
+
+    it('turns Medication Authority on for one list and off for another', async () => {
+      const api = await coordinator()
+      const ids = [await person(api, 'Mo'), await person(api, 'Ned')]
+      await post(api, '/volunteers/medication-authority', { volunteerId: ids[1], granted: true })
+
+      const on = await post(api, '/volunteers/medication-authority/batch', {
+        volunteerIds: ids,
+        granted: true,
+        reason: 'Passed the September medication class',
+      })
+      expect(on.body).toEqual({
+        done: [ids[0]],
+        skipped: [{ volunteerId: ids[1], because: 'already_held' }],
+      })
+
+      const stranger = await person(api, 'Oz')
+      const off = await post(api, '/volunteers/medication-authority/batch', {
+        volunteerIds: [...ids, stranger],
+        granted: false,
+        reason: 'Course lapsed',
+      })
+      expect(off.body).toEqual({
+        done: ids,
+        skipped: [{ volunteerId: stranger, because: 'not_held' }],
+      })
+      const revoked = await owner`
+        select 1 from medication_authority
+        where org_id = ${FRONT_BARN} and revoked_at is not null
+      `
+      expect(revoked).toHaveLength(2)
+      const reasons = await owner`
+        select 1 from audit_entries
+        where org_id = ${FRONT_BARN} and entity = 'medication_authority' and reason = 'Course lapsed'
+      `
+      expect(reasons).toHaveLength(2)
+    })
+
+    it('turns texts off for a list, and the contract refuses turning them on', async () => {
+      const api = await coordinator()
+      const consenting = await person(api, 'Pip', '1984-05-06', true)
+      const already = await person(api, 'Quin')
+
+      const off = await post(api, '/volunteers/sms-consent/batch', {
+        volunteerIds: [consenting, already],
+        consented: false,
+      })
+      expect(off.body).toEqual({
+        done: [consenting],
+        skipped: [{ volunteerId: already, because: 'already_off' }],
+      })
+
+      const on = await post(api, '/volunteers/sms-consent/batch', {
+        volunteerIds: [already],
+        consented: true,
+      })
+      expect(on.status).toBe(400)
+    })
+  })
+
   describe('removing somebody from the rescue', () => {
     it('takes their grants with them and audits every one', async () => {
       const officer = await coordinator()
