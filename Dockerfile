@@ -17,7 +17,7 @@
 # still refused: it buys a smaller artefact at the price of two that can
 # disagree about which commit they are.
 
-FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS build
+FROM node:24-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53 AS build
 
 WORKDIR /app
 
@@ -29,7 +29,7 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS runtime
+FROM node:24-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53 AS runtime
 
 LABEL org.opencontainers.image.source="https://github.com/rheckart/caballus"
 LABEL org.opencontainers.image.description="Operations for a horse rescue."
