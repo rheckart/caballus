@@ -34,6 +34,7 @@ than `postgres:5432`.
 | Secret        | What it is                                          |
 | ------------- | --------------------------------------------------- |
 | `VPS_SSH_KEY` | The private half of the deploy key described below. |
+| `TS_OAUTH_CLIENT_ID`, `TS_OAUTH_SECRET` | A Tailscale OAuth client (scope Auth Keys: write, tag `tag:ci`). The deploy job joins the tailnet with it and SSHes to the VPS's tailnet address, `100.83.238.108`. |
 
 Publishing needs no stored secret: `ci.yml` grants its `publish` job
 `packages: write`, and the built-in `GITHUB_TOKEN` writes
@@ -314,8 +315,12 @@ the moment is a person's to choose.
 `deploy.sh` does the same thing over SSH when CI is the thing that is broken:
 
 ```bash
-ssh root@caballus.tech /docker/caballus/deploy.sh <tag>
+ssh caballus sudo /docker/caballus/deploy.sh <tag>
 ```
+
+(`caballus` is an `~/.ssh/config` host for user `rob`, which has sudo. Since
+2026-10-26 root accepts only the forced-command CI keys, plus the Hostinger web
+console.)
 
 It pulls, records the image in `.env`, migrates as a one-shot container that
 must succeed, starts the application, and then polls `https://caballus.tech/health`
@@ -356,8 +361,8 @@ a week first. If a value has to change without a deploy, change it in the vault
 and render:
 
 ```bash
-ssh root@caballus.tech
-cd /docker/caballus && ./render-env.sh && docker compose up -d app
+ssh caballus
+cd /docker/caballus && sudo ./render-env.sh && sudo docker compose up -d app
 ```
 
 `up -d` rather than `restart`, and this is the trap worth knowing on its own: a

@@ -23,6 +23,17 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      - name: Join the tailnet
+        # SSH on the VPS is reachable over Tailscale, and public port 22 is
+        # closing. The runner joins as tag:ci for this job only; the tailnet
+        # policy lets tag:ci reach tag:vps on tcp:22 and nothing else.
+        uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd # v4.2.0
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+          ping: 100.83.238.108
+
       - name: The key and the host it is allowed to reach
         # The host key is written here rather than kept as a secret: a public
         # key is public, and pinning it means a box that was silently recreated
@@ -36,5 +47,6 @@ jobs:
 
       - name: Deploy
         run: |
-          ssh -i ~/.ssh/id_deploy -o BatchMode=yes root@caballus.tech \
-            /docker/caballus/deploy.sh '${{ inputs.tag }}'
+          # The VPS's tailnet address; HostKeyAlias keeps the pinned key above.
+          ssh -i ~/.ssh/id_deploy -o BatchMode=yes -o HostKeyAlias=caballus.tech \
+            root@100.83.238.108 /docker/caballus/deploy.sh '${{ inputs.tag }}'
