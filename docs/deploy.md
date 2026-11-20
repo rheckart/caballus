@@ -424,6 +424,20 @@ sign-in, `claimAccount` refuses each one, and nobody can sign in at all. So once
 code. The rewrite signs nobody out — a session points at a `user` id, never at
 an address.
 
+**Rolling back past #112 needs `.env.previous` as well as the tag** (ADR 0030).
+From #112 on, the render writes `RESCUES` and no `APP_ORG_ID`, and an image from
+before #112 reads `APP_ORG_ID` on every request — so the old tag on the new
+`.env` boots, answers `/health`, and refuses every page. `deploy.sh`'s own
+automatic rollback puts the tag back and not the secrets, so if the first deploy
+of #112 rolls itself back, finish it by hand:
+
+```bash
+cd /docker/caballus && cp .env.previous .env && docker compose up -d app
+```
+
+`deploy.sh` checks the sign-in page as well as `/health` from #112 on, so a map
+that rendered wrong is caught rather than deployed green.
+
 **A rollback puts the tag back and not the secrets.** It always was about which
 image is running, and now that every deploy re-renders `.env`, that distinction
 has to be said out loud: reverting the secrets too would undo the very value

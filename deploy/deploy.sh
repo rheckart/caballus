@@ -81,17 +81,30 @@ say "waiting for health"
 # `database` out of the body rather than the status code: `/health` is also a
 # 503 when the backups are stale, and a broken backup job is not a reason to
 # roll back a working image.
+#
+# And then a real page, because `/health` cannot see the one failure that takes
+# every rescue down at once. `scripts/serve.mjs` answers `/health` before the
+# application runs, and the application reads `RESCUES` on its first real
+# request (ADR 0030) — so a map that rendered wrong, or arrived with its quotes
+# still on, is a green health check over an application that refuses every
+# page. The existing rescue's sign-in screen has to answer 200 too.
 for attempt in $(seq 1 30); do
   if curl -sS -m 5 https://caballus.tech/health 2>/dev/null | grep -q '"database":"ok"'; then
     say "healthy after ${attempt}0s or less"
     curl -sS https://caballus.tech/health; echo
-    say "deployed $IMAGE"
-    exit 0
+    PAGE=$(curl -sS -m 10 -o /dev/null -w '%{http_code}' https://caballus.tech/login 2>/dev/null || true)
+    if [ "$PAGE" = "200" ]; then
+      say "the sign-in page answers 200"
+      say "deployed $IMAGE"
+      exit 0
+    fi
+    say "healthy, but the sign-in page answered ${PAGE:-nothing} — the application is refusing requests"
+    break
   fi
   sleep 5
 done
 
-say "did not become healthy — rolling back to $PREVIOUS"
+say "did not come up — rolling back to $PREVIOUS"
 # The tag, and deliberately not the secrets. A rollback has always been about
 # which image is running; silently reverting .env as well would undo the very
 # secret somebody just deployed in order to fix this. The previous file is kept

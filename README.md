@@ -74,7 +74,9 @@ Then:
 ```sh
 npm run db:migrate
 
-# Create the first organisation and its first President (run once)
+# Create the first organisation and its first President (run once). It prints
+# the organisation's id: put it in .env's RESCUES under localhost:3000, which is
+# how a request at that host knows which rescue it is for.
 npm run bootstrap -- "Your Rescue" America/New_York "Your Name" you@example.com
 
 npm run dev    # http://localhost:3000
