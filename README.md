@@ -87,15 +87,17 @@ Sign in with the email you bootstrapped; the code arrives in Mailpit.
 ### Optional configuration
 
 Everything else in `.env.example` is off by default, and each one fails loudly
-rather than pretending to work when unset:
+rather than pretending to work when unset. Where the barn is, for weather
+readings and Condition evaluation, is on the rescue itself:
+`npm run bootstrap -- --org <id> --barn <lat>,<lon>`.
 
-| Variable                          | Turns on                                                    |
-| --------------------------------- | ----------------------------------------------------------- |
-| `BARN_LATITUDE`, `BARN_LONGITUDE` | Weather readings and Condition evaluation                   |
-| `BOARD_TOKEN`                     | The barn tablet (`/board?token=…`)                          |
-| `OPENROUTER_API_KEY`              | The Whiteboard Read                                         |
-| `TWILIO_*`                        | SMS sign-in and urgent texts (Twilio test credentials work) |
-| `SENTRY_DSN`, `VITE_SENTRY_DSN`   | Error reporting                                             |
+| Variable                        | Turns on                                                    |
+| ------------------------------- | ----------------------------------------------------------- |
+| `RESCUES` → `boardToken`        | The barn tablet (`/board?token=…`)                          |
+| `RESCUES` → `"sms": true`       | Texts from that rescue (one sender, one registered rescue)  |
+| `OPENROUTER_API_KEY`            | The Whiteboard Read                                         |
+| `TWILIO_*`                      | SMS sign-in and urgent texts (Twilio test credentials work) |
+| `SENTRY_DSN`, `VITE_SENTRY_DSN` | Error reporting                                             |
 
 `.env.example` explains every variable in full.
 

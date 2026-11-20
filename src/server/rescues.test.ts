@@ -91,6 +91,11 @@ describe('RESCUES, the one piece of configuration keyed by host', () => {
       /malformed/,
     ],
     [
+      'a kiosk token with a character compose would read',
+      JSON.stringify({ 'caballus.tech': { orgId: A, boardToken: "a-token-long-enough-but-it's" } }),
+      /malformed/,
+    ],
+    [
       'a kiosk token anybody could guess',
       JSON.stringify({ 'caballus.tech': { orgId: A, boardToken: 'barn' } }),
       /malformed/,

@@ -69,11 +69,18 @@ export interface Rescue {
 //
 // A kiosk token short enough to guess is a feed grid anybody can read; the
 // floor is the 32 bytes `.env.example` tells an operator to generate, as
-// base64url, with room below it for a hand-made one.
+// base64url, with room below it for a hand-made one. base64url and nothing
+// else, which is also what keeps a quote or a dollar sign out of a line compose
+// reads — and `deploy/render-env.sh` checks the same pattern, so the render and
+// the application cannot disagree about a token.
+const KIOSK_TOKEN = /^[A-Za-z0-9_-]{24,}$/
 const entry = z
   .object({
     orgId: z.guid(),
-    boardToken: z.string().min(24).optional(),
+    boardToken: z
+      .string()
+      .regex(KIOSK_TOKEN, 'a kiosk token is at least 24 base64url characters')
+      .optional(),
     sms: z.boolean().optional(),
   })
   .strict()

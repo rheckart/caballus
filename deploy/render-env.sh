@@ -109,8 +109,8 @@ for key, rescue in rescues.items():
     if rescue["orgId"].lower() in orgs:
         sys.exit("RESCUES maps two hosts to the same organisation: " + rescue["orgId"])
     orgs.add(rescue["orgId"].lower())
-    if "boardToken" in rescue and (not isinstance(rescue["boardToken"], str) or len(rescue["boardToken"]) < 24):
-        sys.exit("RESCUES entry for " + key + " has a kiosk token shorter than 24 characters")
+    if "boardToken" in rescue and (not isinstance(rescue["boardToken"], str) or not re.match(r"^[A-Za-z0-9_-]{24,}$", rescue["boardToken"])):
+        sys.exit("RESCUES entry for " + key + " has a kiosk token shorter than 24 characters, or not base64url")
     if "sms" in rescue and not isinstance(rescue["sms"], bool):
         sys.exit("RESCUES entry for " + key + " has an sms that is not true or false")
 ' "$RESCUES_VALUE" 2>&1); then
