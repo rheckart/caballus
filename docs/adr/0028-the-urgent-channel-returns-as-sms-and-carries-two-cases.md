@@ -1,9 +1,12 @@
 ---
 status: accepted
 amends: 0009 (SMS returns for notifications), 0018 (an Announcement may be sent), 0006 (the ownership question, deferred rather than closed)
+amended-by: 0030, on each rescue texting under its own registration
 ---
 
 # The urgent channel returns as SMS, and it carries exactly two cases
+
+> **Amended by ADR 0030, and the tripwire below has fired.** A second rescue cannot send under a Sole Proprietor brand registered to the maintainer for the first one, and sharing one number would share one STOP list between two rescues' volunteers. So each rescue is its own brand, campaign and number — a Twilio subaccount if the maintainer's account can be an ISV, the rescue's own account if not — and `src/server/sms.ts` holds a sender and counts the daily cap of 120 **per rescue**. The first rescue registers its own brand against its own EIN as written below, and its number changes. Twilio's opt-out list does not move with it: `sms_stopped_at` is the copy that carries every STOP across, which is a second reason, after #82, that it exists. Verify stays one service for every rescue (ADR 0029).
 
 ADR 0009 dropped SMS outright and wrote down what would bring it back: _"a volunteer who cannot be onboarded because they have no usable email"_, the whiteboard tripwire, or #11 being genuinely needed. The rescue has now said the thing that fires the first of those in a different key — **the volunteers least likely to adopt a new tool are the ones the app most needs to reach**, and email is not reaching them. Facebook is not either; it is where information goes to scroll away.
 

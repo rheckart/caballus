@@ -1,9 +1,12 @@
 ---
 status: accepted
 extends: 0008 (the Account is claimed, and revocation is a delete with no staleness window), 0009 (email is the only channel, and therefore the credential), 0010 (a floor rather than a third axis past the two reasons anybody may act), 0012 (the floor's own reading of *your own*), 0017 (what stays behind `roster`, and why), 0019 (no fifth hand-rolled table)
+amended-by: 0030, on `/me/email` no longer writing `user`
 ---
 
 # A Volunteer may edit their own contact details, and changing the email is changing the credential
+
+> **Amended by ADR 0030, on the second writer.** `/me/email` moved `volunteers.email` and Better Auth's `user.email` in one transaction, and that was the one deliberate exception to `revoke.ts`'s rule against a second writer. It goes away: `user` is keyed by an opaque address derived from the Volunteer, so moving the real address touches `volunteers` alone. The code at the new address, the session purge and the notice to the old address all stand.
 
 Until this decision nothing in this application let a person change anything about themselves. `/me` is a read. Every write about a Volunteer — `/volunteers/date-of-birth`, `/volunteers/orientation`, `/volunteers/release`, `/volunteers/roles`, `/volunteers/medication-authority` — takes a `volunteerId`, sits behind `roster`, and demands a `reason`. A volunteer whose mobile number changed had to find a Coordinator.
 

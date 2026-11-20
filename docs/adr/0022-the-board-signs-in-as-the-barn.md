@@ -1,9 +1,12 @@
 ---
 status: accepted
 extends: 0010 (a fifth authorization, and the first that is not a person; the read-everything floor gains one non-Volunteer reader), 0008 (identity is Better Auth's and this is deliberately not identity), 0016 (a sixth entry in *what becomes a type*: the Board's authorization cannot be spelled on a write)
+amended-by: 0030, on one kiosk token per rescue
 ---
 
 # The Board signs in as the barn, and the credential is configuration
+
+> **Amended by ADR 0030, on there being more than one barn.** `BOARD_TOKEN` becomes one kiosk token per rescue, still in configuration and still compared in constant time, and the token only opens the Board of the rescue whose host it is presented at. This is not the tripwire below firing — that was a second tablet at one rescue, and it still means a device record. It is a second rescue with one tablet of its own.
 
 The Board is a rescue-owned tablet on a wall in the feed room, showing the grid all day (`CONTEXT.md`'s Board). It records nothing and therefore credits no actor. But something has to authorize the read, and every existing answer is wrong for it:
 

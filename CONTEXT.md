@@ -51,7 +51,7 @@ The date a Volunteer was oriented, and who recorded it. It is the first of the t
 _Avoid_: onboarding, training, induction, sign-off
 
 **Account**:
-A Volunteer's means of signing in, claimed by verifying a code sent to their email address. A Volunteer may have none — someone who never onboards, or a child too young for one — and may have theirs revoked. Student volunteers are not that case: they take an Orientation and hold an Account like anyone else. Nothing in the care record ever references an Account.
+A Volunteer's means of signing in, claimed by verifying a code sent to their email address. A Volunteer may have none — someone who never onboards, or a child too young for one — and may have theirs revoked. An Account belongs to one rescue: a person who volunteers at two holds two, and signs in at each. Student volunteers are not that case: they take an Orientation and hold an Account like anyone else. Nothing in the care record ever references an Account.
 _Avoid_: login, user account, profile, credentials
 
 ### Roles and permissions

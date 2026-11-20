@@ -1,9 +1,12 @@
 ---
 status: accepted
 amends: 0009 (login no longer stays on email permanently), 0027 (a Volunteer changes their own mobile, verified)
+amended-by: 0030, on which Account the session after Verify belongs to
 ---
 
 # SMS is a second door into the app, and Verify keeps login off the carrier queue
+
+> **Amended by ADR 0030, on what the session after Verify is minted for.** _"A sign-in OTP for the Volunteer's own address created and consumed without being sent"_ is now minted for the Volunteer's **opaque Account key**, never their real address. The real address was a key shared across every rescue, and minting a session for it after a handset check at one rescue handed out the `user` of whoever held that address at another. Verify itself, the two Services and everything about the mobile as a credential stand, and Verify stays one service for every rescue.
 
 ADR 0009 ended with a sentence meant to be permanent: _"it returns for notifications only. Login stays on email permanently."_ That sentence rested on an argument, and the argument no longer holds.
 

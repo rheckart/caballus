@@ -1,9 +1,12 @@
 ---
 status: accepted, credential superseded by 0009
+amended-by: 0030, on Accounts belonging to one rescue and on the host choosing it
 ---
 
 # Better Auth owns identity, and nothing else
 
+> **Amended by ADR 0030, on what a `user` is and where the organisation comes from.** Two sentences below are withdrawn. _"Never from a URL, header or body"_ now has one exception, the `Host` header, because it chooses which rescue's door was knocked on and is never believed about who is knocking: the session must still resolve to an Account of that rescue. _"When a volunteer belongs to more than one rescue, the active organisation is a server-side session attribute changed by an explicit switch"_ is withdrawn outright — **an Account belongs to one rescue**, Better Auth's `user` is keyed by an opaque address derived from the Volunteer it was claimed for rather than by a real one, and a person at two rescues holds two Accounts. The shared `user.email` this ADR left global was a door between rescues the moment a second one existed; ADR 0030 records how. Better Auth still owns identity and nothing else.
+>
 > **Superseded in part by ADR 0009.** The credential is now an email one-time code, not an SMS one, and v1 sends no SMS at all. Everything that follows about the provider, org scoping, the Board's device token, sessions, revocation and support access still stands — read the SMS specifics below as history, including the two-sender arrangement, the STOP recovery path and the carrier-mandated consent capture, all of which ADR 0009 discharges.
 
 Authentication is a self-hosted Better Auth running against the same Postgres as the application, owning exactly three tables: `user`, `session` and `verification`. Volunteers sign in with an SMS one-time code and stay signed in. Organisation membership, roles, domain scopes and shift-level authority are ours, in our tables, where row-level security can reach them.
