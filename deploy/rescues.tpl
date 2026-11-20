@@ -3,7 +3,7 @@
 # `render-env.sh` renders this through 1Password, checks every line, and
 # assembles the lines into the two things that must never disagree: the
 # application's `RESCUES` map and Traefik's router rule, which is how every
-# host gets routed to the one app service and gets its own certificate. They
+# host gets routed to the one app service with a certificate from its resolver. They
 # are written into `.env` together, from this one list.
 #
 # Each line is a JSON object:

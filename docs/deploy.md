@@ -18,7 +18,7 @@ convention — Traefik lives at `/docker/traefik/`.
 own host — `caballus.tech` is the existing one — and the application resolves
 which rescue a request is for from the `Host` it arrived at, through `RESCUES`.
 Traefik routes every host in `deploy/rescues.tpl` to the one app service with a
-certificate each; one Postgres holds every rescue's rows behind row-level
+certificate from Traefik's resolver; one Postgres holds every rescue's rows behind row-level
 security. Adding a rescue is a deploy (_Adding a rescue_).
 
 **CI is on GitHub's hosted runners.** ADR 0007 put it on the OMV8 box at
@@ -132,7 +132,7 @@ rules the application parses `RESCUES` by, refuses a host or an organisation
 that appears twice, and writes two things into `.env` from that one list: the
 application's `RESCUES` map, and `CABALLUS_ROUTER_RULE`, which
 `docker-compose.yml` hands Traefik so every host is routed to the one app
-service and gets its own certificate. A host can therefore never be routed
+service and is given a certificate by Traefik's resolver. A host can therefore never be routed
 without being mapped, or mapped without being routed. The check runs on
 `python3`, which the Ubuntu image on the box ships; `render-env.sh` says so if
 it is ever missing. _Adding a rescue_, below, is the whole procedure.
@@ -431,8 +431,12 @@ rescue (#114); until both land, a new rescue runs on email.
 costs nothing — `<slug>.caballus.tech`. Add an `A` record for it pointing at the
 VPS's public address, the same one `caballus.tech` points at (and an `AAAA` if
 `caballus.tech` has one). This is the one step a person does by hand outside the
-box and the repository. It has to resolve **before** the deploy in step 5, or
-Traefik's certificate request fails and the browser warns until it retries:
+box and the repository. It has to resolve **before** the deploy in step 5 —
+treat that as a hard precondition, not a nicety. Traefik's documentation says
+each `Host` in the router's rule leads to its own certificate request, and says
+nothing about whether one failed challenge holds the others up; a host whose
+challenge fails is served Traefik's default certificate, and its log names the
+failure. Do not find out the answer on the existing rescue's certificate:
 
 ```bash
 dig +short <slug>.caballus.tech   # the VPS's address, same as caballus.tech
@@ -495,7 +499,15 @@ that does not parse, with `.env` untouched. Nobody at the existing rescue sees
 anything change and nobody is signed out: a session is the same row at the
 same host it always was.
 
-**Prove it.** `https://<slug>.caballus.tech/` shows the public page over a real
+**Prove it.** `deploy.sh` proves the existing rescue still answers — `/health`
+and its sign-in page — and nothing about the new one, so check the new host
+by hand. Then look at Traefik's log for an ACME error naming any host:
+
+```bash
+ssh caballus 'cd /docker/traefik && sudo docker compose logs --since 10m 2>&1 | grep -i acme'
+```
+
+`https://<slug>.caballus.tech/` shows the public page over a real
 certificate (Traefik takes about a minute to get one, and serves its own default
 until it does). `https://<slug>.caballus.tech/login` is the sign-in screen. A
 host nobody mapped — a typo — answers _No rescue is served at this address_

@@ -88,8 +88,12 @@ services:
       # application's `RESCUES` is assembled from — `render-env.sh` writes both
       # into `.env` out of `rescues.tpl`, so a host cannot be routed without
       # being mapped or mapped without being routed. The certresolver below
-      # gets a certificate for each `Host` in the rule. `www.caballus.tech` is
-      # the existing rescue's alias, redirected to its apex below.
+      # takes its certificates from the `Host`s in the rule — Traefik's own
+      # documentation says each leads to a certificate request, and does not say
+      # whether one failed challenge holds the others up, so a new host's DNS
+      # resolves before the deploy (docs/deploy.md, Adding a rescue).
+      # `www.caballus.tech` is the existing rescue's alias, redirected to its
+      # apex below.
       - traefik.http.routers.caballus.rule=${CABALLUS_ROUTER_RULE:?render-env.sh writes it} || Host(`www.caballus.tech`)
       - traefik.http.routers.caballus.entrypoints=websecure
       - traefik.http.routers.caballus.tls.certresolver=letsencrypt
