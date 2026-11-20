@@ -116,15 +116,15 @@ and the rescue's slug (ADR 0030, #116). Every reference in `.env.tpl` and
 `rescues.tpl` must resolve or the render fails — `op inject` errors on one it
 cannot find, and the deploy stops there with `.env` untouched.
 
-| Item            | Fields                                                                                        |
-| --------------- | --------------------------------------------------------------------------------------------- |
-| `postgres`      | `password` (the owner), `app-password` (the `caballus_app` role)                              |
-| `app`           | `better-auth-secret`                                                                          |
-| `smtp`          | `url`                                                                                         |
-| `openrouter`    | `api-key`                                                                                     |
-| `twilio`        | `account-sid`, `auth-token`, `from-number`, `verify-service-sid`, `verify-change-service-sid` |
-| `s4`            | `access-key-id`, `secret-access-key` — read by `backup.env.tpl` only (_Backups_)              |
-| `rescue-<slug>` | `host`, `org-id`, `board-token`; `barn-latitude`, `barn-longitude` (read by a person, once)   |
+| Item            | Fields                                                                                          |
+| --------------- | ----------------------------------------------------------------------------------------------- |
+| `postgres`      | `password` (the owner), `app-password` (the `caballus_app` role)                                |
+| `app`           | `better-auth-secret`                                                                            |
+| `smtp`          | `url`                                                                                           |
+| `openrouter`    | `api-key`                                                                                       |
+| `twilio`        | `account-sid`, `auth-token`, `from-number`, `verify-service-sid`, `verify-change-service-sid`   |
+| `s4`            | `access-key-id`, `secret-access-key` — read by `backup.env.tpl` only (_Backups_)                |
+| `rescue-<slug>` | `hostname`, `org-id`, `board-token`; `barn-latitude`, `barn-longitude` (read by a person, once) |
 
 **A rescue is a line of `deploy/rescues.tpl` and an item in the vault.**
 `render-env.sh` renders the lines through 1Password, checks each one by the
@@ -137,16 +137,15 @@ without being mapped, or mapped without being routed. The check runs on
 `python3`, which the Ubuntu image on the box ships; `render-env.sh` says so if
 it is ever missing. _Adding a rescue_, below, is the whole procedure.
 
-**The existing rescue is `rescue-freedom-hill`.** Its `host` is
+**The existing rescue is `rescue-freedom-hill`.** Its `hostname` is
 `caballus.tech`, its `org-id` is the id `bootstrap` minted on the box, and its
 `board-token` is the barn tablet's token, so the tablet keeps working with no
 re-enrolment. Its line in `rescues.tpl` alone carries `"sms": true`, because the
 one Twilio sender is registered for it alone (ADR 0028, #113). How the values
 got there, in the order the three tickets landed:
 
-- **#112** introduced `RESCUES` and briefly read the host and org id from `app`.
-  Their home is now `rescue-freedom-hill`; if `app/host` was never added, skip
-  straight to the rescue item.
+- **#112** introduced `RESCUES` and briefly read the host and org id from `app`
+  (`app/hostname` and `app/org-id`). Their home is now `rescue-freedom-hill`.
 - **#113** moved `BOARD_TOKEN` into the rescue's entry and retired `APP_URL` — a
   link in a text names the rescue's own host, and Better Auth reads nothing
   from an origin here (`src/server/auth/auth.ts` says what was checked), so the
@@ -164,8 +163,8 @@ got there, in the order the three tickets landed:
 
 - **#116** moved the whole map out of `.env.tpl` into `rescues.tpl`, one line
   per rescue. Before that deploy, create `rescue-freedom-hill` with the three
-  fields above, copied from `app` — `app/org-id`, `app/board-token` and
-  `app/host` (or `caballus.tech`) — and only then delete them from `app`.
+  fields above, copied from `app` — `app/hostname`, `app/org-id` and
+  `app/board-token` — and only then delete them from `app`.
 
 **The order to copy the files in, for #116.** The compose file's router rule is
 `${CABALLUS_ROUTER_RULE}`, which only a render writes, and every
@@ -462,7 +461,7 @@ refuses for the rescue, and `--org <id> --barn <lat>,<lon>` alone adds it later.
 
 **3. Create its item in the vault.** `Caballus` / `rescue-<slug>`, with:
 
-- `host` — `<slug>.caballus.tech`, exactly as a browser sends it: lowercase, no
+- `hostname` — `<slug>.caballus.tech`, exactly as a browser sends it: lowercase, no
   `https://`, no path.
 - `org-id` — the id step 2 printed.
 - `board-token` — a fresh kiosk token for its barn tablet, made once and never
@@ -475,7 +474,7 @@ change, and leave `"sms"` out:
 
 ```json
 {
-  "host": "{{ op://Caballus/rescue-<slug>/host }}",
+  "host": "{{ op://Caballus/rescue-<slug>/hostname }}",
   "orgId": "{{ op://Caballus/rescue-<slug>/org-id }}",
   "boardToken": "{{ op://Caballus/rescue-<slug>/board-token }}"
 }

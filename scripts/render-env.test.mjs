@@ -55,10 +55,10 @@ function vaultFor(overrides = {}) {
     'Caballus/postgres/password': 'owner-password',
     'Caballus/postgres/app-password': 'app-password',
     'Caballus/app/better-auth-secret': 'secret',
-    'Caballus/rescue-freedom-hill/host': 'caballus.tech',
+    'Caballus/rescue-freedom-hill/hostname': 'caballus.tech',
     'Caballus/rescue-freedom-hill/org-id': ORG,
     'Caballus/rescue-freedom-hill/board-token': TOKEN,
-    'Caballus/rescue-second/host': 'second.caballus.tech',
+    'Caballus/rescue-second/hostname': 'second.caballus.tech',
     'Caballus/rescue-second/org-id': SECOND_ORG,
     'Caballus/smtp/url': 'smtps://user:pass@smtp.example:465',
     'Caballus/twilio/account-sid': 'AC',
@@ -117,7 +117,7 @@ describe('render-env.sh', () => {
 
   /** A second rescue's line, the way _Adding a rescue_ in docs/deploy.md writes it. */
   const SECOND =
-    '{"host":"{{ op://Caballus/rescue-second/host }}","orgId":"{{ op://Caballus/rescue-second/org-id }}"}'
+    '{"host":"{{ op://Caballus/rescue-second/hostname }}","orgId":"{{ op://Caballus/rescue-second/org-id }}"}'
 
   async function withLines(...lines) {
     const existing = await readFile(RESCUE_LIST, 'utf8')
@@ -205,7 +205,7 @@ describe('render-env.sh', () => {
   it('refuses a rescue whose item is missing, and names the reference', async () => {
     await writeFile(join(stack, '.env'), 'WORKING=yes\n')
     await withLines(
-      '{"host":"{{ op://Caballus/rescue-third/host }}","orgId":"{{ op://Caballus/rescue-third/org-id }}"}',
+      '{"host":"{{ op://Caballus/rescue-third/hostname }}","orgId":"{{ op://Caballus/rescue-third/org-id }}"}',
     )
 
     const run = render(vaultFor())
@@ -225,7 +225,7 @@ describe('render-env.sh', () => {
   it.each([
     [
       'a host that is not one',
-      { 'Caballus/rescue-freedom-hill/host': 'https://caballus.tech' },
+      { 'Caballus/rescue-freedom-hill/hostname': 'https://caballus.tech' },
       /not one/,
     ],
     [

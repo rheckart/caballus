@@ -18,7 +18,7 @@
 #
 # Every value that only the deployment knows is a reference into that rescue's
 # own 1Password item, which is named `rescue-` and the rescue's slug, with the
-# fields `host`, `org-id` and `board-token`. `docs/deploy.md`, under _Adding a
+# fields `hostname`, `org-id` and `board-token`. `docs/deploy.md`, under _Adding a
 # rescue_, is the whole procedure.
 #
 # Adding a line is a deploy, deliberately — the way a migration is (ADR 0007).
@@ -27,4 +27,4 @@
 # even inside a comment: `op inject` scans the whole file for it and fails on a
 # bare one. That is why this header says "reference" instead of showing one.
 
-{"host":"{{ op://Caballus/rescue-freedom-hill/host }}","orgId":"{{ op://Caballus/rescue-freedom-hill/org-id }}","boardToken":"{{ op://Caballus/rescue-freedom-hill/board-token }}","sms":true}
+{"host":"{{ op://Caballus/rescue-freedom-hill/hostname }}","orgId":"{{ op://Caballus/rescue-freedom-hill/org-id }}","boardToken":"{{ op://Caballus/rescue-freedom-hill/board-token }}","sms":true}
