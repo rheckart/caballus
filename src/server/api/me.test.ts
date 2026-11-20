@@ -10,7 +10,7 @@
  * **The email cannot be asserted against a fake.** ADR 0027's whole argument is
  * that `volunteers.email` is the credential — `requestCode` gates on it — so
  * every claim here is a claim about rows two libraries own between them: that
- * both columns moved together, that the new address is the one a code now goes
+ * the address moved and the Account did not (ADR 0030), that the new address is the one a code now goes
  * to and the old one is not, that the code was minted under a type the login
  * screen structurally cannot reach, that it is spent after one use, and that
  * every other session is gone. A stub would agree with all of it while the
@@ -19,9 +19,9 @@
  *
  * Better Auth's `user`, `session` and `verification` carry no `org_id`, so they
  * are shared with every other suite on the box rather than fenced by the
- * policies. The wipe below is scoped to this file's own addresses instead of
- * emptying them, so that running beside a suite that also signs somebody in
- * cannot delete a row out from under it.
+ * policies. The wipe below is scoped to this file's own Volunteers and
+ * addresses instead of emptying them, so that running beside a suite that also
+ * signs somebody in cannot delete a row out from under it.
  *
  * Skipped, loudly, on a machine with no database or no `BETTER_AUTH_SECRET`:
  * `docker compose up -d`, then `psql -f scripts/provision-database.sql` and
@@ -44,6 +44,8 @@ import {
 import { forgetSendsForTest, setEmailTransport, type OutgoingEmail } from '../email'
 import { forgetTextsForTest, setSmsTransport, type OutgoingText } from '../sms'
 import { setVerifier, type VerifyPurpose } from '../auth/verify'
+import { accountKey } from '../auth/volunteers'
+import { forgetIdentities } from '../../test/identities'
 import { anonymousContext, currentOrgId } from '../request-context'
 import { api, buildApi } from './app'
 
@@ -58,9 +60,9 @@ const HILL_BARN = '00000000-0000-0000-0000-0000000000f9'
  * Every address this file uses ends here.
  *
  * Not decoration: it is what makes the wipe of Better Auth's own tables
- * scopable to this suite, and it keeps `user.email` — unique **globally**,
- * which is the seam ADR 0027 records — out of the way of every other suite's
- * addresses.
+ * scopable to this suite. Better Auth's `user` rows are keyed by Volunteer id
+ * rather than by these addresses (ADR 0030), so `wipe` finds them through this
+ * organisation's Volunteers instead.
  */
 const OURS = '@own.test'
 
@@ -207,19 +209,14 @@ describe.skipIf(!reachable)('your own contact details, through the API', () => {
   })
 
   async function wipe({ keepOrg = false }: { keepOrg?: boolean } = {}): Promise<void> {
+    // Better Auth's three first, by this organisation's Volunteers rather than
+    // wholesale — see the module note and `src/test/identities.ts`.
+    await forgetIdentities(owner, HILL_BARN)
+    await owner`delete from verification where identifier like ${`%${OURS}`}`
     await owner`delete from audit_entries where org_id = ${HILL_BARN}`
     await owner`delete from idempotency_keys where org_id = ${HILL_BARN}`
     await owner`delete from volunteer_accounts where org_id = ${HILL_BARN}`
     await owner`delete from volunteers where org_id = ${HILL_BARN}`
-    // Better Auth's three, by address rather than wholesale — see the module
-    // note. `session` and `volunteer_accounts` both cascade from `user`, so the
-    // order below is for readability rather than for the constraints.
-    await owner`
-      delete from "session"
-      where user_id in (select id from "user" where email like ${`%${OURS}`})
-    `
-    await owner`delete from "user" where email like ${`%${OURS}`}`
-    await owner`delete from verification where identifier like ${`%${OURS}`}`
     if (!keepOrg) await owner`delete from orgs where id = ${HILL_BARN}`
   }
 
@@ -378,17 +375,19 @@ describe.skipIf(!reachable)('your own contact details, through the API', () => {
   })
 
   describe('the email, which is the credential', () => {
-    it('moves both columns, and the new address is the one that signs in', async () => {
+    it('moves the address, leaves the Account, and the new address signs in', async () => {
       const kate = await signedIn('Kate Ellery', `kate${OURS}`)
 
       const code = await askForCode(kate.cookie, `kate.nash${OURS}`)
       const changed = await post(api, '/me/email', { email: `kate.nash${OURS}`, code }, kate.cookie)
 
       expect(changed.status).toBe(200)
-      // Two tables holding one truth. A half-applied change is the lockout ADR
-      // 0027 describes with extra steps.
       expect(await emailOfVolunteer(kate.volunteerId)).toBe(`kate.nash${OURS}`)
-      expect(await emailOfUser(kate.userId)).toBe(`kate.nash${OURS}`)
+      // And **only** `volunteers` (ADR 0030, amending ADR 0027): the Account is
+      // keyed by the Volunteer rather than by an address, so it has nothing to
+      // move — and a change at one rescue cannot reach a `user` another rescue
+      // signs in by.
+      expect(await emailOfUser(kate.userId)).toBe(accountKey(kate.volunteerId))
 
       // And the credential has actually moved, which is the only test of it
       // that matters: `requestCode` gates on `volunteers.email`, so this is the
@@ -398,6 +397,12 @@ describe.skipIf(!reachable)('your own contact details, through the API', () => {
         sent: false,
         because: 'unrecognised-email',
       })
+
+      // Onto the same Account: the code went to the new address and was checked
+      // against the key, which is the row her other sessions already belong to.
+      const answered = await submitCode(orgId(), `kate.nash${OURS}`, codeFor(`kate.nash${OURS}`))
+      if (!answered.signedIn) throw new Error(`Not signed in: ${answered.because}`)
+      expect(await userIdOf(kate.volunteerId)).toBe(kate.userId)
     })
 
     it('tells the old address that its account has moved', async () => {

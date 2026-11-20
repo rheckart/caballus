@@ -13,8 +13,14 @@
  * Auth's.** Verify proves the handset and nothing else — it has no idea who
  * this rescue's people are — so once it says *approved*, the session is minted
  * through the one path that already knows how to claim an Account: a sign-in
- * OTP for the Volunteer's own address, created and consumed here without ever
- * being sent anywhere. That is not a back door. The gate above it is the same
+ * OTP for the Volunteer's own Account identifier, created and consumed here
+ * without ever being sent anywhere.
+ *
+ * **A code is checked against the Account and sent to the record** (ADR 0030).
+ * Better Auth's `user` is keyed by an opaque address derived from the Volunteer
+ * it was claimed for (`accountKey` in `./volunteers.ts`), and the identifier it
+ * is asked about is always resolved from this rescue's Volunteer — never from
+ * what was typed — so an Account answers for one Volunteer of one rescue. That is not a back door. The gate above it is the same
  * gate the emailed code passes, and the Account claimed is the same row; what
  * changes is which of two facts about the same person was proved.
  *
@@ -41,6 +47,7 @@ import { sendEmail } from '../email'
 import { checkVerification, sendVerification } from './verify'
 import { looksLikeMobile, normaliseMobile } from '../../shared/mobile'
 import {
+  accountIdentifier,
   claimAccount,
   hasLeftTheRescue,
   hasLeftTheRescueByMobile,
@@ -119,6 +126,12 @@ export async function requestCode(orgId: OrgId, identifier: string): Promise<Cod
     return { sent: false, because: 'too-many-codes' }
   }
 
+  // Non-null: the gate refused everything this can be null for.
+  const volunteer = await volunteerByEmail(orgId, email)
+  if (volunteer === null) {
+    throw new Error('The volunteer that passed the sign-in gate is no longer there')
+  }
+
   try {
     // Minted here and sent here, rather than handed to Better Auth's own
     // sender. That sender's rejection is swallowed — `sent: true` comes back
@@ -126,8 +139,17 @@ export async function requestCode(orgId: OrgId, identifier: string): Promise<Cod
     // is (ADR 0009), *we sent you a code* has to be true when it is said.
     // `createVerificationOTP` writes the same row the same way, hashed and
     // five minutes long; the only thing that moves is who does the sending.
-    const otp = await auth().api.createVerificationOTP({ body: { email, type: 'sign-in' } })
-    await sendEmail(codeEmail(email, otp))
+    //
+    // **Checked against the Account, sent to the record** (ADR 0030). The code
+    // is minted for this Volunteer's own Account identifier and mailed to the
+    // address on `volunteers` — never minted for what was typed, which would
+    // let a second rescue's Volunteer carrying the same address reach the first
+    // rescue's `user`.
+    const identifier = await accountIdentifier(orgId, volunteer.id)
+    const otp = await auth().api.createVerificationOTP({
+      body: { email: identifier, type: 'sign-in' },
+    })
+    await sendEmail(codeEmail(volunteer.email, otp))
   } catch {
     // Deliberately not re-thrown as a 500. The volunteer needs to be told that
     // nothing is coming, which is a different thing from the app being broken,
@@ -168,11 +190,19 @@ export async function submitCode(
     return { signedIn: false, because: refused }
   }
 
-  const email = normaliseEmail(identifier)
+  // Looked up before the exchange rather than after it: the code was minted for
+  // this Volunteer's Account identifier, so that is what it is checked against
+  // (ADR 0030). A `null` here means the record vanished between the gate and
+  // now, and that is worth failing on.
+  const volunteer = await volunteerByEmail(orgId, normaliseEmail(identifier))
+  if (volunteer === null) {
+    throw new Error('The volunteer that passed the sign-in gate is no longer there')
+  }
+
   let answered
   try {
     answered = await auth().api.signInEmailOTP({
-      body: { email, otp: code.trim() },
+      body: { email: await accountIdentifier(orgId, volunteer.id), otp: code.trim() },
       returnHeaders: true,
     })
   } catch {
@@ -182,14 +212,6 @@ export async function submitCode(
     // distinction it drew would be a hint to somebody guessing.
     log('warn', 'sign_in_refused', { stage: 'submit_code', because: 'wrong-code' })
     return { signedIn: false, because: 'wrong-code' }
-  }
-
-  // The gate above already found the Volunteer; it is looked up again rather
-  // than threaded through, because between the two a `null` here would mean
-  // the record vanished mid-exchange and that is worth failing on.
-  const volunteer = await volunteerByEmail(orgId, email)
-  if (volunteer === null) {
-    throw new Error('The volunteer that passed the sign-in gate is no longer there')
   }
 
   // The Account, claimed. This is the only place Better Auth's user and the
@@ -293,11 +315,17 @@ async function submitCodeByMobile(
     throw new Error('The volunteer that passed the sign-in gate is no longer there')
   }
 
+  // The Volunteer's own Account identifier, and never `volunteer.email` (ADR
+  // 0030). This is the line that was the door between rescues: Verify proves a
+  // handset and nothing about an address, so minting for the address on the
+  // record handed rescue B's Volunteer whichever `user` held that address —
+  // rescue A's officer's, if B had typed it in.
+  const identifier = await accountIdentifier(orgId, volunteer.id)
   const otp = await auth().api.createVerificationOTP({
-    body: { email: volunteer.email, type: 'sign-in' },
+    body: { email: identifier, type: 'sign-in' },
   })
   const answered = await auth().api.signInEmailOTP({
-    body: { email: volunteer.email, otp },
+    body: { email: identifier, otp },
     returnHeaders: true,
   })
 

@@ -14,7 +14,7 @@
 import { and, eq, isNotNull, isNull } from 'drizzle-orm'
 
 import { forOrg, type OrgId } from '../../db/for-org'
-import { releaseSignatures, volunteerAccounts, volunteers } from '../../db/schema'
+import { releaseSignatures, users, volunteerAccounts, volunteers } from '../../db/schema'
 import { todayIn } from '../../shared/time'
 import { grantRoleIn } from '../roster/grants'
 import {
@@ -247,6 +247,74 @@ export async function recordFoundingRelease(
       )
     }
   })
+}
+
+/**
+ * The reserved, undeliverable domain every Account is keyed at (ADR 0030).
+ *
+ * `.invalid` is RFC 2606's: no resolver will ever answer for it, so an address
+ * here can never be delivered to anybody, whatever a future library version
+ * decides to send. Better Auth checks the address it is given with `z.email()`,
+ * which accepts it — spiked against the installed version before this was
+ * written, and pinned by `src/server/auth/one-rescue.test.ts`, which signs in
+ * through it.
+ */
+export const ACCOUNT_KEY_DOMAIN = 'account.invalid'
+
+/**
+ * The address Better Auth's `user` row is keyed by: the Volunteer's id at a
+ * domain nobody can receive mail at (ADR 0030).
+ *
+ * **An Account belongs to one rescue, and this is what makes it so.**
+ * `user.email` is unique across the whole database while `volunteers.email` is
+ * unique only within one organisation, so an Account keyed by a real address is
+ * a door between rescues: rescue B's Volunteer carrying rescue A's officer's
+ * address would sign in as A's `user`. Keyed by a Volunteer id, a `user` can
+ * only ever be the Account of the one Volunteer it was minted for, and
+ * `actorForUser` at any other organisation finds no `volunteer_accounts` row
+ * and answers nobody.
+ *
+ * The real address stays on `volunteers`, where it always lived: it is where a
+ * code is **sent**. This is where it is **checked**.
+ */
+export function accountKey(volunteerId: string): string {
+  return `${volunteerId}@${ACCOUNT_KEY_DOMAIN}`
+}
+
+/** Whether this address is an Account key rather than somebody's inbox. */
+export function isAccountKey(email: string): boolean {
+  return email.toLowerCase().endsWith(`@${ACCOUNT_KEY_DOMAIN}`)
+}
+
+/**
+ * What Better Auth is asked about when this Volunteer signs in — never what was
+ * typed, and never `volunteers.email` (ADR 0030).
+ *
+ * One rule for both sides of the rewrite that moves every `user.email` to its
+ * key. A Volunteer who has claimed an Account is checked against **that `user`
+ * row's current `email`**, read through `volunteer_accounts.user_id`: before
+ * the rewrite it is the real address it was claimed under, after it is the
+ * key, and either way it lands on the same row. A Volunteer with no Account yet
+ * is checked against `accountKey`, so the `user` Better Auth creates for them is
+ * keyed by them from the first sign-in.
+ *
+ * That is what closes the hole. Nothing a rescue can type resolves to a `user`
+ * its own Volunteer did not claim: the lookup starts from this organisation's
+ * Volunteer, and `volunteer_accounts` is scoped to it. A revoked link is still
+ * followed, deliberately — the gate refuses before this is asked, and resolving
+ * a revoked Volunteer to a fresh key would mint a second `user` that
+ * `claimAccount` then refuses.
+ */
+export async function accountIdentifier(orgId: OrgId, volunteerId: string): Promise<string> {
+  const [claimed] = await forOrg(orgId).run((db) =>
+    db
+      .select({ email: users.email })
+      .from(volunteerAccounts)
+      .innerJoin(users, eq(users.id, volunteerAccounts.userId))
+      .where(eq(volunteerAccounts.volunteerId, volunteerId))
+      .limit(1),
+  )
+  return claimed?.email ?? accountKey(volunteerId)
 }
 
 /**

@@ -27,6 +27,7 @@ import { emailOTP } from 'better-auth/plugins'
 import { rawDb } from '../../db/client'
 import { sessions, users, verifications } from '../../db/schema'
 import { sendEmail, type OutgoingEmail } from '../email'
+import { isAccountKey } from './volunteers'
 
 /**
  * The code, and the message it arrives in.
@@ -248,7 +249,17 @@ function build() {
         // none is. It is still the same message, so that any Better Auth path
         // that does reach it sends what a volunteer expects rather than
         // nothing.
+        //
+        // **It refuses an Account key rather than mailing it** (ADR 0030).
+        // Every `user` is keyed by an address at a reserved domain nobody can
+        // receive at, and nothing calls this today; the refusal is so that
+        // nothing ever can — a code addressed to a key is a code nobody was
+        // meant to read, and the real address is on `volunteers`, which this
+        // plugin cannot see.
         async sendVerificationOTP({ email, otp }) {
+          if (isAccountKey(email)) {
+            throw new Error('Refusing to mail a code to an Account key (ADR 0030)')
+          }
           await sendEmail(codeEmail(email, otp))
         },
       }),
