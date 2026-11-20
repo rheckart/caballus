@@ -24,6 +24,18 @@ const TEMPLATE = join(ROOT, 'deploy/.env.tpl')
 
 const RESCUE_LIST = join(ROOT, 'deploy/rescues.tpl')
 
+/**
+ * The existing rescue's line, exactly as the repository's list carries it.
+ *
+ * The tests below build their own list from this rather than copying the
+ * repository's whole file, because that file grows a line every time a rescue
+ * is added (ADR 0030) and a test about the render's rules must not change
+ * meaning when it does. The repository's real list is rendered whole, every
+ * line, by its own test at the end.
+ */
+const EXISTING_LINE =
+  '{"host":"{{ op://Caballus/rescue-freedom-hill/hostname }}","orgId":"{{ op://Caballus/rescue-freedom-hill/org-id }}","boardToken":"{{ op://Caballus/rescue-freedom-hill/board-token }}","sms":true}'
+
 const ORG = '01a03af7-0000-7000-8000-000000000001'
 const SECOND_ORG = '01a03af7-0000-7000-8000-000000000002'
 const TOKEN = 'a-kiosk-token-at-least-twenty-four-long'
@@ -77,7 +89,7 @@ describe('render-env.sh', () => {
   beforeEach(async () => {
     stack = await mkdtemp(join(tmpdir(), 'render-env-'))
     await copyFile(TEMPLATE, join(stack, '.env.tpl'))
-    await copyFile(RESCUE_LIST, join(stack, 'rescues.tpl'))
+    await writeFile(join(stack, 'rescues.tpl'), `${EXISTING_LINE}\n`)
     await writeFile(join(stack, 'op-token'), 'token\n')
     await chmod(join(stack, 'op-token'), 0o600)
     await writeFile(join(stack, 'op'), FAKE_OP)
@@ -120,11 +132,46 @@ describe('render-env.sh', () => {
     '{"host":"{{ op://Caballus/rescue-second/hostname }}","orgId":"{{ op://Caballus/rescue-second/org-id }}"}'
 
   async function withLines(...lines) {
-    const existing = await readFile(RESCUE_LIST, 'utf8')
-    await writeFile(join(stack, 'rescues.tpl'), [existing.trimEnd(), ...lines, ''].join('\n'))
+    await writeFile(join(stack, 'rescues.tpl'), [EXISTING_LINE, ...lines, ''].join('\n'))
   }
 
-  it('renders the existing rescue, alone, from the repository’s rescue list', async () => {
+  it('carries the existing rescue’s line exactly as this file assumes', async () => {
+    const list = await readFile(RESCUE_LIST, 'utf8')
+    expect(list.split('\n')).toContain(EXISTING_LINE)
+  })
+
+  it('renders every line of the repository’s own rescue list', async () => {
+    // A value for every reference the real list makes, so a rescue added to it
+    // is rendered and checked here the day it lands, by the same rules.
+    const list = await readFile(RESCUE_LIST, 'utf8')
+    await writeFile(join(stack, 'rescues.tpl'), list)
+    const vault = vaultFor()
+    let next = 0
+    for (const [, item, field] of list.matchAll(
+      /\{\{ op:\/\/Caballus\/(rescue-[a-z0-9-]+)\/([a-z-]+) \}\}/g,
+    )) {
+      const ref = `Caballus/${item}/${field}`
+      if (ref in vault) continue
+      next += 1
+      vault[ref] =
+        field === 'hostname'
+          ? `${item}.caballus.test`
+          : field === 'org-id'
+            ? `01a1fb57-0000-7000-8000-${String(next).padStart(12, '0')}`
+            : `${'k'.repeat(32)}${String(next)}`
+    }
+
+    const run = render(vault)
+    expect(run.stderr).toBe('')
+    expect(run.status).toBe(0)
+    const rendered_ = rescuesOf(await rendered())
+    const lines = list.split('\n').filter((one) => one.trim().startsWith('{'))
+    expect(Object.keys(rendered_)).toHaveLength(lines.length)
+    // And exactly one of them texts: the one rescue the sender is registered for.
+    expect(Object.values(rendered_).filter((one) => one.sms === true)).toHaveLength(1)
+  })
+
+  it('renders the existing rescue, alone, from its own line', async () => {
     const run = render(vaultFor())
     expect(run.stderr).toBe('')
     expect(run.status).toBe(0)
