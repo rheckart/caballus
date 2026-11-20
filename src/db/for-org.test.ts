@@ -12,9 +12,9 @@
 import postgres from 'postgres'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { currentOrgId } from '../server/request-context'
 import { closeDb, forOrg, type OrgId } from './for-org'
 import { orgs } from './schema'
+import { servingRescue } from '../test/rescue'
 
 const applicationUrl = process.env.DATABASE_URL ?? ''
 const ownerUrl = process.env.ADMIN_DATABASE_URL ?? ''
@@ -28,8 +28,7 @@ const OTHER_RESCUE = '00000000-0000-0000-0000-0000000000b2'
  * it for one rather than casting a string into the brand.
  */
 function orgId(id: string): OrgId {
-  process.env.APP_ORG_ID = id
-  return currentOrgId()
+  return servingRescue(id)
 }
 
 describe.skipIf(!reachable)('forOrg', () => {

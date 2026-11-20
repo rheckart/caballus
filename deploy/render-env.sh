@@ -75,10 +75,38 @@ fi
 # What the application cannot start without, and what a silently-empty vault
 # field would otherwise turn into a container that boots and then refuses every
 # request. Checked here, where the old file is still in place.
-for required in POSTGRES_PASSWORD DATABASE_URL ADMIN_DATABASE_URL APP_ORG_ID BETTER_AUTH_SECRET APP_URL REGISTRY_IMAGE; do
+for required in POSTGRES_PASSWORD DATABASE_URL ADMIN_DATABASE_URL RESCUES BETTER_AUTH_SECRET APP_URL REGISTRY_IMAGE; do
   value=$(sed -nE "s/^${required}=(.*)\$/\1/p" "$NEXT" | tail -n 1)
   [ -n "$value" ] || die "$required rendered empty — .env is untouched"
 done
+
+# The rescue map (ADR 0030), checked against the same rules the application
+# parses it by (`parseRescues` in src/server/rescues.ts): a JSON object, at least
+# one host, every key a host as a browser sends it, every value an organisation
+# id and nothing else. The application refuses to serve a malformed map, so a
+# render that produced one would deploy an image that answers nobody.
+command -v python3 >/dev/null 2>&1 || die "python3 is needed to check RESCUES — install it on the box"
+RESCUES_VALUE=$(sed -nE 's/^RESCUES=(.*)$/\1/p' "$NEXT" | tail -n 1)
+if ! RESCUES_PROBLEM=$(python3 -c '
+import json, re, sys
+host = re.compile(r"^[a-z0-9]([a-z0-9.-]*[a-z0-9])?(:[0-9]{1,5})?$")
+guid = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+try:
+    rescues = json.loads(sys.argv[1])
+except ValueError:
+    sys.exit("RESCUES is not JSON")
+if not isinstance(rescues, dict) or not rescues:
+    sys.exit("RESCUES names no rescue at all")
+for key, rescue in rescues.items():
+    if not host.match(key):
+        sys.exit("RESCUES has a key that is not a host: " + repr(key))
+    if not isinstance(rescue, dict) or set(rescue) != {"orgId"}:
+        sys.exit("RESCUES entry for " + key + " must carry orgId and nothing else")
+    if not isinstance(rescue["orgId"], str) or not guid.match(rescue["orgId"]):
+        sys.exit("RESCUES entry for " + key + " has an orgId that is not an id")
+' "$RESCUES_VALUE" 2>&1); then
+  die "$RESCUES_PROBLEM — .env is untouched"
+fi
 
 # A password that arrived with a stray newline is a connection refused with no
 # hint as to why, so the shape of the two URLs is checked rather than trusted.

@@ -7,6 +7,7 @@ import { domainScope, floor, readEverything } from './authorization'
 import { API_BASE, API_ROOT } from '../../shared/api-client'
 import { createApi, json, noContent } from './route'
 import { type Contract } from '../../shared/api-contract'
+import { servingRescue } from '../../test/rescue'
 
 /**
  * The endpoints these tests register, which are this file's and not the barn's.
@@ -60,7 +61,7 @@ function apiWithVolunteer() {
 }
 
 beforeAll(() => {
-  process.env.APP_ORG_ID = '00000000-0000-0000-0000-000000000001'
+  servingRescue('00000000-0000-0000-0000-000000000001')
 })
 
 beforeEach(() => {
@@ -245,7 +246,7 @@ describe('the version in the path', () => {
       received: 'v0',
       supported: 'v1',
       idempotencyKey: key,
-      orgId: process.env.APP_ORG_ID,
+      orgId: '00000000-0000-0000-0000-000000000001',
     })
     // Beside the denial `register` logs, so the two read as one request.
     expect(lines[0]?.requestId).toEqual(expect.any(String))

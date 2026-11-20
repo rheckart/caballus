@@ -8,13 +8,13 @@
  * `psql -f scripts/provision-database.sql` and `npm run db:migrate`.
  */
 import postgres from 'postgres'
-import { afterAll, afterEach, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { closeDb, forOrg, type OrgId } from '../../db/for-org'
 import { peopleList } from '../roster/people'
 import { publishReleaseVersion } from '../roster/releases'
 import { dayString } from '../../shared/time'
-import { bootstrap } from './bootstrap'
+import { bootstrap, runBootstrap } from './bootstrap'
 
 const applicationUrl = process.env.DATABASE_URL ?? ''
 const ownerUrl = process.env.ADMIN_DATABASE_URL ?? ''
@@ -130,4 +130,76 @@ describe.skipIf(!reachable)('bootstrap', () => {
     `
     expect(signatures).toHaveLength(1)
   })
+
+  describe('the command, with no organisation configured anywhere (#112)', () => {
+    let written = ''
+
+    beforeEach(() => {
+      written = ''
+      process.exitCode = undefined
+      vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+        written += String(chunk)
+        return true
+      })
+      vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+        written += String(chunk)
+        return true
+      })
+    })
+
+    afterEach(() => {
+      vi.restoreAllMocks()
+      process.exitCode = undefined
+    })
+
+    it('mints the organisation and prints the RESCUES entry to add', async () => {
+      await runBootstrap(['Back Barn Rescue', 'America/Chicago', 'Hal Moss', 'hal@barn.test'])
+
+      const minted = /"orgId": "([0-9a-f-]{36})"/.exec(written)?.[1]
+      expect(minted).toBeDefined()
+      expect(written).toContain('Add this rescue to RESCUES')
+      const [org] = await owner`select name from orgs where id = ${minted ?? ''}`
+      expect(org?.name).toBe('Back Barn Rescue')
+      await wipeOrg(minted ?? '')
+    })
+
+    it('finishes or re-grants an existing rescue with --org', async () => {
+      await runBootstrap([
+        '--org',
+        FRONT_BARN,
+        'Front Barn Horse Rescue',
+        'America/New_York',
+        'Grace Whittaker',
+        'grace@barn.test',
+      ])
+      await runBootstrap([
+        'Front Barn Horse Rescue',
+        'America/New_York',
+        'Grace Whittaker',
+        'grace@barn.test',
+        '--org',
+        FRONT_BARN,
+      ])
+
+      expect(written).toContain('was already a volunteer here, and now holds President')
+      expect(written).toContain(`"orgId": "${FRONT_BARN}"`)
+      const orgs = await owner`select id from orgs where id = ${FRONT_BARN}`
+      expect(orgs).toHaveLength(1)
+    })
+
+    it('refuses an --org that is not an id, and says how it is used', async () => {
+      await runBootstrap(['--org', 'front-barn', 'A', 'America/New_York', 'B', 'b@barn.test'])
+      expect(process.exitCode).toBe(2)
+      expect(written).toContain('Usage: npm run bootstrap')
+    })
+  })
+
+  async function wipeOrg(id: string): Promise<void> {
+    await owner`delete from audit_entries where org_id = ${id}`
+    await owner`delete from release_signatures where org_id = ${id}`
+    await owner`delete from release_versions where org_id = ${id}`
+    await owner`delete from volunteer_roles where org_id = ${id}`
+    await owner`delete from volunteers where org_id = ${id}`
+    await owner`delete from orgs where id = ${id}`
+  }
 })

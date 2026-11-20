@@ -18,6 +18,7 @@ import { dayString } from '../../shared/time'
 import { anonymousContext } from '../request-context'
 import { addDays } from '../time'
 import { buildApi } from './app'
+import { servingRescue } from '../../test/rescue'
 
 const applicationUrl = process.env.DATABASE_URL ?? ''
 const ownerUrl = process.env.ADMIN_DATABASE_URL ?? ''
@@ -72,7 +73,7 @@ describe.skipIf(!reachable)('Announcements and Contacts, through the API', () =>
   }
 
   beforeAll(async () => {
-    process.env.APP_ORG_ID = FIELD_BARN
+    servingRescue(FIELD_BARN)
     await wipe()
     await owner`
       insert into orgs (id, name, time_zone)

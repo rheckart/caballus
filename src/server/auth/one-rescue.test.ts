@@ -21,12 +21,12 @@ import { API_BASE, newIdempotencyKey } from '../../shared/api-client'
 import { forgetIdentities } from '../../test/identities'
 import { api } from '../api/app'
 import { setEmailTransport, type OutgoingEmail } from '../email'
-import { currentOrgId } from '../request-context'
 import { actorForUser, actorFrom } from './actor'
 import { auth } from './auth'
 import { forgetCodeRequestsForTest, requestCode, submitCode } from './sign-in'
 import { setVerifier } from './verify'
 import { accountKey, createVolunteer, grantRole, isAccountKey } from './volunteers'
+import { servingRescue } from '../../test/rescue'
 
 const applicationUrl = process.env.DATABASE_URL ?? ''
 const ownerUrl = process.env.ADMIN_DATABASE_URL ?? ''
@@ -48,8 +48,7 @@ describe.skipIf(!reachable)('an Account belongs to one rescue, against the datab
   const STANDING_CODE = '424242'
 
   function at(rescue: string): OrgId {
-    process.env.APP_ORG_ID = rescue
-    return currentOrgId()
+    return servingRescue(rescue)
   }
 
   async function wipe(rescue: string, { keepOrg = false } = {}): Promise<void> {

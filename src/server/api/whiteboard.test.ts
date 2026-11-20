@@ -20,9 +20,10 @@ import { API_BASE, newIdempotencyKey } from '../../shared/api-client'
 import { whiteboardReport } from '../../shared/api-contract'
 import type { DomainScope } from '../../shared/domain-scopes'
 import { scopesForPanel } from '../../shared/whiteboard'
-import { anonymousContext, currentOrgId } from '../request-context'
+import { anonymousContext } from '../request-context'
 import { setWhiteboardReader, type WhiteboardReading } from '../whiteboard-read/model'
 import { buildApi } from './app'
+import { servingRescue } from '../../test/rescue'
 
 const applicationUrl = process.env.DATABASE_URL ?? ''
 const ownerUrl = process.env.ADMIN_DATABASE_URL ?? ''
@@ -52,8 +53,7 @@ describe.skipIf(!reachable)('the Whiteboard Read, through the API', () => {
   const owner = postgres(ownerUrl, { max: 1 })
 
   function orgId(): OrgId {
-    process.env.APP_ORG_ID = FIELD_BARN
-    return currentOrgId()
+    return servingRescue(FIELD_BARN)
   }
 
   function apiAs(volunteerId: string, scopes: readonly DomainScope[]) {

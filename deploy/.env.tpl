@@ -27,11 +27,14 @@ POSTGRES_PASSWORD={{ op://Caballus/postgres/password }}
 DATABASE_URL=postgres://caballus_app:{{ op://Caballus/postgres/app-password }}@postgres:5432/caballus
 ADMIN_DATABASE_URL=postgres://caballus:{{ op://Caballus/postgres/password }}@postgres:5432/caballus
 
-# --- The organisation -----------------------------------------------------
-# Minted by `npm run bootstrap` on the box, so 1Password holds it: a rebuild
-# must restore the id the existing rows are scoped to rather than mint a
-# second one that sees none of them.
-APP_ORG_ID={{ op://Caballus/app/org-id }}
+# --- The rescues (ADR 0030) -----------------------------------------------
+# Which rescue a request is for is the host it arrives at, and this is the map.
+# One entry today: the existing rescue's host and the organisation id
+# `npm run bootstrap` minted on the box. Both come from 1Password — the id
+# because a rebuild must restore the one the existing rows are scoped to, and
+# the host because it is the rescue's own fact rather than the repository's.
+# `render-env.sh` refuses a map that does not parse, before anything is pulled.
+RESCUES={"{{ op://Caballus/app/hostname }}":{"orgId":"{{ op://Caballus/app/org-id }}"}}
 
 # --- Identity -------------------------------------------------------------
 # ADR 0006: this key must survive a restore. Rotating it signs out every

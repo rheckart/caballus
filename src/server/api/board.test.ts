@@ -20,8 +20,9 @@ import { API_BASE, newIdempotencyKey } from '../../shared/api-client'
 import { board } from '../../shared/api-contract'
 import { BOARD_TOKEN_HEADER } from '../../shared/board'
 import type { DomainScope } from '../../shared/domain-scopes'
-import { anonymousContext, currentOrgId } from '../request-context'
+import { anonymousContext } from '../request-context'
 import { buildApi } from './app'
+import { servingRescue } from '../../test/rescue'
 
 const applicationUrl = process.env.DATABASE_URL ?? ''
 const ownerUrl = process.env.ADMIN_DATABASE_URL ?? ''
@@ -36,8 +37,7 @@ describe.skipIf(!reachable)('the Board, through the API', () => {
   const owner = postgres(ownerUrl, { max: 1 })
 
   function orgId(): OrgId {
-    process.env.APP_ORG_ID = FIELD_BARN
-    return currentOrgId()
+    return servingRescue(FIELD_BARN)
   }
 
   function apiAs(volunteerId: string, scopes: readonly DomainScope[]) {

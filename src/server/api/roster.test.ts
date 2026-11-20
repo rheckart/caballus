@@ -23,8 +23,9 @@ import { postgresIdempotency } from '../../db/idempotency'
 import { API_BASE } from '../../shared/api-client'
 import type { DomainScope } from '../../shared/domain-scopes'
 import { newIdempotencyKey } from '../../shared/api-client'
-import { anonymousContext, currentOrgId } from '../request-context'
+import { anonymousContext } from '../request-context'
 import { buildApi } from './app'
+import { servingRescue } from '../../test/rescue'
 
 const applicationUrl = process.env.DATABASE_URL ?? ''
 const ownerUrl = process.env.ADMIN_DATABASE_URL ?? ''
@@ -36,8 +37,7 @@ describe.skipIf(!reachable)('the roster, through the API', () => {
   const owner = postgres(ownerUrl, { max: 1 })
 
   function orgId(): OrgId {
-    process.env.APP_ORG_ID = FRONT_BARN
-    return currentOrgId()
+    return servingRescue(FRONT_BARN)
   }
 
   /**
@@ -100,7 +100,7 @@ describe.skipIf(!reachable)('the roster, through the API', () => {
   let coordinatorId = ''
 
   beforeAll(async () => {
-    process.env.APP_ORG_ID = FRONT_BARN
+    servingRescue(FRONT_BARN)
     await wipe()
     await owner`
       insert into orgs (id, name, time_zone)

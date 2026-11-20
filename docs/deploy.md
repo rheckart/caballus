@@ -97,9 +97,9 @@ at the exact hour that matters.
 references rather than values. The split is one rule: **the repository decides
 what is a literal, and 1Password holds what only the deployment knows.**
 `APP_URL` is a literal. A password, a token, the barn's coordinates and the
-`APP_ORG_ID` that `bootstrap` minted on the box are references — none of them
-can be read off a checkout, and a box rebuilt from scratch has to get them from
-somewhere.
+rescue's host and organisation id — the two halves of its `RESCUES` entry
+(ADR 0030) — are references: none of them can be read off a checkout, and a box
+rebuilt from scratch has to get them from somewhere.
 
 ### What the vault has to contain
 
@@ -111,11 +111,19 @@ deploy stops there with `.env` untouched.
 | Item         | Fields                                                                                        |
 | ------------ | --------------------------------------------------------------------------------------------- |
 | `postgres`   | `password` (the owner), `app-password` (the `caballus_app` role)                              |
-| `app`        | `org-id`, `better-auth-secret`, `board-token`, `barn-latitude`, `barn-longitude`              |
+| `app`        | `hostname`, `org-id`, `better-auth-secret`, `board-token`, `barn-latitude`, `barn-longitude`  |
 | `smtp`       | `url`                                                                                         |
 | `openrouter` | `api-key`                                                                                     |
 | `twilio`     | `account-sid`, `auth-token`, `from-number`, `verify-service-sid`, `verify-change-service-sid` |
 | `s4`         | `access-key-id`, `secret-access-key` — read by `backup.env.tpl` only (_Backups_)              |
+
+**`app/hostname` is read from #112 on.** It was already in the item, and its
+value is `caballus.tech` — the host the existing rescue is reached at, exactly
+as a browser sends it. `.env.tpl` renders it with `org-id` into a one-entry
+`RESCUES`, and `render-env.sh` refuses a map that does not parse, so a missing
+field stops the deploy at the render with `.env` untouched rather than starting
+an application that answers nobody. That check runs on `python3`, which the
+Ubuntu image on the box ships; `render-env.sh` says so if it is ever missing.
 
 The values come out of the `.env` already on the box, which is the only place
 some of them exist. Copy them in **before** touching anything else — a
@@ -277,6 +285,17 @@ docker compose run --rm -T app npm run bootstrap -- \
 docker compose up -d app
 ```
 
+That was the shape until #112. **`bootstrap` now mints the organisation id
+itself** — the rescue a request is for comes from its host through `RESCUES`
+(ADR 0030), so there is no organisation id to configure first — and prints the `RESCUES`
+entry to add. `--org <id>` names an existing organisation, which is how a second
+run finishes a half-finished first one or grants President again:
+
+```bash
+docker compose run --rm -T app npm run bootstrap -- --org 01a03af7-… \
+  "Freedom Hill Horse Rescue" America/New_York "Rob Heckart" rob@heckart.me
+```
+
 Traefik took about a minute to get a certificate, and served its own default
 one until it did — so a browser opened straight after the first `up` shows a
 warning that is not a misconfiguration. `acme.json` also carried four failed
@@ -404,6 +423,20 @@ sign-in, `claimAccount` refuses each one, and nobody can sign in at all. So once
 `0024` has run, the oldest tag a rollback may name is the one carrying #111's
 code. The rewrite signs nobody out — a session points at a `user` id, never at
 an address.
+
+**Rolling back past #112 needs `.env.previous` as well as the tag** (ADR 0030).
+From #112 on, the render writes `RESCUES` and no `APP_ORG_ID`, and an image from
+before #112 reads `APP_ORG_ID` on every request — so the old tag on the new
+`.env` boots, answers `/health`, and refuses every page. `deploy.sh`'s own
+automatic rollback puts the tag back and not the secrets, so if the first deploy
+of #112 rolls itself back, finish it by hand:
+
+```bash
+cd /docker/caballus && cp .env.previous .env && docker compose up -d app
+```
+
+`deploy.sh` checks the sign-in page as well as `/health` from #112 on, so a map
+that rendered wrong is caught rather than deployed green.
 
 **A rollback puts the tag back and not the secrets.** It always was about which
 image is running, and now that every deploy re-renders `.env`, that distinction

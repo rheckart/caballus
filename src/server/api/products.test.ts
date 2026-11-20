@@ -16,6 +16,7 @@ import { API_BASE, newIdempotencyKey } from '../../shared/api-client'
 import type { DomainScope } from '../../shared/domain-scopes'
 import { anonymousContext } from '../request-context'
 import { buildApi } from './app'
+import { servingRescue } from '../../test/rescue'
 
 const applicationUrl = process.env.DATABASE_URL ?? ''
 const ownerUrl = process.env.ADMIN_DATABASE_URL ?? ''
@@ -70,7 +71,7 @@ describe.skipIf(!reachable)('Products, Suppliers and Feed Schedules, through the
   }
 
   beforeAll(async () => {
-    process.env.APP_ORG_ID = FIELD_BARN
+    servingRescue(FIELD_BARN)
     await wipe()
     await owner`
       insert into orgs (id, name, time_zone)

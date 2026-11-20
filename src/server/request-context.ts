@@ -6,14 +6,19 @@
  * the brand (ADR 0016): the organisation a query is scoped to comes from the
  * request, never from a row the query just read.
  *
- * **Both halves come from the server and neither from the caller.** The
- * organisation is configuration; the actor is the session. Nothing here reads
- * an identity off a header, a body or a query, because a client-supplied one
- * is the impersonation vector ADR 0008's whole arrangement exists to close.
+ * **The organisation is the host the request knocked at, and the actor is the
+ * session** (ADR 0030). The host is a header, and ADR 0008 forbids taking the
+ * tenant from one — because a caller naming a tenant and being believed is the
+ * impersonation vector. The host is not believed: it picks which rescue's door
+ * this is, out of a map in configuration (`src/server/rescues.ts`), and the
+ * session still has to resolve to an Account of that rescue, which since #111
+ * it can only do if it was minted there. Nothing here reads an *identity* off
+ * a header, a body or a query.
  */
 import type { OrgId } from '../db/for-org'
 import { sessionFrom } from './auth/actor'
 import { isKiosk } from './auth/kiosk'
+import { hostOf, rescueFor } from './rescues'
 import type { DomainScope } from './api/authorization'
 
 export interface Actor {
@@ -80,7 +85,7 @@ export async function requestContext(request: Request): Promise<RequestContext> 
  */
 export function anonymousContext(request: Request): RequestContext {
   return {
-    orgId: currentOrgId(),
+    orgId: currentOrgId(request),
     requestId: request.headers.get('x-request-id') ?? crypto.randomUUID(),
     actor: null,
     sessionToken: null,
@@ -92,17 +97,29 @@ export function anonymousContext(request: Request): RequestContext {
 }
 
 /**
- * One rescue, from configuration.
+ * A request at a host no rescue is mapped to.
  *
- * The application is multi-tenant in the database because retrofitting that is
- * the expensive direction (ADR 0007), not because a second organisation is
- * expected. When one arrives, this resolves from the host or the session; the
- * brand exists so that change lands in one module.
+ * Thrown rather than defaulted to the first rescue in the map: somebody who
+ * mistyped a subdomain must not be handed a sign-in screen for a rescue they
+ * do not belong to. `src/start.ts` and the API both answer it with a 404 and
+ * `UNKNOWN_RESCUE` before anything reaches here, so a throw that escapes is a
+ * path that skipped the gate.
  */
-export function currentOrgId(): OrgId {
-  const configured = process.env.APP_ORG_ID
-  if (configured === undefined || configured === '') {
-    throw new Error('APP_ORG_ID is not set')
+export class UnknownRescue extends Error {
+  constructor(readonly host: string) {
+    super(`No rescue is mapped to the host ${host}`)
   }
-  return configured as OrgId
+}
+
+/**
+ * The organisation this request is for — the host it arrived at, resolved
+ * through `RESCUES` (#112, ADR 0030).
+ *
+ * The only place an `OrgId` is minted (ADR 0016), so the organisation a query
+ * is scoped to comes from the request and never from a row it just read.
+ */
+export function currentOrgId(request: Request): OrgId {
+  const rescue = rescueFor(request)
+  if (rescue === null) throw new UnknownRescue(hostOf(request))
+  return rescue.orgId as OrgId
 }

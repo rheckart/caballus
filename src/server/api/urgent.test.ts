@@ -29,6 +29,7 @@ import type { DayString } from '../../shared/time'
 import { anonymousContext } from '../request-context'
 import { DAILY_CAP, forgetTextsForTest, setSmsTransport, type OutgoingText } from '../sms'
 import { buildApi } from './app'
+import { servingRescue } from '../../test/rescue'
 
 const applicationUrl = process.env.DATABASE_URL ?? ''
 const ownerUrl = process.env.ADMIN_DATABASE_URL ?? ''
@@ -86,7 +87,7 @@ describe.skipIf(!reachable)('the Urgent Send, through the API', () => {
   }
 
   beforeAll(async () => {
-    process.env.APP_ORG_ID = SHOUT_BARN
+    servingRescue(SHOUT_BARN)
     // Fixed rather than inherited (#83): the link in a text is `APP_URL`, which
     // is whatever the box running the suite happens to have, and a message
     // assertion that changes with somebody's `.env` is not an assertion.

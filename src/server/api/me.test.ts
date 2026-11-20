@@ -46,8 +46,9 @@ import { forgetTextsForTest, setSmsTransport, type OutgoingText } from '../sms'
 import { setVerifier, type VerifyPurpose } from '../auth/verify'
 import { accountKey } from '../auth/volunteers'
 import { forgetIdentities } from '../../test/identities'
-import { anonymousContext, currentOrgId } from '../request-context'
+import { anonymousContext } from '../request-context'
 import { api, buildApi } from './app'
+import { servingRescue } from '../../test/rescue'
 
 const applicationUrl = process.env.DATABASE_URL ?? ''
 const ownerUrl = process.env.ADMIN_DATABASE_URL ?? ''
@@ -91,8 +92,7 @@ describe.skipIf(!reachable)('your own contact details, through the API', () => {
   const STANDING_CODE = '424242'
 
   function orgId(): OrgId {
-    process.env.APP_ORG_ID = HILL_BARN
-    return currentOrgId()
+    return servingRescue(HILL_BARN)
   }
 
   /**
@@ -153,7 +153,7 @@ describe.skipIf(!reachable)('your own contact details, through the API', () => {
   }
 
   beforeAll(async () => {
-    process.env.APP_ORG_ID = HILL_BARN
+    servingRescue(HILL_BARN)
     await wipe()
     await owner`
       insert into orgs (id, name, time_zone)
