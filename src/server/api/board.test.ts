@@ -18,17 +18,18 @@ import { closeDb, type OrgId } from '../../db/for-org'
 import { postgresIdempotency } from '../../db/idempotency'
 import { API_BASE, newIdempotencyKey } from '../../shared/api-client'
 import { board } from '../../shared/api-contract'
-import { BOARD_TOKEN_HEADER } from '../../shared/board'
+import { KIOSK_TOKEN_HEADER } from '../../shared/board'
 import type { DomainScope } from '../../shared/domain-scopes'
 import { anonymousContext } from '../request-context'
 import { buildApi } from './app'
-import { servingRescue } from '../../test/rescue'
+import { servingRescue, servingRescues, TEST_HOST } from '../../test/rescue'
 
 const applicationUrl = process.env.DATABASE_URL ?? ''
 const ownerUrl = process.env.ADMIN_DATABASE_URL ?? ''
 const reachable = applicationUrl !== '' && ownerUrl !== ''
 
 const FIELD_BARN = '00000000-0000-0000-0000-0000000000ea'
+const OTHER_BARN = '00000000-0000-0000-0000-0000000000ba'
 
 /** What the tablet in the feed room is enrolled with (ADR 0022). */
 const TOKEN = 'a-token-somebody-typed-into-the-tablet-once'
@@ -37,7 +38,7 @@ describe.skipIf(!reachable)('the Board, through the API', () => {
   const owner = postgres(ownerUrl, { max: 1 })
 
   function orgId(): OrgId {
-    return servingRescue(FIELD_BARN)
+    return servingRescue(FIELD_BARN, { boardToken: TOKEN })
   }
 
   function apiAs(volunteerId: string, scopes: readonly DomainScope[]) {
@@ -105,12 +106,13 @@ describe.skipIf(!reachable)('the Board, through the API', () => {
   })
 
   beforeEach(() => {
-    process.env.BOARD_TOKEN = TOKEN
+    // The rescue's kiosk token is on its own `RESCUES` entry (ADR 0022, as
+    // ADR 0030 amends it), so every test starts with the tablet enrolled.
+    orgId()
   })
 
   afterEach(async () => {
     vi.restoreAllMocks()
-    delete process.env.BOARD_TOKEN
     await wipe({ keepOrg: true })
   })
 
@@ -180,7 +182,7 @@ describe.skipIf(!reachable)('the Board, through the API', () => {
 
   /** The Board as the tablet on the feed room wall reads it. */
   async function boardAsTablet() {
-    const read = await get(apiAsItself(), '/board', { [BOARD_TOKEN_HEADER]: TOKEN })
+    const read = await get(apiAsItself(), '/board', { [KIOSK_TOKEN_HEADER]: TOKEN })
     expect(read.status).toBe(200)
     // Parsed against the contract, not asserted: what the phone and the tablet
     // are promised is this schema, and a test that reads the body loosely
@@ -206,18 +208,50 @@ describe.skipIf(!reachable)('the Board, through the API', () => {
     })
 
     it('refuses a wrong token, and refuses every token when none is configured', async () => {
-      const wrong = await get(apiAsItself(), '/board', { [BOARD_TOKEN_HEADER]: 'not-the-token' })
+      const wrong = await get(apiAsItself(), '/board', { [KIOSK_TOKEN_HEADER]: 'not-the-token' })
       expect(wrong.status).toBe(401)
 
-      delete process.env.BOARD_TOKEN
-      const unconfigured = await get(apiAsItself(), '/board', { [BOARD_TOKEN_HEADER]: '' })
+      servingRescue(FIELD_BARN)
+      const unconfigured = await get(apiAsItself(), '/board', { [KIOSK_TOKEN_HEADER]: '' })
       expect(unconfigured.status).toBe(401)
+      const stillTheOld = await get(apiAsItself(), '/board', { [KIOSK_TOKEN_HEADER]: TOKEN })
+      expect(stillTheOld.status).toBe(401)
+    })
+
+    it('refuses one rescue’s tablet at another rescue’s host (#113)', async () => {
+      const OTHER_TOKEN = 'the-other-rescues-tablet-token'
+      await owner`
+        insert into orgs (id, name, time_zone)
+        values (${OTHER_BARN}, 'Other Barn Horse Rescue', 'America/Chicago')
+        on conflict do nothing
+      `
+      servingRescues(
+        { [TEST_HOST]: FIELD_BARN, 'other-barn.invalid': OTHER_BARN },
+        { [TEST_HOST]: { boardToken: TOKEN }, 'other-barn.invalid': { boardToken: OTHER_TOKEN } },
+      )
+      const at = (host: string, token: string) =>
+        apiAsItself().fetch(
+          new Request(`http://${host}${API_BASE}/board`, {
+            headers: { [KIOSK_TOKEN_HEADER]: token },
+          }),
+        )
+
+      try {
+        // Each tablet reads its own rescue's Board…
+        expect((await at(TEST_HOST, TOKEN)).status).toBe(200)
+        expect((await at('other-barn.invalid', OTHER_TOKEN)).status).toBe(200)
+        // …and neither reads the other's.
+        expect((await at('other-barn.invalid', TOKEN)).status).toBe(401)
+        expect((await at(TEST_HOST, OTHER_TOKEN)).status).toBe(401)
+      } finally {
+        await owner`delete from orgs where id = ${OTHER_BARN}`
+      }
     })
 
     it('lets the tablet no further than the Board', async () => {
       // The token authorizes one read. The horse profile a row links to is
       // behind the ordinary floor, so a tablet cannot drill down (ADR 0022).
-      const elsewhere = await get(apiAsItself(), '/horses', { [BOARD_TOKEN_HEADER]: TOKEN })
+      const elsewhere = await get(apiAsItself(), '/horses', { [KIOSK_TOKEN_HEADER]: TOKEN })
       expect(elsewhere.status).toBe(401)
     })
   })

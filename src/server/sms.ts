@@ -25,13 +25,25 @@
  * can no longer sign in at that handset is the one who most needs telling —
  * so it goes, and it is written down here rather than left to be discovered.
  *
+ * **Only a rescue registered for this sender may send through it** (#113, ADR
+ * 0030). The one Twilio sender is registered — brand, campaign, number — for
+ * the rescue that existed before a second one did, and a second rescue texting
+ * through it would put its volunteers under that rescue's consent and its STOP.
+ * So the rescue's `RESCUES` entry has to say `"sms": true`, and for any rescue
+ * without it every send is refused in the same words the kill switch uses —
+ * the Urgent Send and the mobile-change notice alike. Sign-in by text is not a
+ * send and never comes through here (ADR 0029). #114 replaces the boolean with
+ * a sender per rescue.
+ *
  * **Twilio, and the reason is not price** (ADR 0028): sent.dm is cheaper on the
  * platform fee and loses on being a second vendor, since Verify is Twilio's.
  * The vendor is behind this module either way, so being wrong about it costs a
  * day rather than a redesign.
  */
+import type { OrgId } from '../db/for-org'
 import { elapsed, now, type Instant } from '../shared/time'
 import { log } from './observability'
+import { rescueOfOrg } from './rescues'
 
 export interface OutgoingText {
   /** E.164, as `src/shared/mobile.ts` normalises it. */
@@ -87,6 +99,18 @@ export function setSmsTransport(replacement: SmsTransport | null): void {
   transport = replacement
 }
 
+/**
+ * The kill switch's own words, for a rescue that may not text as much as for a
+ * box with no Twilio at all: from the sender's chair the two are the same fact
+ * — nothing will leave — and the screen already says so in one sentence.
+ */
+const NOT_CONFIGURED = 'no sms transport is configured'
+
+/** Whether this rescue's `RESCUES` entry lets it text through the one sender. */
+function mayText(orgId: OrgId): boolean {
+  return rescueOfOrg(orgId)?.sms === true
+}
+
 /** Empties the cap's window. For tests, which each start from nothing sent. */
 export function forgetTextsForTest(): void {
   sentAt = []
@@ -101,14 +125,14 @@ export function forgetTextsForTest(): void {
  * not sixty warn lines and a `sent: 0` that reads like everybody has left the
  * rescue.
  */
-export function smsIsConfigured(): boolean {
-  return (transport === undefined ? twilio() : transport) !== null
+export function smsIsConfigured(orgId: OrgId): boolean {
+  return mayText(orgId) && (transport === undefined ? twilio() : transport) !== null
 }
 
-export async function sendText(message: OutgoingText): Promise<void> {
-  const sender = transport === undefined ? twilio() : transport
+export async function sendText(orgId: OrgId, message: OutgoingText): Promise<void> {
+  const sender = mayText(orgId) ? (transport === undefined ? twilio() : transport) : null
   if (sender === null) {
-    throw new TextNotSentError('no sms transport is configured')
+    throw new TextNotSentError(NOT_CONFIGURED)
   }
 
   const at = now()

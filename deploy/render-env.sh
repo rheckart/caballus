@@ -75,7 +75,7 @@ fi
 # What the application cannot start without, and what a silently-empty vault
 # field would otherwise turn into a container that boots and then refuses every
 # request. Checked here, where the old file is still in place.
-for required in POSTGRES_PASSWORD DATABASE_URL ADMIN_DATABASE_URL RESCUES BETTER_AUTH_SECRET APP_URL REGISTRY_IMAGE; do
+for required in POSTGRES_PASSWORD DATABASE_URL ADMIN_DATABASE_URL RESCUES BETTER_AUTH_SECRET REGISTRY_IMAGE; do
   value=$(sed -nE "s/^${required}=(.*)\$/\1/p" "$NEXT" | tail -n 1)
   [ -n "$value" ] || die "$required rendered empty — .env is untouched"
 done
@@ -83,8 +83,9 @@ done
 # The rescue map (ADR 0030), checked against the same rules the application
 # parses it by (`parseRescues` in src/server/rescues.ts): a JSON object, at least
 # one host, every key a host as a browser sends it, every value an organisation
-# id and nothing else. The application refuses to serve a malformed map, so a
-# render that produced one would deploy an image that answers nobody.
+# id and at most a kiosk token and a texting switch, and no organisation behind
+# two hosts. The application refuses to serve a malformed map, so a render that
+# produced one would deploy an image that answers nobody.
 command -v python3 >/dev/null 2>&1 || die "python3 is needed to check RESCUES — install it on the box"
 RESCUES_VALUE=$(sed -nE 's/^RESCUES=(.*)$/\1/p' "$NEXT" | tail -n 1)
 if ! RESCUES_PROBLEM=$(python3 -c '
@@ -97,13 +98,21 @@ except ValueError:
     sys.exit("RESCUES is not JSON")
 if not isinstance(rescues, dict) or not rescues:
     sys.exit("RESCUES names no rescue at all")
+orgs = set()
 for key, rescue in rescues.items():
     if not host.match(key):
         sys.exit("RESCUES has a key that is not a host: " + repr(key))
-    if not isinstance(rescue, dict) or set(rescue) != {"orgId"}:
-        sys.exit("RESCUES entry for " + key + " must carry orgId and nothing else")
+    if not isinstance(rescue, dict) or "orgId" not in rescue or not set(rescue) <= {"orgId", "boardToken", "sms"}:
+        sys.exit("RESCUES entry for " + key + " must carry orgId, and at most boardToken and sms")
     if not isinstance(rescue["orgId"], str) or not guid.match(rescue["orgId"]):
         sys.exit("RESCUES entry for " + key + " has an orgId that is not an id")
+    if rescue["orgId"].lower() in orgs:
+        sys.exit("RESCUES maps two hosts to the same organisation: " + rescue["orgId"])
+    orgs.add(rescue["orgId"].lower())
+    if "boardToken" in rescue and (not isinstance(rescue["boardToken"], str) or not re.match(r"^[A-Za-z0-9_-]{24,}$", rescue["boardToken"])):
+        sys.exit("RESCUES entry for " + key + " has a kiosk token shorter than 24 characters, or not base64url")
+    if "sms" in rescue and not isinstance(rescue["sms"], bool):
+        sys.exit("RESCUES entry for " + key + " has an sms that is not true or false")
 ' "$RESCUES_VALUE" 2>&1); then
   die "$RESCUES_PROBLEM — .env is untouched"
 fi

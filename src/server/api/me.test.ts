@@ -92,7 +92,9 @@ describe.skipIf(!reachable)('your own contact details, through the API', () => {
   const STANDING_CODE = '424242'
 
   function orgId(): OrgId {
-    return servingRescue(HILL_BARN)
+    // The rescue the one Twilio sender is registered for (#113), so the notice
+    // to a number somebody moved off can leave.
+    return servingRescue(HILL_BARN, { sms: true })
   }
 
   /**
@@ -656,6 +658,29 @@ describe.skipIf(!reachable)('your own contact details, through the API', () => {
           reason: null,
         }),
       ])
+    })
+
+    it('moves the number and texts nobody at a rescue the sender is not registered for (#113)', async () => {
+      const volunteerId = await seedVolunteer('Kate Ellery', `kate${OURS}`, '+14105550117')
+      const mine = apiAs(volunteerId)
+      await post(mine, '/me/mobile/code', { mobile: '410-555-0199' })
+      servingRescue(HILL_BARN)
+
+      try {
+        const changed = await post(mine, '/me/mobile', {
+          mobile: '410-555-0199',
+          code: STANDING_CODE,
+        })
+
+        // The credential still moves — Verify is not a send (ADR 0029) — and the
+        // notice, which is one, does not leave.
+        expect(changed.status).toBe(204)
+        const [row] = await owner`select mobile from volunteers where id = ${volunteerId}`
+        expect(row?.mobile).toBe('+14105550199')
+        expect(texted).toEqual([])
+      } finally {
+        orgId()
+      }
     })
 
     it('completes the change even when the notice to the old number fails', async () => {

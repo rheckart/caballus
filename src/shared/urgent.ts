@@ -70,17 +70,17 @@ const STOP = 'Reply STOP to stop.'
  *
  * The origin is passed in because this module is pure and table-tested, and a
  * composer that reaches for `process.env` is a composer no table test can
- * drive. `src/server/urgent/send.ts` is the caller that knows the environment,
- * the same seam that already resolves the transport. `APP_URL` is what it
- * passes — already the real origin on the box and `http://localhost:3000` on a
- * development one, which is exactly right: a development send must not name
- * production.
+ * drive. `src/server/urgent/send.ts` is the caller that knows which rescue is
+ * sending, and passes that rescue's own origin from its `RESCUES` host (#113)
+ * — the real origin on the box and `http://localhost:3000` on a development
+ * one, which is exactly right: a development send must not name production,
+ * and rescue B's Short must not link to rescue A.
  *
  * **Never a shortener.** bit.ly and its kind are the most reliable way to have
  * a campaign blocked, because a carrier cannot see where the link goes. The
  * brand's own domain is the whole point.
  *
- * Unset is a real case and not an error: a box with no `APP_URL` composes the
+ * Unset is a real case and not an error: a send with no origin composes the
  * sentence it composed before this ticket rather than one naming `undefined`.
  * The argument is **required and nullable** rather than defaulted, on
  * `applyToScheduled`'s own discipline (ADR 0001): a default is a decision the

@@ -187,6 +187,44 @@ describe.skipIf(!reachable)('bootstrap', () => {
       expect(orgs).toHaveLength(1)
     })
 
+    it('places the barn on create, and moves it on a run that only says --barn (#113)', async () => {
+      await runBootstrap([
+        '--org',
+        FRONT_BARN,
+        '--barn',
+        '39.4143,-77.4105',
+        'Front Barn Horse Rescue',
+        'America/New_York',
+        'Grace Whittaker',
+        'grace@barn.test',
+      ])
+      let [org] =
+        await owner`select barn_latitude, barn_longitude from orgs where id = ${FRONT_BARN}`
+      expect([Number(org?.barn_latitude), Number(org?.barn_longitude)]).toEqual([39.4143, -77.4105])
+
+      // The existing rescue's own step, straight after the migration: no name,
+      // no President, just where the barn is.
+      await runBootstrap(['--org', FRONT_BARN, '--barn', '39.5,-77.5'])
+      ;[org] = await owner`select barn_latitude, barn_longitude from orgs where id = ${FRONT_BARN}`
+      expect([Number(org?.barn_latitude), Number(org?.barn_longitude)]).toEqual([39.5, -77.5])
+      expect(process.exitCode).toBeUndefined()
+    })
+
+    it.each([['39.4'], ['north,west'], ['91,0'], ['0,181'], ['39.4,']])(
+      'refuses a barn at %s',
+      async (barn) => {
+        await runBootstrap(['--org', FRONT_BARN, '--barn', barn])
+        expect(process.exitCode).toBe(2)
+        expect(written).toContain('--barn <lat>,<lon>')
+      },
+    )
+
+    it('refuses to place a barn for a rescue that does not exist', async () => {
+      await expect(runBootstrap(['--org', FRONT_BARN, '--barn', '39,-77'])).rejects.toThrow(
+        /no organisation/,
+      )
+    })
+
     it('refuses an --org that is not an id, and says how it is used', async () => {
       await runBootstrap(['--org', 'front-barn', 'A', 'America/New_York', 'B', 'b@barn.test'])
       expect(process.exitCode).toBe(2)

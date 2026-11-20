@@ -24,7 +24,7 @@
  * Here rather than beside the check, because the screen sends it and the server
  * reads it, and a header spelled twice is a header spelled two ways.
  */
-export const BOARD_TOKEN_HEADER = 'x-board-token'
+export const KIOSK_TOKEN_HEADER = 'x-board-token'
 
 /** A Space as a row names it — the id for a key, the name for the barn to read. */
 export interface BoardSpaceRef {

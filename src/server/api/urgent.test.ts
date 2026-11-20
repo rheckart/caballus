@@ -19,7 +19,7 @@
 import postgres from 'postgres'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { closeDb } from '../../db/for-org'
+import { closeDb, type OrgId } from '../../db/for-org'
 import { postgresIdempotency } from '../../db/idempotency'
 import { API_BASE, newIdempotencyKey } from '../../shared/api-client'
 import { contract } from '../../shared/api-contract'
@@ -29,7 +29,7 @@ import type { DayString } from '../../shared/time'
 import { anonymousContext } from '../request-context'
 import { DAILY_CAP, forgetTextsForTest, setSmsTransport, type OutgoingText } from '../sms'
 import { buildApi } from './app'
-import { servingRescue } from '../../test/rescue'
+import { servingRescue, servingRescues } from '../../test/rescue'
 
 const applicationUrl = process.env.DATABASE_URL ?? ''
 const ownerUrl = process.env.ADMIN_DATABASE_URL ?? ''
@@ -43,9 +43,6 @@ describe.skipIf(!reachable)('the Urgent Send, through the API', () => {
 
   /** Every text the run sent, in order. Nothing here reaches a carrier. */
   let texted: OutgoingText[] = []
-
-  /** Whatever `APP_URL` was, put back afterwards. */
-  let beforeUrl: string | undefined
 
   function apiAs(volunteerId: string, scopes: readonly DomainScope[]) {
     return buildApi({
@@ -87,12 +84,6 @@ describe.skipIf(!reachable)('the Urgent Send, through the API', () => {
   }
 
   beforeAll(async () => {
-    servingRescue(SHOUT_BARN)
-    // Fixed rather than inherited (#83): the link in a text is `APP_URL`, which
-    // is whatever the box running the suite happens to have, and a message
-    // assertion that changes with somebody's `.env` is not an assertion.
-    beforeUrl = process.env.APP_URL
-    process.env.APP_URL = 'https://caballus.tech'
     await wipe()
     await owner`
       insert into orgs (id, name, time_zone)
@@ -101,6 +92,9 @@ describe.skipIf(!reachable)('the Urgent Send, through the API', () => {
   })
 
   beforeEach(() => {
+    // The rescue the one sender is registered for (#113): its `RESCUES` entry
+    // says so, and the link in a text it sends is its own host (#83).
+    servingRescue(SHOUT_BARN, { sms: true })
     texted = []
     forgetTextsForTest()
     setSmsTransport((message) => {
@@ -118,8 +112,6 @@ describe.skipIf(!reachable)('the Urgent Send, through the API', () => {
   })
 
   afterAll(async () => {
-    if (beforeUrl === undefined) delete process.env.APP_URL
-    else process.env.APP_URL = beforeUrl
     await wipe()
     await owner.end()
     await closeDb()
@@ -279,7 +271,7 @@ describe.skipIf(!reachable)('the Urgent Send, through the API', () => {
       // The reply is the receipt: somebody taps Cover, which is already a
       // record with a name on it (ADR 0028).
       expect(texted[0]?.text).toBe(
-        `Caballus: Feed PM on ${day()} at 16:00 is short. Cover it: https://caballus.tech/shifts Reply STOP to stop.`,
+        `Caballus: Feed PM on ${day()} at 16:00 is short. Cover it: https://barn.invalid/shifts Reply STOP to stop.`,
       )
     })
 
@@ -394,7 +386,7 @@ describe.skipIf(!reachable)('the Urgent Send, through the API', () => {
       // The Announcement's own words, unedited: nothing is said in a text that
       // is not already written somewhere it will still be true tomorrow.
       expect(texted[0]?.text).toBe(
-        'Caballus: The hay comes Thursday. More: https://caballus.tech Reply STOP to stop.',
+        'Caballus: The hay comes Thursday. More: https://barn.invalid Reply STOP to stop.',
       )
     })
 
@@ -436,6 +428,59 @@ describe.skipIf(!reachable)('the Urgent Send, through the API', () => {
       expect(refused.body).toEqual({ error: 'sms_not_configured' })
     })
 
+    it('refuses every send from a rescue the sender is not registered for (#113)', async () => {
+      // A second rescue on the same deployment: its entry has no `"sms": true`,
+      // because the one Twilio sender is registered for the existing rescue
+      // alone (ADR 0028). Nothing leaves, and it is said the way a box with no
+      // Twilio says it.
+      servingRescue(SHOUT_BARN)
+      const officer = await reachablePerson('Kate Ellery', '+14105550101')
+      await reachablePerson('Ruth Calloway', '+14105550102')
+      const shiftId = await shortShift(officer)
+      const api = apiAs(officer, ['roster'])
+
+      const reach = await get(api, '/reach')
+      expect(reach.body.texts).toBe(false)
+
+      const short = await post(api, '/shifts/short/text', { shiftId })
+      expect(short.status).toBe(503)
+      expect(short.body).toEqual({ error: 'sms_not_configured' })
+
+      const posted = await post(api, '/announcements', {
+        text: 'The hay comes Thursday.',
+        expiresOn: day(),
+      })
+      const announcement = await post(api, '/announcements/text', {
+        announcementId: posted.body.announcementId,
+      })
+      expect(announcement.status).toBe(503)
+      expect(texted).toEqual([])
+
+      // And the registered rescue still sends, and says so before the confirm.
+      servingRescue(SHOUT_BARN, { sms: true })
+      expect((await get(api, '/reach')).body.texts).toBe(true)
+      expect((await post(api, '/shifts/short/text', { shiftId })).status).toBe(200)
+    })
+
+    it('links to the host of the rescue that sent it (#113)', async () => {
+      servingRescues({ 'shout-barn.example': SHOUT_BARN }, { 'shout-barn.example': { sms: true } })
+      const officer = await reachablePerson('Kate Ellery', '+14105550101')
+      await reachablePerson('Ruth Calloway', '+14105550102')
+      const shiftId = await shortShift(officer)
+
+      await apiAs(officer, ['roster']).fetch(
+        new Request(`http://shout-barn.example${API_BASE}/shifts/short/text`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ shiftId, idempotencyKey: newIdempotencyKey() }),
+        }),
+      )
+
+      expect(texted.map((one) => one.text).join('\n')).toContain(
+        'https://shout-barn.example/shifts',
+      )
+    })
+
     it('refuses the hundred-and-twenty-first message in a day, and says so in the log', async () => {
       const lines: string[] = []
       vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
@@ -453,7 +498,9 @@ describe.skipIf(!reachable)('the Urgent Send, through the API', () => {
         return Promise.resolve()
       })
       const { sendText } = await import('../sms')
-      for (let index = 0; index < DAILY_CAP - 1; index += 1) await sendText({ to: 'x', text: 'y' })
+      for (let index = 0; index < DAILY_CAP - 1; index += 1) {
+        await sendText(SHOUT_BARN as OrgId, { to: 'x', text: 'y' })
+      }
       expect(spent).toBe(DAILY_CAP - 1)
 
       const sent = await post(apiAs(officer, ['roster']), '/shifts/short/text', { shiftId })

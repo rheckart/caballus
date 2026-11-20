@@ -128,7 +128,7 @@ export async function recordReading(
 ): Promise<Recorded<{ id: string; provider: WeatherProvider; stale: boolean }>> {
   const bounds = dayBounds(about.day, about.timeZone)
 
-  const at = barnCoordinates()
+  const at = await barnCoordinates(db)
   if (at === null) return refused('coordinates_not_set')
 
   let provider: WeatherProvider

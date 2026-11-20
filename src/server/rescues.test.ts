@@ -14,7 +14,9 @@ import { anonymousContext, currentOrgId, UnknownRescue } from './request-context
 import {
   hostOf,
   MalformedRescues,
+  originOf,
   parseRescues,
+  rescueOfOrg,
   rescueFor,
   setRescues,
   UNKNOWN_RESCUE,
@@ -34,8 +36,41 @@ describe('RESCUES, the one piece of configuration keyed by host', () => {
     const parsed = parseRescues(
       JSON.stringify({ 'caballus.tech': { orgId: A }, 'localhost:3000': { orgId: B } }),
     )
-    expect(parsed.get('caballus.tech')).toEqual({ host: 'caballus.tech', orgId: A })
-    expect(parsed.get('localhost:3000')).toEqual({ host: 'localhost:3000', orgId: B })
+    expect(parsed.get('caballus.tech')).toEqual({
+      host: 'caballus.tech',
+      orgId: A,
+      boardToken: null,
+      sms: false,
+    })
+    expect(parsed.get('localhost:3000')?.orgId).toBe(B)
+  })
+
+  it('carries each rescue’s kiosk token and whether it may text (#113)', () => {
+    const parsed = parseRescues(
+      JSON.stringify({
+        'caballus.tech': { orgId: A, boardToken: 'a-token-long-enough-to-matter', sms: true },
+        'rescue-b.caballus.tech': { orgId: B },
+      }),
+    )
+    expect(parsed.get('caballus.tech')).toMatchObject({
+      boardToken: 'a-token-long-enough-to-matter',
+      sms: true,
+    })
+    expect(parsed.get('rescue-b.caballus.tech')).toMatchObject({ boardToken: null, sms: false })
+  })
+
+  it('finds a rescue by its organisation, and names its origin', () => {
+    setRescues(
+      parseRescues(
+        JSON.stringify({ 'rescue-b.caballus.tech': { orgId: B }, 'localhost:3000': { orgId: A } }),
+      ),
+    )
+    const b = rescueOfOrg(B)
+    const a = rescueOfOrg(A)
+    expect(b === null ? null : originOf(b)).toBe('https://rescue-b.caballus.tech')
+    // No certificate on a development box, so its links are plain http.
+    expect(a === null ? null : originOf(a)).toBe('http://localhost:3000')
+    expect(rescueOfOrg('00000000-0000-0000-0000-0000000000ff')).toBeNull()
   })
 
   it.each([
@@ -54,6 +89,26 @@ describe('RESCUES, the one piece of configuration keyed by host', () => {
       'a field nobody reads',
       JSON.stringify({ 'caballus.tech': { orgId: A, colour: 'red' } }),
       /malformed/,
+    ],
+    [
+      'a kiosk token with a character compose would read',
+      JSON.stringify({ 'caballus.tech': { orgId: A, boardToken: "a-token-long-enough-but-it's" } }),
+      /malformed/,
+    ],
+    [
+      'a kiosk token anybody could guess',
+      JSON.stringify({ 'caballus.tech': { orgId: A, boardToken: 'barn' } }),
+      /malformed/,
+    ],
+    [
+      'sms that is not a yes or a no',
+      JSON.stringify({ 'caballus.tech': { orgId: A, sms: 'yes' } }),
+      /malformed/,
+    ],
+    [
+      'two hosts for one rescue',
+      JSON.stringify({ 'a.test': { orgId: A }, 'b.test': { orgId: A } }),
+      /same organisation/,
     ],
   ])('refuses %s, loudly', (_label, raw, because) => {
     expect(() => parseRescues(raw)).toThrow(MalformedRescues)

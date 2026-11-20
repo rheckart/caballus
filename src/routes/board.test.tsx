@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { stubApi } from '../test/api-stub'
 import { renderRoutes } from '../test/route-harness'
-import { BOARD_TOKEN_HEADER } from '../shared/board'
+import { KIOSK_TOKEN_HEADER } from '../shared/board'
 import { PRODUCT_KINDS } from '../shared/products'
 import Board, { KIND_TEXT_CLASS } from './board'
 import HorseProfile from './horses/$horseId'
@@ -391,7 +391,7 @@ describe('the Board', () => {
 
     const [, init] = vi.mocked(fetch).mock.calls[0] ?? []
     const headers = (init as RequestInit | undefined)?.headers as Record<string, string> | undefined
-    expect(headers?.[BOARD_TOKEN_HEADER]).toBe('the-tablet-token')
+    expect(headers?.[KIOSK_TOKEN_HEADER]).toBe('the-tablet-token')
   })
 
   it('puts what the weather resolved to on the wall, in words', async () => {

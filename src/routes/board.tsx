@@ -42,7 +42,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { ALERT_KIND_LABEL } from '../shared/alerts'
 import type { ProductKind } from '../shared/products'
 import { ApiError, client } from '../shared/api-client'
-import { BOARD_TOKEN_HEADER } from '../shared/board'
+import { KIOSK_TOKEN_HEADER } from '../shared/board'
 import { BOARD_NOT_LINKED, refusalText } from '../shared/refusals'
 import type { Answers, contract } from '../shared/api-contract'
 import { elapsed, now, type Instant } from '../shared/time'
@@ -203,7 +203,7 @@ function Board() {
   const load = useCallback(async () => {
     const answered = await client.get(
       '/board',
-      token === null ? undefined : { headers: { [BOARD_TOKEN_HEADER]: token } },
+      token === null ? undefined : { headers: { [KIOSK_TOKEN_HEADER]: token } },
     )
     setGrid(answered)
     setFreshAt(now())

@@ -205,7 +205,33 @@ let instance: ReturnType<typeof build> | undefined
 function build() {
   return betterAuth({
     secret: secret(),
-    baseURL: process.env.APP_URL ?? 'http://localhost:3000',
+    // **A fixed, reserved value, and not any rescue's origin** (#113, ADR
+    // 0030). One deployment serves several hosts now, so there is no single
+    // origin to name — and against better-auth 1.x as installed, `baseURL`
+    // decides nothing this application uses. What was checked:
+    //
+    // - **The cookie's name and `Secure` flag** come from `useSecureCookies`
+    //   below, which is set explicitly; `baseURL`'s scheme is consulted only
+    //   when that option is left undefined (`cookies/index.mjs`). So the
+    //   cookie stays `better-auth.session_token` in development and
+    //   `__Secure-better-auth.session_token` in production, exactly as before.
+    // - **The cookie's `Domain`** is derived from `baseURL` only with
+    //   `crossSubDomainCookies` enabled, which it is not — so the cookie is
+    //   host-only, which is also what keeps a rescue's cookie at its own host.
+    // - **The origin check** (`trustedOrigins`, defaulting to `baseURL`'s
+    //   origin) runs in the HTTP router and on endpoints handed a `Request`;
+    //   this application mounts no `/api/auth/*` and calls `auth().api.*`
+    //   with a body or headers alone, so it never runs.
+    // - **The router's base path** is `baseURL`'s path, for the same unmounted
+    //   router.
+    //
+    // `.invalid` (RFC 2606) so that if any of that ever changes — a mounted
+    // handler, a link in a message — it fails closed against an origin no
+    // browser can be at, rather than quietly trusting one rescue's host for
+    // all of them. `deploy/docker-compose.yml`'s old note that one origin kept
+    // "the session cookie's idea of where it is" true described nothing the
+    // library does here.
+    baseURL: 'https://caballus.invalid',
     database: drizzleAdapter(rawDb(), {
       provider: 'pg',
       // Named rather than inferred, so that adding a table to `schema.ts` can

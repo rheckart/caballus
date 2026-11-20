@@ -13,7 +13,7 @@
  * is changing `BASE_URL` and the key.
  *
  * The phone sends bytes; the server calls out. The key lives in the
- * environment beside `BOARD_TOKEN` and `BARN_LATITUDE`, and **unset fails
+ * environment beside the other secrets, and **unset fails
  * closed**: `whiteboardReader` answers `null` and the endpoint refuses in
  * words, rather than a development box quietly making a paid call or a
  * production one failing obscurely.

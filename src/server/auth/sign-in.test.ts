@@ -298,6 +298,12 @@ describe.skipIf(!reachable)('email codes, sessions and revocation, against the d
       const cookie = answered.headers.get('set-cookie') ?? ''
       expect(cookie).toMatch(/HttpOnly/i)
       expect(cookie).toMatch(/SameSite=Lax/i)
+      // Named and scoped exactly as before #113 moved `baseURL` off any one
+      // rescue's origin: the same name, so the deploy signs nobody out, and
+      // host-only, so one rescue's cookie is never sent to another's host.
+      expect(cookie).toMatch(/^better-auth\.session_token=/)
+      expect(cookie).not.toMatch(/Domain=/i)
+      expect(cookie).toMatch(/Path=\//)
     })
 
     it('makes the session a row, and the row is what the next request reads', async () => {

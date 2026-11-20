@@ -20,7 +20,7 @@ import { useState } from 'react'
 
 import { Button } from './ui/button'
 import { client } from '../shared/api-client'
-import { refusalText } from '../shared/refusals'
+import { refusalSentence, refusalText } from '../shared/refusals'
 import { reachSentence } from '../shared/urgent'
 import type { AnswersWrite, contract } from '../shared/api-contract'
 
@@ -115,6 +115,14 @@ export function UrgentSend({
           setStage({ stage: 'asking' })
           void client.get('/reach').then(
             (report) => {
+              // Said before the count rather than after the confirm (#113): a
+              // rescue that cannot text is told so once, plainly, instead of
+              // being offered *this reaches 47* and refused when it presses.
+              if (!report.texts) {
+                setStage({ stage: 'idle' })
+                setProblem(refusalSentence('sms_not_configured'))
+                return
+              }
               const reach =
                 audience.kind === 'everyone'
                   ? report.everyone
