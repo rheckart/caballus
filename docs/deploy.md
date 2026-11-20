@@ -31,9 +31,9 @@ than `postgres:5432`.
 
 ## The workflows' secrets
 
-| Secret        | What it is                                          |
-| ------------- | --------------------------------------------------- |
-| `VPS_SSH_KEY` | The private half of the deploy key described below. |
+| Secret                                  | What it is                                                                                                                                                          |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VPS_SSH_KEY`                           | The private half of the deploy key described below.                                                                                                                 |
 | `TS_OAUTH_CLIENT_ID`, `TS_OAUTH_SECRET` | A Tailscale OAuth client (scope Auth Keys: write, tag `tag:ci`). The deploy job joins the tailnet with it and SSHes to the VPS's tailnet address, `100.83.238.108`. |
 
 Publishing needs no stored secret: `ci.yml` grants its `publish` job
@@ -392,6 +392,18 @@ is running now; the registry holds every commit that was ever published.
 A rollback across a migration is **not** automatic and never will be by this
 script: Drizzle's migrations are forward-only, and a schema the old image does
 not understand is a decision, not a button.
+
+**Never roll back past the Account-key release** (#111, ADR 0030). Migration
+`0024_accounts_keyed_by_volunteer` rewrites every Better Auth `user.email` to an
+opaque key derived from the Volunteer, and it shipped one deploy **after** the
+code that reads it — the release that resolves a sign-in's identifier from the
+Volunteer rather than from what was typed. That release, and every one after
+it, signs in on both sides of the rewrite. Any image from before it signs in by
+the real address: run against rewritten rows it mints a fresh `user` for every
+sign-in, `claimAccount` refuses each one, and nobody can sign in at all. So once
+`0024` has run, the oldest tag a rollback may name is the one carrying #111's
+code. The rewrite signs nobody out — a session points at a `user` id, never at
+an address.
 
 **A rollback puts the tag back and not the secrets.** It always was about which
 image is running, and now that every deploy re-renders `.env`, that distinction

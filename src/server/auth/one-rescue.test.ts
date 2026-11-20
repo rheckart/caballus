@@ -268,6 +268,43 @@ describe.skipIf(!reachable)('an Account belongs to one rescue, against the datab
     await owner`delete from "user" where id = ${userId}`
   })
 
+  it('keeps a session minted before the rewrite, and signs in on the same Account after it', async () => {
+    // Before: an Account keyed by the address it was claimed under, holding a
+    // session — every volunteer on the morning `0024_accounts_keyed_by_volunteer`
+    // deploys.
+    const legacy = await createVolunteer(at(RESCUE_A), {
+      name: 'Fay Early',
+      email: `fay${OURS}`,
+      mobile: '+14105550177',
+    })
+    const userId = `legacy-${legacy.id}`
+    await owner`
+      insert into "user" (id, name, email, email_verified)
+      values (${userId}, 'Fay Early', ${`fay${OURS}`}, true)
+    `
+    await owner`
+      insert into volunteer_accounts (org_id, volunteer_id, user_id)
+      values (${RESCUE_A}, ${legacy.id}, ${userId})
+    `
+    const before = cookieOf((await byEmail(RESCUE_A, `fay${OURS}`)).headers)
+
+    // What the migration does to this row — its own SQL is exercised whole in
+    // `src/server/auth/account-keys.test.ts`, in a database of its own, because
+    // it is global and this one is shared with every suite running beside it.
+    await owner`update "user" set email = ${accountKey(legacy.id)} where id = ${userId}`
+
+    // Nobody is signed out: a session points at a user id, never an address.
+    expect((await actorFrom(at(RESCUE_A), carrying(before)))?.volunteerId).toBe(legacy.id)
+
+    // And both doors still land on that same row.
+    posted = []
+    forgetCodeRequestsForTest()
+    expect((await byEmail(RESCUE_A, `fay${OURS}`)).volunteerId).toBe(legacy.id)
+    forgetCodeRequestsForTest()
+    expect((await byText(RESCUE_A, '410-555-0177')).volunteerId).toBe(legacy.id)
+    expect(await userIdOf(legacy.id)).toBe(userId)
+  })
+
   it('never mails a code to an Account key, even through Better Auth’s own sender', async () => {
     const volunteer = await createVolunteer(at(RESCUE_A), { name: 'Eve', email: `eve${OURS}` })
     expect(isAccountKey(accountKey(volunteer.id))).toBe(true)
