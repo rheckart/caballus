@@ -34,7 +34,7 @@ ADMIN_DATABASE_URL=postgres://caballus:{{ op://Caballus/postgres/password }}@pos
 # because a rebuild must restore the one the existing rows are scoped to, and
 # the host because it is the rescue's own fact rather than the repository's.
 # `render-env.sh` refuses a map that does not parse, before anything is pulled.
-RESCUES={"{{ op://Caballus/app/host }}":{"orgId":"{{ op://Caballus/app/org-id }}"}}
+RESCUES={"{{ op://Caballus/app/hostname }}":{"orgId":"{{ op://Caballus/app/org-id }}"}}
 
 # --- Identity -------------------------------------------------------------
 # ADR 0006: this key must survive a restore. Rotating it signs out every

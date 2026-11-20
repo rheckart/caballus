@@ -49,7 +49,7 @@ function vaultFor(overrides = {}) {
   return {
     'Caballus/postgres/password': 'owner-password',
     'Caballus/postgres/app-password': 'app-password',
-    'Caballus/app/host': 'caballus.tech',
+    'Caballus/app/hostname': 'caballus.tech',
     'Caballus/app/org-id': ORG,
     'Caballus/app/better-auth-secret': 'secret',
     'Caballus/app/board-token': 'board',
@@ -112,7 +112,7 @@ describe('render-env.sh', () => {
   })
 
   it.each([
-    ['a host that is not one', { 'Caballus/app/host': 'https://caballus.tech' }, /not a host/],
+    ['a host that is not one', { 'Caballus/app/hostname': 'https://caballus.tech' }, /not a host/],
     ['an org id that is not one', { 'Caballus/app/org-id': 'freedom-hill' }, /not an id/],
     ['an empty org id', { 'Caballus/app/org-id': '' }, /not an id/],
   ])('refuses %s, and leaves the working .env alone', async (_label, overrides, because) => {

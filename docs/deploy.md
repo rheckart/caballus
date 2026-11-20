@@ -111,13 +111,13 @@ deploy stops there with `.env` untouched.
 | Item         | Fields                                                                                        |
 | ------------ | --------------------------------------------------------------------------------------------- |
 | `postgres`   | `password` (the owner), `app-password` (the `caballus_app` role)                              |
-| `app`        | `host`, `org-id`, `better-auth-secret`, `board-token`, `barn-latitude`, `barn-longitude`      |
+| `app`        | `hostname`, `org-id`, `better-auth-secret`, `board-token`, `barn-latitude`, `barn-longitude`  |
 | `smtp`       | `url`                                                                                         |
 | `openrouter` | `api-key`                                                                                     |
 | `twilio`     | `account-sid`, `auth-token`, `from-number`, `verify-service-sid`, `verify-change-service-sid` |
 | `s4`         | `access-key-id`, `secret-access-key` — read by `backup.env.tpl` only (_Backups_)              |
 
-**`app/host` is new with #112, and a person adds it before that deploy.** Its
+**`app/hostname` is read from #112 on.** It was already in the item, and its
 value is `caballus.tech` — the host the existing rescue is reached at, exactly
 as a browser sends it. `.env.tpl` renders it with `org-id` into a one-entry
 `RESCUES`, and `render-env.sh` refuses a map that does not parse, so a missing
