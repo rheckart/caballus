@@ -3,12 +3,13 @@
  *
  * **The email is the credential, and that is the whole of the design.**
  * `requestCode` gates on `volunteerByEmail`, so `volunteers.email` is what
- * decides whether a code is sent at all. Moving it naively is a permanent
- * lockout: the live session survives — it resolves through
- * `volunteer_accounts.userId` and not through an address — the old address is
- * refused by the gate, and the new one mints a fresh Better Auth `user` with no
- * membership row that `actorForUser` refuses too. Only a Coordinator can undo
- * it. So a self-edit of the email is **verified before it commits**.
+ * decides whether a code is sent at all — and where it is sent. Moving it
+ * naively to an address nobody can receive at is a permanent lockout: the live
+ * session survives — it resolves through `volunteer_accounts.userId` and not
+ * through an address — the old address is refused by the gate, and every code
+ * the new one is sent goes to an inbox the volunteer cannot open. Only a
+ * Coordinator can undo it. So a self-edit of the email is **verified before it
+ * commits**.
  *
  * **The pending change needs no table.** The unverified code *is* the pending
  * state, in Better Auth's own `verification` row keyed by the new address. The
@@ -23,19 +24,28 @@
  * than inventing one keeps that guarantee legible beside the library that makes
  * it, and `src/server/api/me.test.ts` asserts both halves.
  *
+ * **`volunteers.email` is the only column that moves** (ADR 0030, amending
+ * ADR 0027). Better Auth's `user` is keyed by an opaque Account key derived
+ * from the Volunteer (`accountKey` in `./volunteers.ts`) and says nothing about
+ * the person any more, so there is no second address column to keep in step.
+ * ADR 0027 once wrote `user.email` here too, as the one deliberate exception to
+ * `src/server/auth/revoke.ts`'s rule against a second writer to Better Auth's
+ * tables; that exception is gone. It was also the cross-rescue hole's other
+ * half: `user.email` is unique across every organisation, so a change made at
+ * one rescue could move the address another rescue's officer signed in by.
+ * `volunteers_email_in_org` is now the whole guard.
+ *
  * **Everything here runs on the transaction `mutation` opened, and nothing
  * calls Better Auth.** That is not a preference. `drizzleAdapter` is built with
  * `rawDb()` rather than the transaction handle (`src/server/auth/auth.ts`), so
  * every `auth().api.*` or `internalAdapter.*` call takes a **second**
  * connection out of a pool of ten while the first is still held — ten
  * concurrent changes would each wait on an eleventh connection that cannot
- * arrive, and the whole process stops. So the three tables involved are written
- * here directly with the scoped handle. `src/server/auth/revoke.ts` states the
- * general rule against a second writer to somebody else's tables, and this is
- * the deliberate exception: none of `user`, `session` or `verification` carries
- * an `org_id` or a policy, ADR 0027 requires both address columns to move in
- * one transaction, and there is no third option. The row formats this depends
- * on are pinned by tests rather than by hope.
+ * arrive, and the whole process stops. So the pending code's `verification`
+ * row and the other devices' `session` rows are written here directly with
+ * the scoped handle — neither carries an `org_id` or a policy, and both are
+ * rows of this Volunteer's own Account. The row formats this depends on are
+ * pinned by tests rather than by hope.
  */
 import { and, desc, eq, isNull, ne, sql } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
@@ -49,7 +59,7 @@ import {
 } from './auth'
 import { normaliseEmail } from '../roster/records'
 import type { OrgScopedDatabase } from '../../db/for-org'
-import { sessions, users, verifications, volunteerAccounts, volunteers } from '../../db/schema'
+import { sessions, verifications, volunteerAccounts, volunteers } from '../../db/schema'
 import { instant, now } from '../../shared/time'
 
 /**
@@ -85,11 +95,11 @@ export type CodeRefusal =
  * message that never left, and with email the only channel there is (ADR 0009)
  * *we sent you a code* has to be true when it is said.
  *
- * The two collision checks are pre-flight rather than left to the indexes.
- * `volunteers_email_in_org` and `user.email`'s own unique constraint are both
- * real and both would refuse — but inside the transaction that later applies
- * the change, and a constraint violation there aborts the idempotency key with
- * it and answers a 500 rather than a sentence a volunteer can act on.
+ * The collision check is pre-flight rather than left to the index.
+ * `volunteers_email_in_org` is real and would refuse — but inside the
+ * transaction that later applies the change, and a constraint violation there
+ * aborts the idempotency key with it and answers a 500 rather than a sentence a
+ * volunteer can act on.
  */
 export async function mintEmailChangeCode(
   db: OrgScopedDatabase,
@@ -147,13 +157,13 @@ export interface EmailChanged {
 }
 
 /**
- * Verifies the code, moves both address columns and ends every other session,
- * or refuses and touches nothing.
+ * Verifies the code, moves the address and ends every other session, or
+ * refuses and touches nothing.
  *
  * All of it commits together, which is stronger than ADR 0027 asked for and
  * falls out of doing the work on one handle: a rollback cannot leave somebody
- * signed out of a change that did not happen, and cannot leave the two address
- * columns disagreeing. The **one** thing outside the transaction is the message
+ * signed out of a change that did not happen. The **one** thing outside the
+ * transaction is the message
  * to the old address, which is the caller's and is deliberately logged rather
  * than thrown — refusing a completed credential change over an undeliverable
  * notice would leave a volunteer with an address they cannot sign in at.
@@ -192,10 +202,10 @@ export async function applyEmailChange(
   const checked = await consumeCode(db, email, code)
   if (checked !== 'ok') return { ok: false, because: checked }
 
+  // `volunteers` alone (ADR 0030). The Account is keyed by the Volunteer and not
+  // by an address, so the `user` row has nothing to move — and the next code is
+  // still checked against that row's own identifier, wherever it is now sent.
   await db.update(volunteers).set({ email }).where(eq(volunteers.id, volunteerId))
-  // `emailVerified` is true because a code just arrived at this address, which
-  // is the whole of what the column claims.
-  await db.update(users).set({ email, emailVerified: true }).where(eq(users.id, claimed.userId))
 
   const ended = await db
     .delete(sessions)
@@ -252,14 +262,14 @@ async function consumeCode(
 }
 
 /**
- * Whether anybody already holds this address — as a live Volunteer in this
- * organisation, or as a Better Auth user anywhere.
+ * Whether a live Volunteer in this organisation already holds this address.
  *
- * Both halves are needed and they are not the same question.
- * `volunteers_email_in_org` is per-organisation and partial over the live rows,
- * which is the filter `createVolunteerIn` checks against too; `user.email` is
- * unique globally, which ADR 0027 records as the seam a future multi-org
- * deployment meets first. Nothing here creates that and nothing here solves it.
+ * Per-organisation and partial over the live rows, matching
+ * `volunteers_email_in_org` and the filter `createVolunteerIn` checks against.
+ * It once asked Better Auth's `user` too, because `user.email` was unique
+ * across every rescue (ADR 0027 recorded it as the seam a multi-org deployment
+ * meets first). ADR 0030 met it: `user` is keyed by the Volunteer now, so an
+ * address held at another rescue is no business of this one's.
  */
 async function addressIsTaken(db: OrgScopedDatabase, email: string): Promise<boolean> {
   const [heldByVolunteer] = await db
@@ -267,14 +277,7 @@ async function addressIsTaken(db: OrgScopedDatabase, email: string): Promise<boo
     .from(volunteers)
     .where(and(eq(volunteers.email, email), isNull(volunteers.removedAt)))
     .limit(1)
-  if (heldByVolunteer !== undefined) return true
-
-  const [heldByUser] = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.email, email))
-    .limit(1)
-  return heldByUser !== undefined
+  return heldByVolunteer !== undefined
 }
 
 /**

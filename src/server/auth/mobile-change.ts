@@ -22,7 +22,8 @@
  * `email-change.ts` states rather than a coincidence: `drizzleAdapter` holds
  * `rawDb()` and can never join `mutation`'s transaction. Unlike the email
  * change, nothing here *needs* to — `user` carries no phone number, so the only
- * column that moves is `volunteers.mobile`.
+ * column that moves is `volunteers.mobile`. Since ADR 0030 the email change
+ * moves only `volunteers.email` too, so the two flows write the same table.
  *
  * **Other sessions are deliberately left alone**, which is where this departs
  * from the email change. That one ends them because the address it moves is the

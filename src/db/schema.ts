@@ -122,9 +122,12 @@ export const idempotencyKeys = pgTable(
 
 /**
  * Better Auth's user, and the whole of what identity owns about a person
- * (ADR 0008). The name and email here are the ones the sign-in was performed
- * against; the barn's record of who somebody is lives on `volunteers`, which
- * exists before this row and outlives it.
+ * (ADR 0008). **`email` is not an address** (ADR 0030): it is the Account key,
+ * the Volunteer's id at a reserved undeliverable domain (`accountKey` in
+ * `src/server/auth/volunteers.ts`), so a row answers for exactly one Volunteer
+ * of exactly one rescue. The barn's record of who somebody is — their real
+ * address and number among it — lives on `volunteers`, which exists before
+ * this row and outlives it.
  *
  * The shape is Better Auth's rather than ours — the adapter reads these keys —
  * so the columns are named the way its models are, with SQL names in this
@@ -370,10 +373,10 @@ export const volunteerAccounts = pgTable(
     //
     // Scoped by `org_id` rather than unique on `user_id` alone, because an
     // index is not row-level-security-aware: a global one would enforce
-    // itself across organisations and make somebody who volunteers at two
-    // rescues unrepresentable — which is precisely the case ADR 0008 says
-    // resolves through a server-side active organisation, and which ADR 0007
-    // put `org_id` on every table to keep cheap.
+    // itself across organisations. Since ADR 0030 a `user` is keyed by the
+    // one Volunteer it was minted for, so a second organisation linking it
+    // is unreachable through sign-in rather than refused by this index — and
+    // somebody who volunteers at two rescues holds two Accounts.
     uniqueIndex('volunteer_accounts_user_in_org').on(table.orgId, table.userId),
     inScope('volunteer_accounts_in_scope'),
   ],

@@ -11,7 +11,7 @@
  * Skipped, loudly, on a machine with no database: `docker compose up -d`, then
  * `psql -f scripts/provision-database.sql` and `npm run db:migrate`.
  */
-import { eq, inArray, like } from 'drizzle-orm'
+import { eq, inArray, or, sql } from 'drizzle-orm'
 import postgres from 'postgres'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -32,7 +32,14 @@ import {
   signOut,
   submitCode,
 } from './sign-in'
-import { claimAccount, createVolunteer, grantRole, removeVolunteer } from './volunteers'
+import {
+  ACCOUNT_KEY_DOMAIN,
+  claimAccount,
+  createVolunteer,
+  grantRole,
+  removeVolunteer,
+} from './volunteers'
+import { forgetIdentities } from '../../test/identities'
 
 const applicationUrl = process.env.DATABASE_URL ?? ''
 const ownerUrl = process.env.ADMIN_DATABASE_URL ?? ''
@@ -63,10 +70,15 @@ describe.skipIf(!reachable)('email codes, sessions and revocation, against the d
    * policy (ADR 0008), so `forOrg` does **not** scope them — which makes a bare
    * `select().from(users)` a claim about every test file running in parallel
    * rather than about this one. Both of these narrow it to this file's own
-   * rows: every address here ends in `example.invalid`, and a session of ours
-   * belongs to a `user` some Volunteer of this organisation has claimed.
+   * rows: a `user` of ours is keyed by one of this organisation's Volunteers
+   * (ADR 0030) or claimed by one, and a session of ours belongs to such a
+   * `user`. The subqueries read `volunteers` and `volunteer_accounts` through
+   * the scoped handle, so the policies are what keep them to this rescue.
    */
-  const ours = like(users.email, '%example.invalid')
+  const ours = or(
+    inArray(users.email, sql`(select id::text || ${`@${ACCOUNT_KEY_DOMAIN}`} from ${volunteers})`),
+    inArray(users.id, sql`(select user_id from ${volunteerAccounts})`),
+  )
 
   const mine = (db: Parameters<Parameters<ReturnType<typeof forOrg>['run']>[0]>[0]) =>
     inArray(
@@ -76,6 +88,7 @@ describe.skipIf(!reachable)('email codes, sessions and revocation, against the d
 
   beforeAll(async () => {
     process.env.APP_ORG_ID = FRONT_BARN
+    await forgetIdentities(owner, FRONT_BARN)
     await owner`delete from audit_entries where org_id = ${FRONT_BARN}`
     await owner`delete from volunteer_roles where org_id = ${FRONT_BARN}`
     await owner`delete from volunteer_accounts where org_id = ${FRONT_BARN}`
@@ -111,26 +124,17 @@ describe.skipIf(!reachable)('email codes, sessions and revocation, against the d
     setEmailTransport(null)
     setVerifier(null)
     vi.restoreAllMocks()
+    await forgetIdentities(owner, FRONT_BARN)
     // First, because every grant and removal below now writes one and it
     // references both the volunteer and the org (ADR 0010).
     await owner`delete from audit_entries where org_id = ${FRONT_BARN}`
     await owner`delete from volunteer_roles where org_id = ${FRONT_BARN}`
     await owner`delete from volunteer_accounts where org_id = ${FRONT_BARN}`
     await owner`delete from volunteers where org_id = ${FRONT_BARN}`
-    // Better Auth's three tables carry no `org_id` (ADR 0008), so these are
-    // scoped by **address** instead. An unscoped delete here reaches into
-    // whatever `src/server/api/me.test.ts` is doing in the process next door,
-    // and vitest runs files in parallel: every address this file ever uses ends
-    // in `example.invalid`, and that is what makes the scope real.
-    await owner`
-      delete from "session"
-      where user_id in (select id from "user" where email like '%example.invalid')
-    `
-    await owner`delete from "user" where email like '%example.invalid'`
-    await owner`delete from verification where identifier like '%example.invalid'`
   })
 
   afterAll(async () => {
+    await forgetIdentities(owner, FRONT_BARN)
     await owner`delete from audit_entries where org_id = ${FRONT_BARN}`
     await owner`delete from volunteer_roles where org_id = ${FRONT_BARN}`
     await owner`delete from volunteer_accounts where org_id = ${FRONT_BARN}`
