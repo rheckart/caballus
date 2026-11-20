@@ -19,6 +19,7 @@
 import { sql } from 'drizzle-orm'
 import {
   boolean,
+  check,
   date,
   index,
   integer,
@@ -60,9 +61,31 @@ export const orgs = pgTable(
     name: text('name').notNull(),
     /** IANA zone. The day boundary belongs to the organisation (ADR 0007). */
     timeZone: text('time_zone').notNull(),
+    /**
+     * Where the barn is, in decimal degrees, for the weather providers
+     * (ADR 0015) — or null for a rescue nobody has told, which a Reading
+     * refuses on rather than guessing at a forecast.
+     *
+     * A column now rather than two environment variables (#113, ADR 0030): one deployment serves several rescues and each barn is
+     * somewhere. It is a fact somebody might reasonably correct rather than a
+     * secret, so it lives with the rescue rather than in configuration; set by
+     * `npm run bootstrap -- --barn <lat>,<lon>`. `numeric` rather than a
+     * float, like every other number this schema stores, so what was typed is
+     * what is read back. Both or neither, and on the globe.
+     */
+    barnLatitude: numeric('barn_latitude', { mode: 'number' }),
+    barnLongitude: numeric('barn_longitude', { mode: 'number' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  () => [
+  (table) => [
+    check(
+      'orgs_barn_both_or_neither',
+      sql`(${table.barnLatitude} is null) = (${table.barnLongitude} is null)`,
+    ),
+    check(
+      'orgs_barn_on_the_globe',
+      sql`${table.barnLatitude} between -90 and 90 and ${table.barnLongitude} between -180 and 180`,
+    ),
     pgPolicy('orgs_in_scope', {
       for: 'all',
       using: sql`id::text = current_setting('app.org_id', true)`,

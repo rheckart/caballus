@@ -23,6 +23,8 @@
  * numbers — is handled by the fallback carrying no apparent temperature and by
  * `fellBackFrom` being on the Reading and on the Board.
  */
+import type { OrgScopedDatabase } from '../../db/for-org'
+import { orgs } from '../../db/schema'
 import { instant, now, type Instant } from '../../shared/time'
 import type { WeatherProvider } from '../../shared/weather'
 import { log } from '../observability'
@@ -93,22 +95,25 @@ const FORECAST_DAYS = 2
 const USER_AGENT = 'caballus (horse rescue operations; caballus@heckart.me)'
 
 /**
- * The barn's coordinates, from configuration.
+ * The barn's coordinates, off the rescue's own `orgs` row (#113, ADR 0030).
  *
- * Configuration rather than a column: nothing in the application edits where
- * the barn is, there is no organisation-settings screen to put it on, and a
- * column nothing writes is the *URL pointing at nothing* #34 and #35 both
- * refused. Unset means no forecast — the same fail-closed shape the kiosk
- * token has, and a development box has neither.
+ * A column rather than configuration now that one deployment serves several
+ * rescues: each barn is somewhere, and where is a fact somebody might
+ * reasonably correct rather than a secret. Set by `npm run bootstrap --
+ * --barn <lat>,<lon>`. Unset means no forecast — the same fail-closed shape the
+ * kiosk token has — and a Reading refuses rather than guessing.
+ *
+ * Read through the scoped handle, so the policies are what keep it to the
+ * rescue the request was addressed to.
  */
-export function barnCoordinates(): Coordinates | null {
-  const latitude = Number(process.env.BARN_LATITUDE ?? '')
-  const longitude = Number(process.env.BARN_LONGITUDE ?? '')
-  if ((process.env.BARN_LATITUDE ?? '') === '' || (process.env.BARN_LONGITUDE ?? '') === '') {
-    return null
-  }
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null
-  return { latitude, longitude }
+export async function barnCoordinates(db: OrgScopedDatabase): Promise<Coordinates | null> {
+  const [org] = await db
+    .select({ latitude: orgs.barnLatitude, longitude: orgs.barnLongitude })
+    .from(orgs)
+    .limit(1)
+  if (org === undefined || org.latitude === null || org.longitude === null) return null
+  if (!Number.isFinite(org.latitude) || !Number.isFinite(org.longitude)) return null
+  return { latitude: org.latitude, longitude: org.longitude }
 }
 
 /**

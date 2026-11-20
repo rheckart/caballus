@@ -176,6 +176,13 @@
       "when": 1795203306333,
       "tag": "0024_accounts_keyed_by_volunteer",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1795204432751,
+      "tag": "0025_a_barn_per_rescue",
+      "breakpoints": true
     }
   ]
 }

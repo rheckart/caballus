@@ -18,9 +18,12 @@ import { setRescues, type Rescue } from '../server/rescues'
 /** The host every in-process test request is built at. */
 export const TEST_HOST = 'barn.invalid'
 
+/** What a test may say about a rescue beyond which organisation it is (#113). */
+export type RescueOptions = Partial<Pick<Rescue, 'boardToken' | 'sms'>>
+
 /** Serves `orgId` at `TEST_HOST`, and only that, and answers its `OrgId`. */
-export function servingRescue(orgId: string): OrgId {
-  return servingRescues({ [TEST_HOST]: orgId })[TEST_HOST] as OrgId
+export function servingRescue(orgId: string, options: RescueOptions = {}): OrgId {
+  return servingRescues({ [TEST_HOST]: orgId }, { [TEST_HOST]: options })[TEST_HOST] as OrgId
 }
 
 /**
@@ -29,10 +32,20 @@ export function servingRescue(orgId: string): OrgId {
  */
 export function servingRescues(
   byHost: Readonly<Record<string, string>>,
-  extra: Readonly<Record<string, Partial<Omit<Rescue, 'host' | 'orgId'>>>> = {},
+  options: Readonly<Record<string, RescueOptions>> = {},
 ): Record<string, OrgId> {
   setRescues(
-    new Map(Object.entries(byHost).map(([host, orgId]) => [host, { ...extra[host], host, orgId }])),
+    new Map(
+      Object.entries(byHost).map(([host, orgId]) => [
+        host,
+        {
+          host,
+          orgId,
+          boardToken: options[host]?.boardToken ?? null,
+          sms: options[host]?.sms ?? false,
+        },
+      ]),
+    ),
   )
   return Object.fromEntries(
     Object.keys(byHost).map((host) => [host, currentOrgId(new Request(`http://${host}/`))]),

@@ -30,11 +30,13 @@
  * `--org` finishes the job rather than failing. Without `--org`, every run is
  * a new rescue.
  */
+import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 
 import { closeDb, forOrg, type OrgId } from '../../db/for-org'
 import { orgs } from '../../db/schema'
 import { isTimeZone } from '../time'
+import type { Coordinates } from '../weather/providers'
 import { createVolunteer, grantRole, recordFoundingRelease, volunteerByEmail } from './volunteers'
 
 export interface FirstMember {
@@ -56,6 +58,7 @@ export async function bootstrap(details: {
   readonly timeZone: string
   readonly name: string
   readonly email: string
+  readonly barn?: Coordinates
 }): Promise<FirstMember> {
   if (!isTimeZone(details.timeZone)) {
     throw new Error(
@@ -70,6 +73,7 @@ export async function bootstrap(details: {
       .onConflictDoNothing()
       .returning({ id: orgs.id }),
   )
+  if (details.barn !== undefined) await placeBarn(details.orgId, details.barn)
 
   const existing = await volunteerByEmail(details.orgId, details.email)
   const volunteer =
@@ -88,6 +92,25 @@ export async function bootstrap(details: {
   await recordFoundingRelease(details.orgId, volunteer.id, details.timeZone)
 
   return { orgId: details.orgId, volunteerId: volunteer.id, created: existing === null }
+}
+
+/**
+ * Where a rescue's barn is, for the weather (#113, ADR 0030).
+ *
+ * On the rescue's own `orgs` row, set on create or on any later run — which is
+ * how the rescue that existed before #113 gets the coordinates it used to read
+ * from the deployment's environment. Refuses an organisation that does
+ * not exist rather than reporting a barn placed nowhere.
+ */
+export async function placeBarn(orgId: OrgId, barn: Coordinates): Promise<void> {
+  const placed = await forOrg(orgId).run((db) =>
+    db
+      .update(orgs)
+      .set({ barnLatitude: barn.latitude, barnLongitude: barn.longitude })
+      .where(eq(orgs.id, orgId))
+      .returning({ id: orgs.id }),
+  )
+  if (placed.length === 0) throw new Error(`There is no organisation ${orgId} to place a barn for.`)
 }
 
 /** A fresh organisation id, for a rescue that does not exist yet. */
@@ -111,17 +134,38 @@ export async function runBootstrap(argv: readonly string[]): Promise<void> {
     process.exitCode = 2
     return
   }
-  const { organisation, timeZone, name, email } = parsed
-  const orgId = (parsed.org ?? newOrganisationId()) as OrgId
 
   try {
-    const member = await bootstrap({ orgId, organisation, timeZone, name, email })
+    if (parsed.kind === 'barn') {
+      await placeBarn(parsed.org as OrgId, parsed.barn)
+      process.stdout.write(
+        `The barn for ${parsed.org} is at ${String(parsed.barn.latitude)}, ` +
+          `${String(parsed.barn.longitude)}.\n`,
+      )
+      return
+    }
+
+    const { organisation, timeZone, name, email, barn } = parsed
+    const orgId = (parsed.org ?? newOrganisationId()) as OrgId
+    const member = await bootstrap({
+      orgId,
+      organisation,
+      timeZone,
+      name,
+      email,
+      ...(barn === null ? {} : { barn }),
+    })
     process.stdout.write(
       member.created
         ? `Created ${organisation} and its first President, ${name} <${email}>.\n` +
             `They sign in with a code like anybody else; nothing here made them an account.\n`
         : `${name} <${email}> was already a volunteer here, and now holds President.\n`,
     )
+    if (barn === null) {
+      process.stdout.write(
+        'No --barn given: the weather refuses for this rescue until one is (docs/deploy.md).\n',
+      )
+    }
     process.stdout.write(rescuesEntry(orgId))
   } finally {
     await closeDb()
@@ -129,8 +173,10 @@ export async function runBootstrap(argv: readonly string[]): Promise<void> {
 }
 
 const USAGE =
-  'Usage: npm run bootstrap -- [--org <id>] "<organisation>" <IANA/Zone> "<name>" <email>\n' +
-  '\nWithout --org a new organisation is created; with it, that one is finished or re-granted.\n'
+  'Usage: npm run bootstrap -- [--org <id>] [--barn <lat>,<lon>] "<organisation>" <IANA/Zone> "<name>" <email>\n' +
+  '       npm run bootstrap -- --org <id> --barn <lat>,<lon>\n' +
+  '\nWithout --org a new organisation is created; with it, that one is finished or re-granted.\n' +
+  'The second form only places the barn, for a rescue that already exists.\n'
 
 /** What the operator adds to `RESCUES`, so the rescue is reachable at a host. */
 function rescuesEntry(orgId: string): string {
@@ -140,16 +186,23 @@ function rescuesEntry(orgId: string): string {
   )
 }
 
-/** The four positional arguments, and `--org` wherever it appears. */
-function parseArguments(argv: readonly string[]): {
-  readonly org: string | null
-  readonly organisation: string
-  readonly timeZone: string
-  readonly name: string
-  readonly email: string
-} | null {
+type Parsed =
+  | {
+      readonly kind: 'rescue'
+      readonly org: string | null
+      readonly barn: Coordinates | null
+      readonly organisation: string
+      readonly timeZone: string
+      readonly name: string
+      readonly email: string
+    }
+  | { readonly kind: 'barn'; readonly org: string; readonly barn: Coordinates }
+
+/** The four positional arguments, and `--org` and `--barn` wherever they appear. */
+function parseArguments(argv: readonly string[]): Parsed | null {
   const positional: string[] = []
   let org: string | null = null
+  let barn: Coordinates | null = null
   for (let at = 0; at < argv.length; at += 1) {
     const argument = argv[at] ?? ''
     if (argument === '--org') {
@@ -157,10 +210,17 @@ function parseArguments(argv: readonly string[]): {
       if (value === undefined || !GUID.test(value)) return null
       org = value
       at += 1
+    } else if (argument === '--barn') {
+      const value = parseBarn(argv[at + 1])
+      if (value === null) return null
+      barn = value
+      at += 1
     } else {
       positional.push(argument)
     }
   }
+  if (positional.length === 0 && org !== null && barn !== null) return { kind: 'barn', org, barn }
+
   const [organisation, timeZone, name, email] = positional
   if (
     positional.length !== 4 ||
@@ -171,7 +231,20 @@ function parseArguments(argv: readonly string[]): {
   ) {
     return null
   }
-  return { org, organisation, timeZone, name, email }
+  return { kind: 'rescue', org, barn, organisation, timeZone, name, email }
+}
+
+/** `39.4143,-77.4105`: decimal degrees, latitude first, on the globe. */
+function parseBarn(raw: string | undefined): Coordinates | null {
+  const parts = (raw ?? '').split(',')
+  if (parts.length !== 2) return null
+  const [latitude, longitude] = parts.map((part) =>
+    part.trim() === '' ? Number.NaN : Number(part),
+  )
+  if (latitude === undefined || longitude === undefined) return null
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null
+  if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return null
+  return { latitude, longitude }
 }
 
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

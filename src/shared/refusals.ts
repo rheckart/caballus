@@ -23,8 +23,11 @@ const REFUSALS: Record<string, string> = {
     'That is not a mobile number we can read. Ten digits, or a + and the country code.',
   mobile_unchanged: 'That is already your number — nothing to change.',
   sms_not_sent: 'The code could not be texted. Your number has not changed. Try again in a minute.',
-  sms_not_configured:
-    'Nobody has told this deployment how to send a text. Set the Twilio variables.',
+  // One sentence for two facts that are the same from the sender's chair
+  // (#113): a box with no Twilio configured, and a rescue the one Twilio
+  // sender is not registered for. Either way nothing will leave, and email
+  // still does.
+  sms_not_configured: 'Texting is not set up for this rescue, so no text can be sent.',
   already_sent: 'This has already been texted out. Nobody is told twice.',
   announcement_expired: 'That announcement has expired, so there is no news left to send.',
   date_of_birth_not_established:
@@ -59,7 +62,7 @@ const REFUSALS: Record<string, string> = {
   threshold_value_required: 'Give the number, or put the horse on the rescue’s number instead.',
   threshold_not_per_horse: 'That number is one answer for the whole barn, not a per-horse one.',
   coordinates_not_set:
-    'Nobody has told this deployment where the barn is. Set BARN_LATITUDE and BARN_LONGITUDE.',
+    'Nobody has told this deployment where the barn is. Run bootstrap with --barn.',
   forecast_unavailable:
     'No weather service answered and there is no earlier forecast for today to fall back on. Try again shortly.',
   pattern_not_found: 'That shift pattern is gone.',
@@ -150,6 +153,11 @@ export const SIGNED_OUT = 'You have been signed out. Sign in again to carry on.'
  * names the thing somebody at a desk can actually fix.
  */
 export const BOARD_NOT_LINKED = 'This board is no longer linked. Re-enter the barn code.'
+
+/** The sentence for a refusal this screen learns of without a request failing. */
+export function refusalSentence(named: string): string {
+  return REFUSALS[named] ?? named
+}
 
 export function refusalText(error: unknown): string {
   if (!(error instanceof ApiError)) return UNREACHABLE

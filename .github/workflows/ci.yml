@@ -55,7 +55,6 @@ jobs:
       # in production (ADR 0007).
       DATABASE_URL: postgres://caballus_app:caballus@localhost:5432/caballus
       ADMIN_DATABASE_URL: postgres://caballus:caballus@localhost:5432/caballus
-      APP_URL: http://localhost:3000
       # Not a secret and not pretending to be one: this database is thrown away
       # at the end of the job. A real one would be a secret that every fork of
       # the log can read.

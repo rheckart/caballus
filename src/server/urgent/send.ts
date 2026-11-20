@@ -46,12 +46,13 @@
  */
 import { and, eq, isNull } from 'drizzle-orm'
 
-import type { OrgScopedDatabase } from '../../db/for-org'
+import type { OrgId, OrgScopedDatabase } from '../../db/for-org'
 import { announcements, shifts, volunteers } from '../../db/schema'
 import { announcementText, isReachable, shortText } from '../../shared/urgent'
 import { SHIFT_TYPE_LABEL, isAnyShiftType } from '../../shared/shifts'
 import type { DayString } from '../../shared/time'
 import { log } from '../observability'
+import { originOf, rescueOfOrg } from '../rescues'
 import { peopleList, type Person } from '../roster/people'
 import { mayCover } from '../shifts/gates'
 import { shiftList } from '../shifts/list'
@@ -76,6 +77,13 @@ export interface Reach {
  * would otherwise fire a request per row.
  */
 export interface ReachReport {
+  /**
+   * Whether a send from this rescue would leave at all (#113): false on a box
+   * with no Twilio configured, and false for a rescue the one sender is not
+   * registered for. Said here, before the confirm, so the screen tells the
+   * sender *nothing will go* instead of offering a count and refusing after.
+   */
+  readonly texts: boolean
   /** Everybody, which is the Announcement's audience. */
   readonly everyone: Reach
   /** Per Shift, which is *who could cover it* rather than everybody. */
@@ -84,6 +92,7 @@ export interface ReachReport {
 
 export async function reachFor(
   db: OrgScopedDatabase,
+  orgId: OrgId,
   today: DayString,
   timeZone: string,
 ): Promise<ReachReport> {
@@ -96,6 +105,7 @@ export async function reachFor(
 
   const byId = new Map(people.map((person) => [person.id, person]))
   return {
+    texts: smsIsConfigured(orgId),
     everyone: countOf(people),
     shifts: schedule.map((shift) => ({
       shiftId: shift.id,
@@ -115,10 +125,11 @@ export async function reachFor(
  */
 export async function sendShortText(
   db: OrgScopedDatabase,
+  orgId: OrgId,
   actorVolunteerId: string,
   about: { readonly shiftId: string; readonly today: DayString; readonly timeZone: string },
 ): Promise<Recorded<Sent>> {
-  if (!smsIsConfigured()) return refused('sms_not_configured')
+  if (!smsIsConfigured(orgId)) return refused('sms_not_configured')
 
   const [shift] = await db
     .select({
@@ -167,9 +178,12 @@ export async function sendShortText(
       // `HH:MM` — the column carries seconds and nobody says them out loud.
       startTime: shift.startTime.slice(0, 5),
     },
-    appOrigin(),
+    appOrigin(orgId),
   )
-  const outcome = await deliver(db, audience, message, { kind: 'shift_short', shiftId: shift.id })
+  const outcome = await deliver(db, orgId, audience, message, {
+    kind: 'shift_short',
+    shiftId: shift.id,
+  })
 
   return recorded(outcome)
 }
@@ -184,10 +198,11 @@ export async function sendShortText(
  */
 export async function sendAnnouncementText(
   db: OrgScopedDatabase,
+  orgId: OrgId,
   actorVolunteerId: string,
   about: { readonly announcementId: string; readonly today: DayString },
 ): Promise<Recorded<Sent>> {
-  if (!smsIsConfigured()) return refused('sms_not_configured')
+  if (!smsIsConfigured(orgId)) return refused('sms_not_configured')
 
   const [posted] = await db
     .select({
@@ -214,31 +229,37 @@ export async function sendAnnouncementText(
     .set({ urgentSentAt: timestampOf(now()), urgentSentBy: actorVolunteerId })
     .where(eq(announcements.id, about.announcementId))
 
-  const outcome = await deliver(db, people, announcementText(posted.text, appOrigin()), {
-    kind: 'announcement',
-    announcementId: posted.id,
-  })
+  const outcome = await deliver(
+    db,
+    orgId,
+    people,
+    announcementText(posted.text, appOrigin(orgId)),
+    {
+      kind: 'announcement',
+      announcementId: posted.id,
+    },
+  )
 
   return recorded(outcome)
 }
 
 /**
- * Where the link in a text points (#83).
+ * Where the link in a text points (#83): the origin of the rescue that is
+ * sending it (#113, ADR 0030), so a Short sent at rescue B links to B's own
+ * `/shifts` rather than to whichever host the deployment once had.
  *
- * **This module reads the environment and `src/shared/urgent.ts` does not.**
- * The composers are pure and table-tested; a composer that reaches for
+ * **This module reads configuration and `src/shared/urgent.ts` does not.** The
+ * composers are pure and table-tested; a composer that reaches for
  * configuration is one no table test can drive, so the origin travels in as an
- * argument from the one layer that already knows which box it is running on —
- * the same seam that resolves the transport.
+ * argument from the one layer that already knows which rescue is sending.
  *
- * `APP_URL` is the variable, and it is the one Better Auth already reads for
- * its `baseURL` rather than a second one meaning the same thing. Unset answers
- * `null`, and the composers then say what they said before this ticket: a
- * development send must not name production, and a message naming `undefined`
- * would be worse than one naming nothing.
+ * `null` — a rescue `RESCUES` does not name, which a send that got this far
+ * cannot be — composes the linkless sentence rather than one naming
+ * `undefined`.
  */
-function appOrigin(): string | null {
-  return process.env.APP_URL ?? null
+function appOrigin(orgId: OrgId): string | null {
+  const rescue = rescueOfOrg(orgId)
+  return rescue === null ? null : originOf(rescue)
 }
 
 /** How many were meant to get it, and how many did. */
@@ -259,6 +280,7 @@ export interface Sent {
  */
 async function deliver(
   db: OrgScopedDatabase,
+  orgId: OrgId,
   audience: readonly Person[],
   message: string,
   about: Record<string, unknown>,
@@ -270,7 +292,7 @@ async function deliver(
     const to = person.behindRoster?.mobile
     if (to === undefined || to === null) continue
     try {
-      await sendText({ to, text: message })
+      await sendText(orgId, { to, text: message })
       sent += 1
     } catch (cause) {
       log('warn', 'urgent_send_not_sent', {

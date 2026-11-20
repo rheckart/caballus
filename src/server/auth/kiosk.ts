@@ -1,18 +1,21 @@
 /**
  * The barn's tablet, which is not a person (ADR 0022).
  *
- * One shared token, held in configuration and presented as a header on the one
- * read the Board makes. It resolves to no `Actor` — there is nobody to credit,
- * which is what `CONTEXT.md` says the Board is — and it can authorize nothing
- * but that read.
+ * One token **per rescue**, held in that rescue's `RESCUES` entry and presented
+ * as a header on the one read the Board makes (ADR 0022, amended by ADR 0030).
+ * It resolves to no `Actor` — there is nobody to credit, which is what
+ * `CONTEXT.md` says the Board is — and it can authorize nothing but that read.
+ * The token compared is the one of the rescue the request's host resolved to,
+ * so rescue A's tablet presenting its token at rescue B's host is refused.
  *
- * **Unset means there is no kiosk.** That is the state of every development box
- * and of any deployment nobody has enrolled a tablet on, and it fails closed:
- * an empty configured token must never match an empty presented one.
+ * **No token means no kiosk.** That is the state of every development box and
+ * of any rescue nobody has enrolled a tablet for, and it fails closed: an
+ * absent configured token never matches anything presented.
  */
 import { timingSafeEqual } from 'node:crypto'
 
-import { BOARD_TOKEN_HEADER } from '../../shared/board'
+import { KIOSK_TOKEN_HEADER } from '../../shared/board'
+import { rescueFor } from '../rescues'
 
 /**
  * Whether this request is the rescue's tablet.
@@ -22,10 +25,10 @@ import { BOARD_TOKEN_HEADER } from '../../shared/board'
  * ends up in a log line and a history entry.
  */
 export function isKiosk(request: Request): boolean {
-  const configured = process.env.BOARD_TOKEN ?? ''
+  const configured = rescueFor(request)?.boardToken ?? ''
   if (configured === '') return false
 
-  const presented = request.headers.get(BOARD_TOKEN_HEADER)
+  const presented = request.headers.get(KIOSK_TOKEN_HEADER)
   if (presented === null || presented === '') return false
 
   return sameSecret(presented, configured)

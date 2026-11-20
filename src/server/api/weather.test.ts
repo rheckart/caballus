@@ -21,7 +21,7 @@
 import postgres from 'postgres'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { closeDb, type OrgId } from '../../db/for-org'
+import { closeDb, forOrg, type OrgId } from '../../db/for-org'
 import { postgresIdempotency } from '../../db/idempotency'
 import { API_BASE, newIdempotencyKey } from '../../shared/api-client'
 import { board, thresholds, weather } from '../../shared/api-contract'
@@ -29,6 +29,7 @@ import type { DomainScope } from '../../shared/domain-scopes'
 import { instant, type DayString, type Instant } from '../../shared/time'
 import { anonymousContext } from '../request-context'
 import { dayBounds, isoOf, today } from '../time'
+import { barnCoordinates } from '../weather/providers'
 import { buildApi } from './app'
 import { servingRescue } from '../../test/rescue'
 
@@ -40,6 +41,7 @@ const FIELD_BARN = '00000000-0000-0000-0000-0000000000eb'
 const TIME_ZONE = 'America/New_York'
 
 /** Where the barn is, as configuration gives it to the provider module. */
+const OTHER_BARN = '00000000-0000-0000-0000-0000000000bb'
 const LATITUDE = '39.4143'
 const LONGITUDE = '-77.4105'
 
@@ -105,15 +107,17 @@ describe.skipIf(!reachable)('weather, through the API', () => {
     `
   })
 
-  beforeEach(() => {
-    process.env.BARN_LATITUDE = LATITUDE
-    process.env.BARN_LONGITUDE = LONGITUDE
+  beforeEach(async () => {
+    // On the rescue's own row since #113 (ADR 0030), where `bootstrap --barn`
+    // puts it.
+    await owner`
+      update orgs set barn_latitude = ${LATITUDE}, barn_longitude = ${LONGITUDE}
+      where id = ${FIELD_BARN}
+    `
   })
 
   afterEach(async () => {
     vi.restoreAllMocks()
-    delete process.env.BARN_LATITUDE
-    delete process.env.BARN_LONGITUDE
     await wipe({ keepOrg: true })
   })
 
@@ -522,9 +526,42 @@ describe.skipIf(!reachable)('weather, through the API', () => {
       expect(answered.reading).toBeNull()
     })
 
+    it('asks the providers about this rescue’s barn and no other (#113)', async () => {
+      // Another rescue on the same deployment, with its barn somewhere else.
+      await owner`
+        insert into orgs (id, name, time_zone, barn_latitude, barn_longitude)
+        values (${OTHER_BARN}, 'Other Barn', ${TIME_ZONE}, 44.5, -123.25)
+        on conflict (id) do update set barn_latitude = 44.5, barn_longitude = -123.25
+      `
+      try {
+        expect(await forOrg(orgId()).run((db) => barnCoordinates(db))).toEqual({
+          latitude: Number(LATITUDE),
+          longitude: Number(LONGITUDE),
+        })
+        expect(await forOrg(OTHER_BARN as OrgId).run((db) => barnCoordinates(db))).toEqual({
+          latitude: 44.5,
+          longitude: -123.25,
+        })
+
+        // And the Reading this rescue fixes is fetched for its own barn.
+        const asked: string[] = []
+        vi.spyOn(globalThis, 'fetch').mockImplementation((input: RequestInfo | URL) => {
+          asked.push(String(input))
+          return Promise.reject(new Error('the network said no'))
+        })
+        await post(await holder(), '/weather/readings')
+        const openMeteo = asked.find((url) => url.includes('open-meteo'))
+        expect(openMeteo).toContain(`latitude=${LATITUDE}`)
+        expect(openMeteo).not.toContain('44.5')
+      } finally {
+        await owner`delete from orgs where id = ${OTHER_BARN}`
+      }
+    })
+
     it('refuses when nobody told this deployment where the barn is', async () => {
-      delete process.env.BARN_LATITUDE
-      delete process.env.BARN_LONGITUDE
+      await owner`
+        update orgs set barn_latitude = null, barn_longitude = null where id = ${FIELD_BARN}
+      `
 
       const api = await holder()
       const refused = await post(api, '/weather/readings')

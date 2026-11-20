@@ -52,9 +52,7 @@ function vaultFor(overrides = {}) {
     'Caballus/app/hostname': 'caballus.tech',
     'Caballus/app/org-id': ORG,
     'Caballus/app/better-auth-secret': 'secret',
-    'Caballus/app/board-token': 'board',
-    'Caballus/app/barn-latitude': '39.4',
-    'Caballus/app/barn-longitude': '-77.4',
+    'Caballus/app/board-token': 'a-kiosk-token-at-least-twenty-four-long',
     'Caballus/smtp/url': 'smtps://user:pass@smtp.example:465',
     'Caballus/twilio/account-sid': 'AC',
     'Caballus/twilio/auth-token': 'token',
@@ -108,13 +106,32 @@ describe('render-env.sh', () => {
     expect(run.status).toBe(0)
 
     const rescues = JSON.parse(line(await rendered(), 'RESCUES') ?? '')
-    expect(rescues).toEqual({ 'caballus.tech': { orgId: ORG } })
+    expect(rescues).toEqual({
+      'caballus.tech': {
+        orgId: ORG,
+        boardToken: 'a-kiosk-token-at-least-twenty-four-long',
+        sms: true,
+      },
+    })
+  })
+
+  it('renders none of the variables #113 retired', async () => {
+    expect(render(vaultFor()).status).toBe(0)
+    const env = await rendered()
+    for (const gone of ['APP_URL', 'BOARD_TOKEN', 'BARN_LATITUDE', 'BARN_LONGITUDE']) {
+      expect(line(env, gone)).toBeUndefined()
+    }
   })
 
   it.each([
     ['a host that is not one', { 'Caballus/app/hostname': 'https://caballus.tech' }, /not a host/],
     ['an org id that is not one', { 'Caballus/app/org-id': 'freedom-hill' }, /not an id/],
     ['an empty org id', { 'Caballus/app/org-id': '' }, /not an id/],
+    [
+      'a kiosk token anybody could guess',
+      { 'Caballus/app/board-token': 'barn' },
+      /shorter than 24/,
+    ],
   ])('refuses %s, and leaves the working .env alone', async (_label, overrides, because) => {
     await writeFile(join(stack, '.env'), 'WORKING=yes\n')
 

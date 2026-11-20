@@ -576,8 +576,9 @@ export function buildApi(
   api.route('GET', '/reach', readEverything(), async ({ context }) => {
     return forOrg(context.orgId).run(async (db) => {
       const clock = await clockHere(db)
-      const report = await reachFor(db, clock.today, clock.timeZone)
+      const report = await reachFor(db, context.orgId, clock.today, clock.timeZone)
       return json({
+        texts: report.texts,
         everyone: { ...report.everyone },
         shifts: report.shifts.map((one) => ({ shiftId: one.shiftId, reach: { ...one.reach } })),
       })
@@ -799,7 +800,7 @@ export function buildApi(
 
       if (changed.value.from !== null) {
         try {
-          await sendText({
+          await sendText(context.orgId, {
             to: changed.value.from,
             text: 'Caballus: the mobile number on your volunteer record has been changed. If that was not you, tell a coordinator.',
           })
@@ -1782,7 +1783,7 @@ export function buildApi(
    */
   api.mutation('/announcements/text', anyScopeHolder(), async (input, { context, db }) => {
     const actor = actorOf(context)
-    const outcome = await sendAnnouncementText(db, actor.volunteerId, {
+    const outcome = await sendAnnouncementText(db, context.orgId, actor.volunteerId, {
       announcementId: input.announcementId,
       today: await dayHere(db),
     })
@@ -2052,7 +2053,7 @@ export function buildApi(
     async (input, { context, db }) => {
       const actor = actorOf(context)
       const clock = await clockHere(db)
-      const outcome = await sendShortText(db, actor.volunteerId, {
+      const outcome = await sendShortText(db, context.orgId, actor.volunteerId, {
         shiftId: input.shiftId,
         today: clock.today,
         timeZone: clock.timeZone,

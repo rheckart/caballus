@@ -88,8 +88,9 @@ services:
       - traefik.http.routers.caballus.entrypoints=websecure
       - traefik.http.routers.caballus.tls.certresolver=letsencrypt
       - traefik.http.services.caballus.loadbalancer.server.port=3000
-      # www goes to the apex rather than serving the same app twice: one origin
-      # keeps the session cookie's idea of where it is (APP_URL) true.
+      # www goes to the apex rather than serving the same app twice: a session
+      # cookie is host-only, so the same volunteer at two names would be two
+      # sign-ins, and `RESCUES` maps the apex alone (ADR 0030).
       - traefik.http.routers.caballus.middlewares=caballus-www@docker
       - traefik.http.middlewares.caballus-www.redirectregex.regex=^https?://www\.caballus\.tech/(.*)
       - traefik.http.middlewares.caballus-www.redirectregex.replacement=https://caballus.tech/$${1}

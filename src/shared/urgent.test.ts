@@ -101,7 +101,7 @@ describe('the link a text carries (#83)', () => {
   })
 
   it('names the development origin on a development box, and never production', () => {
-    // `APP_URL` is already `http://localhost:3000` there, which is the whole
+    // The rescue's own host is `localhost:3000` there, which is the whole
     // reason the origin is passed in rather than hard-coded.
     expect(
       shortText(
@@ -112,7 +112,7 @@ describe('the link a text carries (#83)', () => {
   })
 
   it('composes a sensible message with no origin at all, rather than one naming undefined', () => {
-    // An unset `APP_URL` is a real case and not an error: what it composes is
+    // No origin is a real case and not an error: what it composes is
     // exactly what it composed before the link existed.
     expect(shortText({ shiftType: 'Feed PM', day: '2026-08-29', startTime: '16:00' }, null)).toBe(
       'Caballus: Feed PM on 2026-08-29 at 16:00 is short. Open the app to cover. Reply STOP to stop.',

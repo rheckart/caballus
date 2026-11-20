@@ -7,9 +7,11 @@
  *
  *   RESCUES={"caballus.tech":{"orgId":"01a0…"},"localhost:3000":{"orgId":"…"}}
  *
- * A rescue's whole configuration is one entry, so whatever else becomes one
- * per rescue — the kiosk token, the texting sender — joins that entry rather
- * than becoming a second map keyed some other way.
+ * A rescue's whole configuration is one entry — its organisation, its kiosk
+ * token, whether it may text (#113) — so whatever else becomes one per rescue
+ * joins that entry rather than becoming a second map keyed some other way:
+ *
+ *   {"caballus.tech":{"orgId":"01a0…","boardToken":"…","sms":true}}
  *
  * **Configuration, and deliberately not a column on `orgs`.** The `orgs` policy
  * is keyed on `app.org_id`, so reading a host off it would be a read before the
@@ -34,15 +36,47 @@ import { z } from 'zod'
 
 import { API_ROOT } from '../shared/api-client'
 
-/** One rescue's configuration. #113 and #114 add to it. */
+/**
+ * One rescue's configuration — the secrets and switches that are one per
+ * rescue (#113, ADR 0030). Facts somebody might reasonably correct, like where
+ * the barn is, are columns on `orgs` instead; what lives here is what only a
+ * deploy should change.
+ */
 export interface Rescue {
   readonly host: string
   readonly orgId: string
+  /**
+   * The barn tablet's kiosk token (ADR 0022, amended by ADR 0030), or `null`
+   * for a rescue with no kiosk. One per rescue, so rescue A's tablet presenting
+   * its token at rescue B's host is refused.
+   */
+  readonly boardToken: string | null
+  /**
+   * Whether this rescue may text through the one Twilio sender (ADR 0028).
+   *
+   * The sender is registered for the existing rescue alone, so a second rescue
+   * texting through it would put its volunteers under somebody else's consent
+   * and somebody else's STOP. Until #114 gives each rescue its own sender, the
+   * existing rescue's entry carries `"sms": true` and every other rescue's
+   * sends are refused. Sign-in by text is not a send and is untouched (ADR
+   * 0029): Verify is platform-wide and outside A2P registration.
+   */
+  readonly sms: boolean
 }
 
 // `guid` rather than `uuid`: Postgres takes any 8-4-4-4-12 hex, and RFC 9562's
 // version digit is not a fact about which rescue this is.
-const entry = z.object({ orgId: z.guid() }).strict()
+//
+// A kiosk token short enough to guess is a feed grid anybody can read; the
+// floor is the 32 bytes `.env.example` tells an operator to generate, as
+// base64url, with room below it for a hand-made one.
+const entry = z
+  .object({
+    orgId: z.guid(),
+    boardToken: z.string().min(24).optional(),
+    sms: z.boolean().optional(),
+  })
+  .strict()
 
 /**
  * A host as a browser sends it: a name, optionally a port, and nothing else —
@@ -60,6 +94,12 @@ const map = z
     entry,
   )
   .refine((rescues) => Object.keys(rescues).length > 0, 'RESCUES names no rescue at all')
+  // One host per rescue. A rescue's origin — the link in a text it sends — is
+  // its host, and two hosts for one organisation would make that a guess.
+  .refine((rescues) => {
+    const ids = Object.values(rescues).map((rescue) => rescue.orgId.toLowerCase())
+    return new Set(ids).size === ids.length
+  }, 'RESCUES maps two hosts to the same organisation')
 
 /** A configuration that will not parse — thrown, so the process refuses to serve. */
 export class MalformedRescues extends Error {}
@@ -85,7 +125,15 @@ export function parseRescues(raw: string | undefined): ReadonlyMap<string, Rescu
     throw new MalformedRescues(`RESCUES is malformed: ${z.prettifyError(parsed.error)}`)
   }
   return new Map(
-    Object.entries(parsed.data).map(([host, rescue]) => [host, { host, orgId: rescue.orgId }]),
+    Object.entries(parsed.data).map(([host, rescue]) => [
+      host,
+      {
+        host,
+        orgId: rescue.orgId,
+        boardToken: rescue.boardToken ?? null,
+        sms: rescue.sms === true,
+      },
+    ]),
   )
 }
 
@@ -135,6 +183,28 @@ export function hostOf(request: Request): string {
 /** The rescue this request knocked at, or `null` for a host nobody mapped. */
 export function rescueFor(request: Request): Rescue | null {
   return rescues().get(hostOf(request)) ?? null
+}
+
+/**
+ * The rescue an organisation is, for the code that has an `OrgId` in hand and
+ * no request — a send fanning out, a composer naming a link. One host per
+ * rescue (the map refuses two), so the answer is unambiguous.
+ */
+export function rescueOfOrg(orgId: string): Rescue | null {
+  for (const rescue of rescues().values()) if (rescue.orgId === orgId) return rescue
+  return null
+}
+
+/**
+ * Where a rescue is reached, as the start of a link (#113): `https://` and its
+ * host, or `http://` for a development box on `localhost`, which has no
+ * certificate. The link in a text a rescue sends names this, so a Short sent
+ * at rescue B links to B's own `/shifts`.
+ */
+export function originOf(rescue: Rescue): string {
+  const name = rescue.host.replace(/:[0-9]+$/, '')
+  const local = name === 'localhost' || name === '127.0.0.1'
+  return `${local ? 'http' : 'https'}://${rescue.host}`
 }
 
 /** The sentence an unmapped host is answered with, on every surface. */

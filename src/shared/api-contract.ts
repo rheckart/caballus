@@ -300,6 +300,12 @@ export const person = z.object({
 const reach = z.object({ reachable: z.number(), total: z.number() })
 
 export const reachReport = z.object({
+  /**
+   * Whether a text from this rescue would leave at all (#113): false on a box
+   * with no Twilio, and false for a rescue the one sender is not registered
+   * for. The send screen reads it before offering a count to confirm.
+   */
+  texts: z.boolean(),
   /** Everybody at the rescue, which is an Announcement's audience. */
   everyone: reach,
   /**
