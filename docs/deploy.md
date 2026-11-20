@@ -14,6 +14,13 @@ and `websecure` (:443), and a `letsencrypt` resolver over the HTTP challenge.
 Caballus adds one stack at `/docker/caballus/`, following the box's own
 convention — Traefik lives at `/docker/traefik/`.
 
+**One container serves every rescue** (ADR 0030). Each rescue is reached at its
+own host — `caballus.tech` is the existing one — and the application resolves
+which rescue a request is for from the `Host` it arrived at, through `RESCUES`.
+Traefik routes every host in `deploy/rescues.tpl` to the one app service with a
+certificate from Traefik's resolver; one Postgres holds every rescue's rows behind row-level
+security. Adding a rescue is a deploy (_Adding a rescue_).
+
 **CI is on GitHub's hosted runners.** ADR 0007 put it on the OMV8 box at
 home, beside Forgejo, and never on the VPS. On 2026-09-12 that box rebooted and
 Forgejo's database came back ten days behind its git data — PRs #93–#98 and
@@ -103,37 +110,67 @@ rebuilt from scratch has to get them from somewhere.
 
 ### What the vault has to contain
 
-One vault, `Caballus`, six items — `s4` needed only once `backup.env.tpl` is on
-the box — and every reference in the template must
-resolve or the render fails — `op inject` errors on one it cannot find, and the
-deploy stops there with `.env` untouched.
+One vault, `Caballus`: six shared items — `s4` needed only once
+`backup.env.tpl` is on the box — and **one item per rescue**, named `rescue-`
+and the rescue's slug (ADR 0030, #116). Every reference in `.env.tpl` and
+`rescues.tpl` must resolve or the render fails — `op inject` errors on one it
+cannot find, and the deploy stops there with `.env` untouched.
 
-| Item         | Fields                                                                                                                          |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------- |
-| `postgres`   | `password` (the owner), `app-password` (the `caballus_app` role)                                                                |
-| `app`        | `hostname`, `org-id`, `better-auth-secret`, `board-token`; `barn-latitude`, `barn-longitude` (read by a person, not the render) |
-| `smtp`       | `url`                                                                                                                           |
-| `openrouter` | `api-key`                                                                                                                       |
-| `twilio`     | `account-sid`, `auth-token`, `from-number`, `verify-service-sid`, `verify-change-service-sid`                                   |
-| `s4`         | `access-key-id`, `secret-access-key` — read by `backup.env.tpl` only (_Backups_)                                                |
+| Item            | Fields                                                                                          |
+| --------------- | ----------------------------------------------------------------------------------------------- |
+| `postgres`      | `password` (the owner), `app-password` (the `caballus_app` role)                                |
+| `app`           | `better-auth-secret`                                                                            |
+| `smtp`          | `url`                                                                                           |
+| `openrouter`    | `api-key`                                                                                       |
+| `twilio`        | `account-sid`, `auth-token`, `from-number`, `verify-service-sid`, `verify-change-service-sid`   |
+| `s4`            | `access-key-id`, `secret-access-key` — read by `backup.env.tpl` only (_Backups_)                |
+| `rescue-<slug>` | `hostname`, `org-id`, `board-token`; `barn-latitude`, `barn-longitude` (read by a person, once) |
 
-**`app/hostname` is read from #112 on.** It was already in the item, and its
-value is `caballus.tech` — the host the existing rescue is reached at, exactly
-as a browser sends it. `.env.tpl` renders it with `org-id` into a one-entry
-`RESCUES`, and `render-env.sh` refuses a map that does not parse, so a missing
-field stops the deploy at the render with `.env` untouched rather than starting
-an application that answers nobody. That check runs on `python3`, which the
-Ubuntu image on the box ships; `render-env.sh` says so if it is ever missing.
+**A rescue is a line of `deploy/rescues.tpl` and an item in the vault.**
+`render-env.sh` renders the lines through 1Password, checks each one by the
+rules the application parses `RESCUES` by, refuses a host or an organisation
+that appears twice, and writes two things into `.env` from that one list: the
+application's `RESCUES` map, and `CABALLUS_ROUTER_RULE`, which
+`docker-compose.yml` hands Traefik so every host is routed to the one app
+service and is given a certificate by Traefik's resolver. A host can therefore never be routed
+without being mapped, or mapped without being routed. The check runs on
+`python3`, which the Ubuntu image on the box ships; `render-env.sh` says so if
+it is ever missing. _Adding a rescue_, below, is the whole procedure.
 
-**#113 moved three more things into that entry or out of the environment.**
-`BOARD_TOKEN` became the entry's `boardToken`, rendered from the same
-`app/board-token` field, so the barn tablet keeps working with no re-enrolment.
-`APP_URL` is gone: a link in a text names the rescue's own host, and Better Auth
-reads nothing from an origin here (`src/server/auth/auth.ts` says what was
-checked), so the cookie and every session survive the deploy. And
-`BARN_LATITUDE`/`BARN_LONGITUDE` are gone: the barn is on the rescue's `orgs`
-row now. The `barn-latitude` and `barn-longitude` fields stay in the vault as
-the record of where it is, because one person has to read them once:
+**The existing rescue is `rescue-freedom-hill`.** Its `hostname` is
+`caballus.tech`, its `org-id` is the id `bootstrap` minted on the box, and its
+`board-token` is the barn tablet's token, so the tablet keeps working with no
+re-enrolment. Its line in `rescues.tpl` alone carries `"sms": true`, because the
+one Twilio sender is registered for it alone (ADR 0028, #113). How the values
+got there, in the order the three tickets landed:
+
+- **#112** introduced `RESCUES` and briefly read the host and org id from `app`
+  (`app/hostname` and `app/org-id`). Their home is now `rescue-freedom-hill`.
+- **#113** moved `BOARD_TOKEN` into the rescue's entry and retired `APP_URL` — a
+  link in a text names the rescue's own host, and Better Auth reads nothing
+  from an origin here (`src/server/auth/auth.ts` says what was checked), so the
+  cookie and every session survive. It also retired
+  `BARN_LATITUDE`/`BARN_LONGITUDE`: the barn is on the rescue's `orgs` row now,
+  and `barn-latitude` and `barn-longitude` stay in the rescue's item as the
+  record of where it is, because one person has to read them once:
+
+  ```bash
+  # Straight after the deploy that carries #113's migration — the weather
+  # refuses for the rescue until this has run. The org id is the item's org-id.
+  docker compose run --rm -T app npm run bootstrap -- \
+    --org 01a03af7-… --barn <barn-latitude>,<barn-longitude>
+  ```
+
+- **#116** moved the whole map out of `.env.tpl` into `rescues.tpl`, one line
+  per rescue. Before that deploy, create `rescue-freedom-hill` with the three
+  fields above, copied from `app` — `app/hostname`, `app/org-id` and
+  `app/board-token` — and only then delete them from `app`.
+
+**The order to copy the files in, for #116.** The compose file's router rule is
+`${CABALLUS_ROUTER_RULE}`, which only a render writes, and every
+`docker compose` command reads the whole file — the backup timers' included. So
+the render goes first and the compose file last, and there is no moment where a
+backup meets a rule it cannot interpolate:
 
 **Check the existing kiosk token's shape before this deploy.** The entry's
 `boardToken` must be at least 24 base64url characters — `A–Z a–z 0–9 - _` —
@@ -143,10 +180,13 @@ the render then refuses with `.env` untouched. If it fails, generate a fresh
 one, put it in the vault, and re-enrol the tablet at `/board?token=<it>`.
 
 ```bash
-# Straight after the deploy that carries #113's migration — the weather refuses
-# for the rescue until this has run. The org id is app/org-id.
-docker compose run --rm -T app npm run bootstrap -- \
-  --org 01a03af7-… --barn <barn-latitude>,<barn-longitude>
+scp deploy/render-env.sh deploy/.env.tpl deploy/rescues.tpl caballus:/tmp/
+ssh caballus 'sudo install -m 755 /tmp/render-env.sh /docker/caballus/ \
+  && sudo install -m 644 /tmp/.env.tpl /tmp/rescues.tpl /docker/caballus/ \
+  && sudo /docker/caballus/render-env.sh'
+scp deploy/docker-compose.yml caballus:/tmp/
+ssh caballus 'sudo install -m 644 /tmp/docker-compose.yml /docker/caballus/'
+# Then the deploy, as under A routine deploy.
 ```
 
 The values come out of the `.env` already on the box, which is the only place
@@ -370,6 +410,118 @@ must succeed, starts the application, and then polls `https://caballus.tech/heal
 from outside — so a green answer proves Traefik, the certificate and the
 database as well as the process. If health never comes, it puts the previous
 image back and says which one failed.
+
+## Adding a rescue
+
+A rescue is a host, an organisation, a line in `deploy/rescues.tpl` and an item
+in the vault (ADR 0030). Adding one is **a deploy, deliberately**, the way a
+migration is (ADR 0007) — not a row anybody with database access can insert.
+Nothing below needs the code read; each step says what proves it worked.
+
+**A new rescue does not text.** The one Twilio sender is registered for the
+existing rescue alone, so a new rescue's line carries no `"sms"` and every send
+it makes is refused in words — its send screens say _Texting is not set up for
+this rescue_ before anybody confirms (#113). Signing in **by text works from day
+one**, because that is Verify, which sits outside A2P registration (ADR 0029).
+Texting arrives with its own brand, campaign and number (#117) and a sender per
+rescue (#114); until both land, a new rescue runs on email.
+
+**1. Agree the host, and make its DNS record.** A subdomain of `caballus.tech`
+costs nothing — `<slug>.caballus.tech`. Add an `A` record for it pointing at the
+VPS's public address, the same one `caballus.tech` points at (and an `AAAA` if
+`caballus.tech` has one). This is the one step a person does by hand outside the
+box and the repository. It has to resolve **before** the deploy in step 5 —
+treat that as a hard precondition, not a nicety. Traefik's documentation says
+each `Host` in the router's rule leads to its own certificate request, and says
+nothing about whether one failed challenge holds the others up; a host whose
+challenge fails is served Traefik's default certificate, and its log names the
+failure. Do not find out the answer on the existing rescue's certificate:
+
+```bash
+dig +short <slug>.caballus.tech   # the VPS's address, same as caballus.tech
+```
+
+**2. Create the rescue on the box.** `bootstrap` mints the organisation, makes
+its first President and places its barn, and prints the organisation id:
+
+```bash
+ssh caballus
+cd /docker/caballus
+sudo docker compose run --rm -T app npm run bootstrap -- \
+  --barn <latitude>,<longitude> \
+  "<Rescue's name>" <IANA/Zone like America/New_York> "<President's name>" <president@their.address>
+# -> Created <Rescue's name> and its first President, …
+#    Add this rescue to RESCUES, under the host it is reached at (docs/deploy.md):
+#      "<host>": { "orgId": "01a0…" }
+```
+
+Run it again with `--org <that id>` if anything stops it halfway; it finishes
+the job rather than creating a second rescue. Without `--barn` the weather
+refuses for the rescue, and `--org <id> --barn <lat>,<lon>` alone adds it later.
+
+**3. Create its item in the vault.** `Caballus` / `rescue-<slug>`, with:
+
+- `hostname` — `<slug>.caballus.tech`, exactly as a browser sends it: lowercase, no
+  `https://`, no path.
+- `org-id` — the id step 2 printed.
+- `board-token` — a fresh kiosk token for its barn tablet, made once and never
+  reused from another rescue:
+  `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`
+- `barn-latitude`, `barn-longitude` — what step 2 was given, kept as the record.
+
+**4. Add its line to `deploy/rescues.tpl`**, in a pull request like any other
+change, and leave `"sms"` out:
+
+```json
+{
+  "host": "{{ op://Caballus/rescue-<slug>/hostname }}",
+  "orgId": "{{ op://Caballus/rescue-<slug>/org-id }}",
+  "boardToken": "{{ op://Caballus/rescue-<slug>/board-token }}"
+}
+```
+
+(Leave `boardToken` out too if there is no tablet yet; the rescue then has no
+kiosk, and its Board answers signed-in volunteers only.)
+
+**5. Deploy.** Copy `rescues.tpl` to the box, render, and deploy:
+
+```bash
+scp deploy/rescues.tpl caballus:/tmp/
+ssh caballus 'sudo install -m 644 /tmp/rescues.tpl /docker/caballus/ \
+  && sudo /docker/caballus/render-env.sh'
+# -> assembled RESCUES and the router rule from 2 line(s) of rescues.tpl
+# Then Actions -> deploy -> Run workflow, with the tag already running.
+```
+
+The render refuses a host or an organisation id that appears twice and a line
+that does not parse, with `.env` untouched. Nobody at the existing rescue sees
+anything change and nobody is signed out: a session is the same row at the
+same host it always was.
+
+**Prove it.** `deploy.sh` proves the existing rescue still answers — `/health`
+and its sign-in page — and nothing about the new one, so check the new host
+by hand. Then look at Traefik's log for an ACME error naming any host:
+
+```bash
+ssh caballus 'cd /docker/traefik && sudo docker compose logs --since 10m 2>&1 | grep -i acme'
+```
+
+`https://<slug>.caballus.tech/` shows the public page over a real
+certificate (Traefik takes about a minute to get one, and serves its own default
+until it does). `https://<slug>.caballus.tech/login` is the sign-in screen. A
+host nobody mapped — a typo — answers _No rescue is served at this address_
+rather than anybody's sign-in screen.
+
+**6. Enrol its barn tablet, at its own host.** On the tablet, open
+`https://<slug>.caballus.tech/board?token=<board-token>` once. The token is
+kept on the tablet and presented as a header from then on; the existing
+rescue's tablet token is refused at this host, and this one at theirs.
+
+**7. Its President signs in** at `https://<slug>.caballus.tech/login` with the
+address step 2 was given, and creates the Coordinator, who adds the volunteers.
+Somebody who also volunteers at the existing rescue signs in at each host
+separately and holds an Account at each — that is the design, not a fault
+(ADR 0030).
 
 ## The image, and why it is the size it is
 
@@ -698,6 +850,13 @@ campaign registration entirely. That separation is what keeps a volunteer who
 replied STOP to a staffing text able to sign in, and it is what stops the
 Urgent Send's kill switch or daily cap from locking the roster out of the app.
 
+**Where registration stands for more than one rescue** (#117). How each further
+rescue is registered — a subaccount per rescue under an ISV profile on the
+maintainer's account, or each rescue's own Twilio account handing over a sender
+— is open and on hold, and so is the existing rescue moving off the Sole
+Proprietor brand onto its own EIN. Nothing in the code waits on it: a sender is
+an account SID, credentials and a number per rescue whichever way it goes.
+
 **Only the existing rescue texts** (#113, ADR 0030). The one sender — brand,
 campaign, number — is registered for the rescue `caballus.tech` serves and for
 nobody else, so its `RESCUES` entry carries `"sms": true` and every other
@@ -725,7 +884,10 @@ EIN.
 ### The sole-proprietor limits, which the next person will otherwise rediscover
 
 The brand ADR 0028 registers is **Sole Proprietor**, registered to the
-maintainer personally, and it is capped:
+maintainer personally, and **it covers the existing rescue only** — it cannot be
+stretched over a second organisation, which is ADR 0028's tripwire firing (ADR
+0030). Every other rescue texts nothing until it has its own brand, campaign and
+number (#117) and a sender of its own (#114). It is capped:
 
 - **One campaign.** There is no second one to put anything else on. This is
   survivable only because login lives on Verify (ADR 0029); ADR 0008 needed two

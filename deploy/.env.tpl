@@ -28,19 +28,11 @@ DATABASE_URL=postgres://caballus_app:{{ op://Caballus/postgres/app-password }}@p
 ADMIN_DATABASE_URL=postgres://caballus:{{ op://Caballus/postgres/password }}@postgres:5432/caballus
 
 # --- The rescues (ADR 0030) -----------------------------------------------
-# Which rescue a request is for is the host it arrives at, and this is the map.
-# One entry today: the existing rescue's host, the organisation id
-# `npm run bootstrap` minted on the box, its barn tablet's kiosk token
-# (ADR 0022) and `"sms": true`, because the one Twilio sender is registered for
-# this rescue alone (ADR 0028). All three values come from 1Password — the id
-# because a rebuild must restore the one the existing rows are scoped to, the
-# host because it is the rescue's own fact rather than the repository's, the
-# token because it is a secret. `render-env.sh` refuses a map that does not
-# parse, before anything is pulled.
-#
-# The barn's coordinates are not here: they are on the rescue's own `orgs` row
-# (#113), set once by `bootstrap --org <id> --barn <lat>,<lon>`.
-RESCUES={"{{ op://Caballus/app/hostname }}":{"orgId":"{{ op://Caballus/app/org-id }}","boardToken":"{{ op://Caballus/app/board-token }}","sms":true}}
+# Not here. `RESCUES` and Traefik's router rule are assembled by
+# `render-env.sh` from `rescues.tpl`, one line per rescue and one 1Password item
+# per rescue, and appended to the rendered file — so the hosts the application
+# maps and the hosts Traefik routes are always the same list. The barn's
+# coordinates are on each rescue's `orgs` row (#113).
 
 # --- Identity -------------------------------------------------------------
 # ADR 0006: this key must survive a restore. Rotating it signs out every

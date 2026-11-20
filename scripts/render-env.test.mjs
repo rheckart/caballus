@@ -10,6 +10,7 @@
  * vault.
  */
 import { spawnSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { chmod, copyFile, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -21,7 +22,11 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url))
 const SCRIPT = join(ROOT, 'deploy/render-env.sh')
 const TEMPLATE = join(ROOT, 'deploy/.env.tpl')
 
+const RESCUE_LIST = join(ROOT, 'deploy/rescues.tpl')
+
 const ORG = '01a03af7-0000-7000-8000-000000000001'
+const SECOND_ORG = '01a03af7-0000-7000-8000-000000000002'
+const TOKEN = 'a-kiosk-token-at-least-twenty-four-long'
 
 /**
  * A stand-in for `op inject`: every `{{ op://vault/item/field }}` replaced from
@@ -49,10 +54,12 @@ function vaultFor(overrides = {}) {
   return {
     'Caballus/postgres/password': 'owner-password',
     'Caballus/postgres/app-password': 'app-password',
-    'Caballus/app/hostname': 'caballus.tech',
-    'Caballus/app/org-id': ORG,
     'Caballus/app/better-auth-secret': 'secret',
-    'Caballus/app/board-token': 'a-kiosk-token-at-least-twenty-four-long',
+    'Caballus/rescue-freedom-hill/hostname': 'caballus.tech',
+    'Caballus/rescue-freedom-hill/org-id': ORG,
+    'Caballus/rescue-freedom-hill/board-token': TOKEN,
+    'Caballus/rescue-second/hostname': 'second.caballus.tech',
+    'Caballus/rescue-second/org-id': SECOND_ORG,
     'Caballus/smtp/url': 'smtps://user:pass@smtp.example:465',
     'Caballus/twilio/account-sid': 'AC',
     'Caballus/twilio/auth-token': 'token',
@@ -70,6 +77,7 @@ describe('render-env.sh', () => {
   beforeEach(async () => {
     stack = await mkdtemp(join(tmpdir(), 'render-env-'))
     await copyFile(TEMPLATE, join(stack, '.env.tpl'))
+    await copyFile(RESCUE_LIST, join(stack, 'rescues.tpl'))
     await writeFile(join(stack, 'op-token'), 'token\n')
     await chmod(join(stack, 'op-token'), 0o600)
     await writeFile(join(stack, 'op'), FAKE_OP)
@@ -100,19 +108,110 @@ describe('render-env.sh', () => {
     return new RegExp(`^${name}=(.*)$`, 'm').exec(env)?.[1]
   }
 
-  it('renders the existing rescue as a one-entry RESCUES', async () => {
+  /** `RESCUES` as the application receives it: compose strips the single quotes. */
+  function rescuesOf(env) {
+    const raw = line(env, 'RESCUES') ?? ''
+    expect(raw.startsWith("'") && raw.endsWith("'")).toBe(true)
+    return JSON.parse(raw.slice(1, -1))
+  }
+
+  /** A second rescue's line, the way _Adding a rescue_ in docs/deploy.md writes it. */
+  const SECOND =
+    '{"host":"{{ op://Caballus/rescue-second/hostname }}","orgId":"{{ op://Caballus/rescue-second/org-id }}"}'
+
+  async function withLines(...lines) {
+    const existing = await readFile(RESCUE_LIST, 'utf8')
+    await writeFile(join(stack, 'rescues.tpl'), [existing.trimEnd(), ...lines, ''].join('\n'))
+  }
+
+  it('renders the existing rescue, alone, from the repository’s rescue list', async () => {
     const run = render(vaultFor())
     expect(run.stderr).toBe('')
     expect(run.status).toBe(0)
 
-    const rescues = JSON.parse(line(await rendered(), 'RESCUES') ?? '')
-    expect(rescues).toEqual({
-      'caballus.tech': {
-        orgId: ORG,
-        boardToken: 'a-kiosk-token-at-least-twenty-four-long',
-        sms: true,
-      },
+    const env = await rendered()
+    expect(rescuesOf(env)).toEqual({
+      'caballus.tech': { orgId: ORG, boardToken: TOKEN, sms: true },
     })
+    expect(line(env, 'CABALLUS_ROUTER_RULE')).toBe('Host(`caballus.tech`)')
+  })
+
+  it('renders two rescues into one map and one router rule (#116)', async () => {
+    await withLines(SECOND)
+
+    const run = render(vaultFor())
+    expect(run.stderr).toBe('')
+    expect(run.status).toBe(0)
+
+    const env = await rendered()
+    // The second rescue texts nothing and has no tablet yet: no sms, no token.
+    expect(rescuesOf(env)).toEqual({
+      'caballus.tech': { orgId: ORG, boardToken: TOKEN, sms: true },
+      'second.caballus.tech': { orgId: SECOND_ORG },
+    })
+    // The same hosts, routed: one list, two outputs.
+    expect(line(env, 'CABALLUS_ROUTER_RULE')).toBe(
+      'Host(`caballus.tech`) || Host(`second.caballus.tech`)',
+    )
+    // And nothing the render worked through is left beside it.
+    expect(existsSync(join(stack, 'rescues.next'))).toBe(false)
+  })
+
+  it('routes every rendered host to the one app service, with TLS', async () => {
+    await withLines(SECOND)
+    expect(render(vaultFor()).status).toBe(0)
+    const rule = line(await rendered(), 'CABALLUS_ROUTER_RULE') ?? ''
+
+    // The compose file's router, with the rendered value put where compose
+    // interpolates it — so what Traefik is given is exactly the list the
+    // application maps, and the certresolver gets a certificate for each.
+    const compose = await readFile(join(ROOT, 'deploy/docker-compose.yml'), 'utf8')
+    const label = /- traefik\.http\.routers\.caballus\.rule=(.*)$/m.exec(compose)?.[1] ?? ''
+    const routed = label.replace(/\$\{CABALLUS_ROUTER_RULE[^}]*\}/, rule)
+    expect(routed).toContain('Host(`caballus.tech`)')
+    expect(routed).toContain('Host(`second.caballus.tech`)')
+    expect(compose).toContain('traefik.http.routers.caballus.tls.certresolver=letsencrypt')
+    expect(compose).toContain('traefik.http.routers.caballus.entrypoints=websecure')
+    expect(compose.match(/traefik\.http\.routers\.[a-z-]+\.rule=/g)).toHaveLength(1)
+  })
+
+  it.each([
+    [
+      'a host named twice',
+      '{"host":"caballus.tech","orgId":"01a03af7-0000-7000-8000-000000000009"}',
+      /names the host caballus.tech twice/,
+    ],
+    [
+      'an organisation behind two hosts',
+      `{"host":"third.caballus.tech","orgId":"${ORG}"}`,
+      /two hosts to the same organisation/,
+    ],
+    ['a line that is not JSON', '{"host": caballus', /is not JSON/],
+    [
+      'a line with a field nobody reads',
+      `{"host":"third.caballus.tech","orgId":"${SECOND_ORG}","colour":"red"}`,
+      /at most boardToken and sms/,
+    ],
+  ])('refuses %s, and leaves the working .env alone', async (_label, extra, because) => {
+    await writeFile(join(stack, '.env'), 'WORKING=yes\n')
+    await withLines(extra)
+
+    const run = render(vaultFor())
+    expect(run.status).not.toBe(0)
+    expect(run.stderr).toMatch(because)
+    expect(await rendered()).toBe('WORKING=yes\n')
+  })
+
+  it('refuses a rescue whose item is missing, and names the reference', async () => {
+    await writeFile(join(stack, '.env'), 'WORKING=yes\n')
+    await withLines(
+      '{"host":"{{ op://Caballus/rescue-third/hostname }}","orgId":"{{ op://Caballus/rescue-third/org-id }}"}',
+    )
+
+    const run = render(vaultFor())
+    expect(run.status).not.toBe(0)
+    expect(run.stderr).toContain('rescue-third')
+    expect(await rendered()).toBe('WORKING=yes\n')
   })
 
   it('renders none of the variables #113 retired', async () => {
@@ -124,12 +223,20 @@ describe('render-env.sh', () => {
   })
 
   it.each([
-    ['a host that is not one', { 'Caballus/app/hostname': 'https://caballus.tech' }, /not a host/],
-    ['an org id that is not one', { 'Caballus/app/org-id': 'freedom-hill' }, /not an id/],
-    ['an empty org id', { 'Caballus/app/org-id': '' }, /not an id/],
+    [
+      'a host that is not one',
+      { 'Caballus/rescue-freedom-hill/hostname': 'https://caballus.tech' },
+      /not one/,
+    ],
+    [
+      'an org id that is not one',
+      { 'Caballus/rescue-freedom-hill/org-id': 'freedom-hill' },
+      /not an id/,
+    ],
+    ['an empty org id', { 'Caballus/rescue-freedom-hill/org-id': '' }, /not an id/],
     [
       'a kiosk token anybody could guess',
-      { 'Caballus/app/board-token': 'barn' },
+      { 'Caballus/rescue-freedom-hill/board-token': 'barn' },
       /shorter than 24/,
     ],
   ])('refuses %s, and leaves the working .env alone', async (_label, overrides, because) => {

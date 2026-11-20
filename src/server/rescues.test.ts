@@ -115,6 +115,11 @@ describe('RESCUES, the one piece of configuration keyed by host', () => {
     expect(() => parseRescues(raw)).toThrow(because)
   })
 
+  it('reads the map with the quotes render-env.sh writes still on (#116)', () => {
+    const quoted = `'${JSON.stringify({ 'caballus.tech': { orgId: A, sms: true } })}'`
+    expect(parseRescues(quoted).get('caballus.tech')).toMatchObject({ orgId: A, sms: true })
+  })
+
   it('reads the variable on first use, and fails rather than serving nobody', () => {
     vi.stubEnv('RESCUES', 'not json')
     expect(() => rescueFor(new Request('http://caballus.tech/'))).toThrow(MalformedRescues)

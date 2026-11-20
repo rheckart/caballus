@@ -121,9 +121,14 @@ export function parseRescues(raw: string | undefined): ReadonlyMap<string, Rescu
   if (raw === undefined || raw.trim() === '') {
     throw new MalformedRescues('RESCUES is not set: no host is mapped to a rescue')
   }
+  // `render-env.sh` writes the map single-quoted, so compose and Node read its
+  // double quotes literally (#116). Both strip the quotes; a reader that did
+  // not would hand this the quotes too, and the map is unwrapped rather than
+  // refused, because the failure would be every rescue at once.
+  const unwrapped = /^'.*'$/s.test(raw.trim()) ? raw.trim().slice(1, -1) : raw
   let json: unknown
   try {
-    json = JSON.parse(raw)
+    json = JSON.parse(unwrapped)
   } catch {
     throw new MalformedRescues('RESCUES is not JSON')
   }

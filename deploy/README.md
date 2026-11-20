@@ -9,13 +9,17 @@ The box's copy is installed by hand — `scp` the files, then
 and `systemd/` goes to `/etc/systemd/system/` rather than into the stack
 (`docs/deploy.md`, Backups). There is no mechanism that keeps the two in step yet,
 so a change here is not live until it is copied; that is a real gap and it is
-named rather than papered over. `.env.tpl` is now one of the five, which makes
+named rather than papered over. `.env.tpl` is now one of the files, which makes
 the gap bite harder: a variable added to the template in the repository is not
 on the box until it is copied there, and the render that follows will not know
-about it.
+about it. **`rescues.tpl` is the same, and it is how a rescue is added** (ADR
+0030): one line per rescue, which `render-env.sh` assembles into both
+`RESCUES` and Traefik's router rule — so a rescue added in the repository is
+neither mapped nor routed until the file is copied and rendered
+(`docs/deploy.md`, _Adding a rescue_).
 
 `.env` is **not** here and never will be. It is **rendered** on the box by
-`render-env.sh`, from `.env.tpl` through a 1Password service account, at deploy
+`render-env.sh`, from `.env.tpl` and `rescues.tpl` through a 1Password service account, at deploy
 time and never at startup (ADR 0006). `.env.example` in the repository root
 stays the list of what a machine needs; `.env.tpl` is that list again, saying
 for each entry whether the value is a literal this repository decided or an
