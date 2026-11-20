@@ -84,7 +84,13 @@ services:
       # with exposedbydefault off — so a container is routed only when it says
       # so here.
       - traefik.enable=true
-      - traefik.http.routers.caballus.rule=Host(`caballus.tech`) || Host(`www.caballus.tech`)
+      # Every rescue's host (ADR 0030, #116), from the same list the
+      # application's `RESCUES` is assembled from — `render-env.sh` writes both
+      # into `.env` out of `rescues.tpl`, so a host cannot be routed without
+      # being mapped or mapped without being routed. The certresolver below
+      # gets a certificate for each `Host` in the rule. `www.caballus.tech` is
+      # the existing rescue's alias, redirected to its apex below.
+      - traefik.http.routers.caballus.rule=${CABALLUS_ROUTER_RULE:?render-env.sh writes it} || Host(`www.caballus.tech`)
       - traefik.http.routers.caballus.entrypoints=websecure
       - traefik.http.routers.caballus.tls.certresolver=letsencrypt
       - traefik.http.services.caballus.loadbalancer.server.port=3000
