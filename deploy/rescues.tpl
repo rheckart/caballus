@@ -28,3 +28,4 @@
 # bare one. That is why this header says "reference" instead of showing one.
 
 {"host":"{{ op://Caballus/rescue-freedom-hill/hostname }}","orgId":"{{ op://Caballus/rescue-freedom-hill/org-id }}","boardToken":"{{ op://Caballus/rescue-freedom-hill/board-token }}","sms":true}
+{"host":"{{ op://Caballus/rescue-dar/hostname }}","orgId":"{{ op://Caballus/rescue-dar/org-id }}","boardToken":"{{ op://Caballus/rescue-dar/board-token }}"}
