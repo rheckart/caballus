@@ -257,7 +257,9 @@ export function buildApi(
   ): Promise<{ today: DayString; timeZone: string; organisation: string }> {
     const [org] = await db.select({ name: orgs.name, timeZone: orgs.timeZone }).from(orgs).limit(1)
     if (org === undefined) {
-      throw new Error('The organisation is not visible; APP_ORG_ID names one that does not exist.')
+      throw new Error(
+        'The organisation is not visible; RESCUES maps this host to one that does not exist.',
+      )
     }
     return { today: today(org.timeZone), timeZone: org.timeZone, organisation: org.name }
   }
@@ -323,7 +325,7 @@ export function buildApi(
    * retryable outcome in the domain, and dropping the day's Reading over it
    * would be the queue doing the wrong thing confidently. Unconfigured
    * coordinates are a deployment fault, which is the same 503 `/day` already
-   * answers with when `APP_ORG_ID` names nothing.
+   * answers with when `RESCUES` maps a host to nothing.
    */
   function weatherRefusal(because: WeatherRefusal) {
     if (because === 'horse_not_found') return json({ error: because }, 404)
@@ -440,8 +442,8 @@ export function buildApi(
     )
 
     if (org === undefined) {
-      // The policies fail closed, so this is either an unconfigured APP_ORG_ID
-      // or an organisation that does not exist. Both are deployment faults and
+      // The policies fail closed, so this is a host `RESCUES` maps to an
+      // organisation that does not exist. Both are deployment faults and
       // both should say so rather than answer with a day.
       return json({ error: 'organisation_not_found' }, 503)
     }
@@ -2302,7 +2304,9 @@ export function buildApi(
     const actor = actorOf(context)
     const [org] = await db.select({ timeZone: orgs.timeZone }).from(orgs).limit(1)
     if (org === undefined) {
-      throw new Error('The organisation is not visible; APP_ORG_ID names one that does not exist.')
+      throw new Error(
+        'The organisation is not visible; RESCUES maps this host to one that does not exist.',
+      )
     }
 
     const outcome = await recordReading(db, context.orgId, actor.volunteerId, {

@@ -97,9 +97,9 @@ at the exact hour that matters.
 references rather than values. The split is one rule: **the repository decides
 what is a literal, and 1Password holds what only the deployment knows.**
 `APP_URL` is a literal. A password, a token, the barn's coordinates and the
-`APP_ORG_ID` that `bootstrap` minted on the box are references — none of them
-can be read off a checkout, and a box rebuilt from scratch has to get them from
-somewhere.
+rescue's host and organisation id — the two halves of its `RESCUES` entry
+(ADR 0030) — are references: none of them can be read off a checkout, and a box
+rebuilt from scratch has to get them from somewhere.
 
 ### What the vault has to contain
 
@@ -111,11 +111,19 @@ deploy stops there with `.env` untouched.
 | Item         | Fields                                                                                        |
 | ------------ | --------------------------------------------------------------------------------------------- |
 | `postgres`   | `password` (the owner), `app-password` (the `caballus_app` role)                              |
-| `app`        | `org-id`, `better-auth-secret`, `board-token`, `barn-latitude`, `barn-longitude`              |
+| `app`        | `host`, `org-id`, `better-auth-secret`, `board-token`, `barn-latitude`, `barn-longitude`      |
 | `smtp`       | `url`                                                                                         |
 | `openrouter` | `api-key`                                                                                     |
 | `twilio`     | `account-sid`, `auth-token`, `from-number`, `verify-service-sid`, `verify-change-service-sid` |
 | `s4`         | `access-key-id`, `secret-access-key` — read by `backup.env.tpl` only (_Backups_)              |
+
+**`app/host` is new with #112, and a person adds it before that deploy.** Its
+value is `caballus.tech` — the host the existing rescue is reached at, exactly
+as a browser sends it. `.env.tpl` renders it with `org-id` into a one-entry
+`RESCUES`, and `render-env.sh` refuses a map that does not parse, so a missing
+field stops the deploy at the render with `.env` untouched rather than starting
+an application that answers nobody. That check runs on `python3`, which the
+Ubuntu image on the box ships; `render-env.sh` says so if it is ever missing.
 
 The values come out of the `.env` already on the box, which is the only place
 some of them exist. Copy them in **before** touching anything else — a
@@ -275,6 +283,17 @@ docker compose run --rm -T app npm run bootstrap -- \
 #    account.
 
 docker compose up -d app
+```
+
+That was the shape until #112. **`bootstrap` now mints the organisation id
+itself** — the rescue a request is for comes from its host through `RESCUES`
+(ADR 0030), so there is no organisation id to configure first — and prints the `RESCUES`
+entry to add. `--org <id>` names an existing organisation, which is how a second
+run finishes a half-finished first one or grants President again:
+
+```bash
+docker compose run --rm -T app npm run bootstrap -- --org 01a03af7-… \
+  "Freedom Hill Horse Rescue" America/New_York "Rob Heckart" rob@heckart.me
 ```
 
 Traefik took about a minute to get a certificate, and served its own default

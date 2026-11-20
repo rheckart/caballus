@@ -14,8 +14,9 @@ import { closeDb, forOrg, type OrgId } from '../../db/for-org'
 import { postgresIdempotency } from '../../db/idempotency'
 import { API_BASE, newIdempotencyKey } from '../../shared/api-client'
 import type { DomainScope } from '../../shared/domain-scopes'
-import { anonymousContext, currentOrgId } from '../request-context'
+import { anonymousContext } from '../request-context'
 import { buildApi } from './app'
+import { servingRescue } from '../../test/rescue'
 
 const applicationUrl = process.env.DATABASE_URL ?? ''
 const ownerUrl = process.env.ADMIN_DATABASE_URL ?? ''
@@ -27,8 +28,7 @@ describe.skipIf(!reachable)('horses and Spaces, through the API', () => {
   const owner = postgres(ownerUrl, { max: 1 })
 
   function orgId(): OrgId {
-    process.env.APP_ORG_ID = FIELD_BARN
-    return currentOrgId()
+    return servingRescue(FIELD_BARN)
   }
 
   function apiAs(volunteerId: string, scopes: readonly DomainScope[]) {
@@ -75,7 +75,7 @@ describe.skipIf(!reachable)('horses and Spaces, through the API', () => {
   }
 
   beforeAll(async () => {
-    process.env.APP_ORG_ID = FIELD_BARN
+    servingRescue(FIELD_BARN)
     await wipe()
     await owner`
       insert into orgs (id, name, time_zone)

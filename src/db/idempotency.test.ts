@@ -29,11 +29,11 @@ import { z } from 'zod'
 import { floor } from '../server/api/authorization'
 import { createApi, json, noContent, type Api } from '../server/api/route'
 import { type Contract } from '../shared/api-contract'
-import { currentOrgId } from '../server/request-context'
 import { API_BASE } from '../shared/api-client'
 import { closeDb, forOrg, type OrgId } from './for-org'
 import { forgetKeysPastRetention, postgresIdempotency } from './idempotency'
 import { idempotencyKeys } from './schema'
+import { servingRescue } from '../test/rescue'
 
 const applicationUrl = process.env.DATABASE_URL ?? ''
 const ownerUrl = process.env.ADMIN_DATABASE_URL ?? ''
@@ -68,12 +68,11 @@ describe.skipIf(!reachable)('idempotency, against the database', () => {
   const owner = postgres(ownerUrl, { max: 1 })
 
   function orgId(): OrgId {
-    process.env.APP_ORG_ID = FRONT_BARN
-    return currentOrgId()
+    return servingRescue(FRONT_BARN)
   }
 
   beforeAll(async () => {
-    process.env.APP_ORG_ID = FRONT_BARN
+    servingRescue(FRONT_BARN)
     await owner`delete from orgs where id = ${FRONT_BARN}`
     await owner`
       insert into orgs (id, name, time_zone)
@@ -335,11 +334,11 @@ describe.skipIf(!reachable)('idempotency, against the database', () => {
     // The policies scope the key table like every other one, so the row is
     // simply not there for anyone else — a key is unique within a rescue and
     // says nothing outside it.
-    process.env.APP_ORG_ID = '00000000-0000-0000-0000-0000000000c4'
-    const elsewhere = await forOrg(currentOrgId()).run((db) =>
-      db.select().from(idempotencyKeys).where(eq(idempotencyKeys.key, write.idempotencyKey)),
+    const elsewhere = await forOrg(servingRescue('00000000-0000-0000-0000-0000000000c4')).run(
+      (db) =>
+        db.select().from(idempotencyKeys).where(eq(idempotencyKeys.key, write.idempotencyKey)),
     )
-    process.env.APP_ORG_ID = FRONT_BARN
+    servingRescue(FRONT_BARN)
 
     expect(elsewhere).toEqual([])
     expect(ran()).toBe(1)

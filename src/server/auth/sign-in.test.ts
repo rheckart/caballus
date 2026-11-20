@@ -22,7 +22,6 @@ import { me } from '../../shared/api-contract'
 import { sessions, users, volunteerAccounts, volunteerRoles, volunteers } from '../../db/schema'
 import { setEmailTransport, type OutgoingEmail } from '../email'
 import { setVerifier, type VerifyPurpose } from './verify'
-import { currentOrgId } from '../request-context'
 import { actorForUser, actorFrom } from './actor'
 import { revokeAccount, restoreAccount } from './revoke'
 import {
@@ -40,6 +39,7 @@ import {
   removeVolunteer,
 } from './volunteers'
 import { forgetIdentities } from '../../test/identities'
+import { servingRescue } from '../../test/rescue'
 
 const applicationUrl = process.env.DATABASE_URL ?? ''
 const ownerUrl = process.env.ADMIN_DATABASE_URL ?? ''
@@ -61,8 +61,7 @@ describe.skipIf(!reachable)('email codes, sessions and revocation, against the d
   const STANDING_CODE = '424242'
 
   function orgId(): OrgId {
-    process.env.APP_ORG_ID = FRONT_BARN
-    return currentOrgId()
+    return servingRescue(FRONT_BARN)
   }
 
   /**
@@ -87,7 +86,7 @@ describe.skipIf(!reachable)('email codes, sessions and revocation, against the d
     )
 
   beforeAll(async () => {
-    process.env.APP_ORG_ID = FRONT_BARN
+    servingRescue(FRONT_BARN)
     await forgetIdentities(owner, FRONT_BARN)
     await owner`delete from audit_entries where org_id = ${FRONT_BARN}`
     await owner`delete from volunteer_roles where org_id = ${FRONT_BARN}`

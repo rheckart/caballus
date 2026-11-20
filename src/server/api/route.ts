@@ -54,9 +54,11 @@ import { log, report } from '../observability'
 import {
   anonymousContext,
   requestContext,
+  UnknownRescue,
   type Actor,
   type RequestContext,
 } from '../request-context'
+import { rescueFor, UNKNOWN_RESCUE } from '../rescues'
 import { holdsShiftAuthority } from '../shifts/authority'
 import { json, rebuild, type ApiResponse } from './answer'
 import {
@@ -461,6 +463,21 @@ export function createApi<C extends Contract>(options: Partial<ApiOptions<C>> = 
   const app = new Hono().basePath(API_BASE)
 
   /**
+   * A host no rescue is mapped to is answered here, before anything resolves
+   * a context (#112, ADR 0030): a 404 and a sentence, never the first rescue in
+   * the map. `src/start.ts` answers the same request the same way before it
+   * reaches this application at all; this is the same gate for whatever calls
+   * the application directly, which is every test and nothing else.
+   */
+  app.use('*', async (c, next) => {
+    if (rescueFor(c.req.raw) === null) {
+      return json({ error: 'unknown_rescue', message: UNKNOWN_RESCUE }, 404)
+    }
+    await next()
+    return undefined
+  })
+
+  /**
    * Nothing matched. Either the version does not claim this path, or the
    * request named a version this server does not serve — and those are
    * different facts that ADR 0010 requires different answers for, because *you
@@ -517,6 +534,11 @@ export function createApi<C extends Contract>(options: Partial<ApiOptions<C>> = 
     })
   }
   app.onError((error, c) => {
+    // A path the gate above does not cover — the not-found handler logging a
+    // version it does not serve — meeting a host nobody mapped. The same 404.
+    if (error instanceof UnknownRescue) {
+      return json({ error: 'unknown_rescue', message: UNKNOWN_RESCUE }, 404)
+    }
     report(error, { route: `${c.req.method} ${c.req.path}` })
     return json({ error: 'internal_error' }, 500)
   })

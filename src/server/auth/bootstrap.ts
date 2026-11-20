@@ -16,8 +16,19 @@
  *   npm run bootstrap -- "Front Barn Horse Rescue" America/New_York \
  *     "Grace Whittaker" grace@example.org
  *
- * Idempotent on the organisation and on the role, so a second run after a
- * half-finished first one finishes the job rather than failing.
+ * **It mints the organisation id** (#112, ADR 0030). The rescue a request is
+ * for comes from the host it arrives at, through `RESCUES`, so a deployment no
+ * longer names one rescue it serves — and the command prints the `RESCUES`
+ * entry to add, rather than requiring an id to be configured before it can
+ * run. `--org <id>` names an existing organisation instead, which is how a
+ * second run finishes a half-finished first one or grants President again:
+ *
+ *   npm run bootstrap -- --org 01a0… "Front Barn Horse Rescue" \
+ *     America/New_York "Grace Whittaker" grace@example.org
+ *
+ * Idempotent on the organisation and on the role, so a second run with
+ * `--org` finishes the job rather than failing. Without `--org`, every run is
+ * a new rescue.
  */
 import { v7 as uuidv7 } from 'uuid'
 
@@ -36,10 +47,8 @@ export interface FirstMember {
 /**
  * Creates the organisation if it is not there, then the first President.
  *
- * The organisation id is `APP_ORG_ID`, not a fresh one: the deployment already
- * names the rescue it serves (ADR 0007), and a bootstrap that minted its own
- * would leave somebody editing an environment file to match a uuid the command
- * printed.
+ * The organisation id is the caller's: `runBootstrap` mints a fresh one, or
+ * takes `--org` for a rescue that already exists.
  */
 export async function bootstrap(details: {
   readonly orgId: OrgId
@@ -81,10 +90,7 @@ export async function bootstrap(details: {
   return { orgId: details.orgId, volunteerId: volunteer.id, created: existing === null }
 }
 
-/**
- * A fresh organisation id, for an operator who has no `APP_ORG_ID` yet and
- * needs one to put in the environment.
- */
+/** A fresh organisation id, for a rescue that does not exist yet. */
 export function newOrganisationId(): string {
   return uuidv7()
 }
@@ -99,30 +105,15 @@ export function newOrganisationId(): string {
  * question a one-line file settles.
  */
 export async function runBootstrap(argv: readonly string[]): Promise<void> {
-  const [organisation, timeZone, name, email] = argv
-
-  if (
-    organisation === undefined ||
-    timeZone === undefined ||
-    name === undefined ||
-    email === undefined
-  ) {
-    process.stderr.write(
-      'Usage: npm run bootstrap -- "<organisation>" <IANA/Zone> "<name>" <email>\n' +
-        `\nAPP_ORG_ID must be set. A fresh one: ${newOrganisationId()}\n`,
-    )
+  const parsed = parseArguments(argv)
+  if (parsed === null) {
+    process.stderr.write(USAGE)
     process.exitCode = 2
     return
   }
+  const { organisation, timeZone, name, email } = parsed
+  const orgId = (parsed.org ?? newOrganisationId()) as OrgId
 
-  const configured = process.env.APP_ORG_ID
-  if (configured === undefined || configured === '') {
-    process.stderr.write(`APP_ORG_ID is not set. A fresh one: ${newOrganisationId()}\n`)
-    process.exitCode = 2
-    return
-  }
-
-  const orgId = configured as OrgId
   try {
     const member = await bootstrap({ orgId, organisation, timeZone, name, email })
     process.stdout.write(
@@ -131,7 +122,56 @@ export async function runBootstrap(argv: readonly string[]): Promise<void> {
             `They sign in with a code like anybody else; nothing here made them an account.\n`
         : `${name} <${email}> was already a volunteer here, and now holds President.\n`,
     )
+    process.stdout.write(rescuesEntry(orgId))
   } finally {
     await closeDb()
   }
 }
+
+const USAGE =
+  'Usage: npm run bootstrap -- [--org <id>] "<organisation>" <IANA/Zone> "<name>" <email>\n' +
+  '\nWithout --org a new organisation is created; with it, that one is finished or re-granted.\n'
+
+/** What the operator adds to `RESCUES`, so the rescue is reachable at a host. */
+function rescuesEntry(orgId: string): string {
+  return (
+    `\nAdd this rescue to RESCUES, under the host it is reached at (docs/deploy.md):\n` +
+    `  "<host>": { "orgId": "${orgId}" }\n`
+  )
+}
+
+/** The four positional arguments, and `--org` wherever it appears. */
+function parseArguments(argv: readonly string[]): {
+  readonly org: string | null
+  readonly organisation: string
+  readonly timeZone: string
+  readonly name: string
+  readonly email: string
+} | null {
+  const positional: string[] = []
+  let org: string | null = null
+  for (let at = 0; at < argv.length; at += 1) {
+    const argument = argv[at] ?? ''
+    if (argument === '--org') {
+      const value = argv[at + 1]
+      if (value === undefined || !GUID.test(value)) return null
+      org = value
+      at += 1
+    } else {
+      positional.push(argument)
+    }
+  }
+  const [organisation, timeZone, name, email] = positional
+  if (
+    positional.length !== 4 ||
+    organisation === undefined ||
+    timeZone === undefined ||
+    name === undefined ||
+    email === undefined
+  ) {
+    return null
+  }
+  return { org, organisation, timeZone, name, email }
+}
+
+const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

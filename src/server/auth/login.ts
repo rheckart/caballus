@@ -39,10 +39,23 @@ import { requestCode, signOut, submitCode } from './sign-in'
 const asked = z.object({ identifier: z.string().min(1).max(320) })
 const answered = asked.extend({ code: z.string().min(1).max(16) })
 
+/**
+ * The incoming request, put where a server function can reach it.
+ *
+ * All three need it. Signing out ends the cookie that arrived; asking for a
+ * code and exchanging one need the **host** it arrived at, because that is
+ * which rescue's door was knocked on (#112, ADR 0030) — the identifier in the
+ * payload is only ever looked up inside that rescue.
+ */
+const carryingTheRequest = createMiddleware({ type: 'request' }).server(({ request, next }) =>
+  next({ context: { request } }),
+)
+
 /** Asks for a code. Answers whether one is coming, and if not, why not. */
 export const requestSignInCode = createServerFn({ method: 'POST' })
+  .middleware([carryingTheRequest])
   .validator((data: unknown) => asked.parse(data))
-  .handler(({ data }) => requestCode(currentOrgId(), data.identifier))
+  .handler(({ data, context }) => requestCode(currentOrgId(context.request), data.identifier))
 
 /**
  * Exchanges a code for a session.
@@ -53,9 +66,10 @@ export const requestSignInCode = createServerFn({ method: 'POST' })
  * screen reads one shape either way.
  */
 export const submitSignInCode = createServerFn({ method: 'POST' })
+  .middleware([carryingTheRequest])
   .validator((data: unknown) => answered.parse(data))
-  .handler(async ({ data }) => {
-    const result = await submitCode(currentOrgId(), data.identifier, data.code)
+  .handler(async ({ data, context }) => {
+    const result = await submitCode(currentOrgId(context.request), data.identifier, data.code)
     if (!result.signedIn) {
       return Response.json({ signedIn: false, because: result.because }, { status: 200 })
     }
@@ -70,17 +84,6 @@ export const submitSignInCode = createServerFn({ method: 'POST' })
       headers,
     })
   })
-
-/**
- * The incoming request, put where a server function can reach it.
- *
- * Signing out is the one of the three that needs it: the cookie being ended is
- * the one that arrived. The other two are told everything they need in their
- * payload.
- */
-const carryingTheRequest = createMiddleware({ type: 'request' }).server(({ request, next }) =>
-  next({ context: { request } }),
-)
 
 /**
  * Ends this session, and only this one — the phone in a pocket keeps its own.

@@ -31,9 +31,10 @@ import type { DomainScope } from '../../shared/domain-scopes'
 import { PROMINENT_DAYS } from '../../shared/staffing'
 import type { DayString } from '../../shared/time'
 import { setEmailTransport } from '../email'
-import { anonymousContext, currentOrgId } from '../request-context'
+import { anonymousContext } from '../request-context'
 import { addDays, today } from '../time'
 import { buildApi } from './app'
+import { servingRescue } from '../../test/rescue'
 
 const applicationUrl = process.env.DATABASE_URL ?? ''
 const ownerUrl = process.env.ADMIN_DATABASE_URL ?? ''
@@ -46,8 +47,7 @@ describe.skipIf(!reachable)('The home screen, through the API', () => {
   const owner = postgres(ownerUrl, { max: 1 })
 
   function orgId(): OrgId {
-    process.env.APP_ORG_ID = FIELD_BARN
-    return currentOrgId()
+    return servingRescue(FIELD_BARN)
   }
 
   function apiAs(volunteerId: string, scopes: readonly DomainScope[]) {
