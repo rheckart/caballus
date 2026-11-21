@@ -92,19 +92,25 @@ services:
       # documentation says each leads to a certificate request, and does not say
       # whether one failed challenge holds the others up, so a new host's DNS
       # resolves before the deploy (docs/deploy.md, Adding a rescue).
-      # `www.caballus.tech` is the existing rescue's alias, redirected to its
-      # apex below.
-      - traefik.http.routers.caballus.rule=${CABALLUS_ROUTER_RULE:?render-env.sh writes it} || Host(`www.caballus.tech`)
+      # `caballus.tech` and `www.caballus.tech` are no rescue's host: they are
+      # routed here only to be redirected, below.
+      - traefik.http.routers.caballus.rule=${CABALLUS_ROUTER_RULE:?render-env.sh writes it} || Host(`caballus.tech`) || Host(`www.caballus.tech`)
       - traefik.http.routers.caballus.entrypoints=websecure
       - traefik.http.routers.caballus.tls.certresolver=letsencrypt
       - traefik.http.services.caballus.loadbalancer.server.port=3000
-      # www goes to the apex rather than serving the same app twice: a session
-      # cookie is host-only, so the same volunteer at two names would be two
-      # sign-ins, and `RESCUES` maps the apex alone (ADR 0030).
-      - traefik.http.routers.caballus.middlewares=caballus-www@docker
-      - traefik.http.middlewares.caballus-www.redirectregex.regex=^https?://www\.caballus\.tech/(.*)
-      - traefik.http.middlewares.caballus-www.redirectregex.replacement=https://caballus.tech/$${1}
-      - traefik.http.middlewares.caballus-www.redirectregex.permanent=true
+      # The bare domain was the existing rescue's host until it moved to
+      # `freedom-hill.caballus.tech`, and every link anybody already holds names
+      # it — a bookmark, an installed icon, a link in a text, the URLs the SMS
+      # campaign was registered with. So it and `www` go, path and all, to that
+      # rescue in one hop, rather than answering "No rescue is served at this
+      # address". The regex is anchored at the scheme, so `dar.` and
+      # `freedom-hill.` can never match it. Not permanent: a browser keeps a 301
+      # indefinitely, and the bare domain may one day be a page of its own.
+      # `render-env.sh` refuses either name as a rescue's host for this reason.
+      - traefik.http.routers.caballus.middlewares=caballus-bare@docker
+      - traefik.http.middlewares.caballus-bare.redirectregex.regex=^https?://(?:www\.)?caballus\.tech/(.*)
+      - traefik.http.middlewares.caballus-bare.redirectregex.replacement=https://freedom-hill.caballus.tech/$${1}
+      - traefik.http.middlewares.caballus-bare.redirectregex.permanent=false
 
 networks:
   default:

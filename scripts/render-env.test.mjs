@@ -67,7 +67,7 @@ function vaultFor(overrides = {}) {
     'Caballus/postgres/password': 'owner-password',
     'Caballus/postgres/app-password': 'app-password',
     'Caballus/app/better-auth-secret': 'secret',
-    'Caballus/rescue-freedom-hill/hostname': 'caballus.tech',
+    'Caballus/rescue-freedom-hill/hostname': 'freedom-hill.caballus.tech',
     'Caballus/rescue-freedom-hill/org-id': ORG,
     'Caballus/rescue-freedom-hill/board-token': TOKEN,
     'Caballus/rescue-second/hostname': 'second.caballus.tech',
@@ -178,9 +178,9 @@ describe('render-env.sh', () => {
 
     const env = await rendered()
     expect(rescuesOf(env)).toEqual({
-      'caballus.tech': { orgId: ORG, boardToken: TOKEN, sms: true },
+      'freedom-hill.caballus.tech': { orgId: ORG, boardToken: TOKEN, sms: true },
     })
-    expect(line(env, 'CABALLUS_ROUTER_RULE')).toBe('Host(`caballus.tech`)')
+    expect(line(env, 'CABALLUS_ROUTER_RULE')).toBe('Host(`freedom-hill.caballus.tech`)')
   })
 
   it('renders two rescues into one map and one router rule (#116)', async () => {
@@ -193,12 +193,12 @@ describe('render-env.sh', () => {
     const env = await rendered()
     // The second rescue texts nothing and has no tablet yet: no sms, no token.
     expect(rescuesOf(env)).toEqual({
-      'caballus.tech': { orgId: ORG, boardToken: TOKEN, sms: true },
+      'freedom-hill.caballus.tech': { orgId: ORG, boardToken: TOKEN, sms: true },
       'second.caballus.tech': { orgId: SECOND_ORG },
     })
     // The same hosts, routed: one list, two outputs.
     expect(line(env, 'CABALLUS_ROUTER_RULE')).toBe(
-      'Host(`caballus.tech`) || Host(`second.caballus.tech`)',
+      'Host(`freedom-hill.caballus.tech`) || Host(`second.caballus.tech`)',
     )
     // And nothing the render worked through is left beside it.
     expect(existsSync(join(stack, 'rescues.next'))).toBe(false)
@@ -215,23 +215,59 @@ describe('render-env.sh', () => {
     const compose = await readFile(join(ROOT, 'deploy/docker-compose.yml'), 'utf8')
     const label = /- traefik\.http\.routers\.caballus\.rule=(.*)$/m.exec(compose)?.[1] ?? ''
     const routed = label.replace(/\$\{CABALLUS_ROUTER_RULE[^}]*\}/, rule)
-    expect(routed).toContain('Host(`caballus.tech`)')
+    expect(routed).toContain('Host(`freedom-hill.caballus.tech`)')
     expect(routed).toContain('Host(`second.caballus.tech`)')
     expect(compose).toContain('traefik.http.routers.caballus.tls.certresolver=letsencrypt')
     expect(compose).toContain('traefik.http.routers.caballus.entrypoints=websecure')
     expect(compose.match(/traefik\.http\.routers\.[a-z-]+\.rule=/g)).toHaveLength(1)
   })
 
+  it('sends the bare domain and www to the existing rescue, and nothing else', async () => {
+    const compose = await readFile(join(ROOT, 'deploy/docker-compose.yml'), 'utf8')
+    const label = (name) =>
+      new RegExp(
+        `- traefik\\.http\\.middlewares\\.caballus-bare\\.redirectregex\\.${name}=(.*)$`,
+        'm',
+      ).exec(compose)?.[1] ?? ''
+    // Traefik's regex is Go's; this one uses nothing JavaScript reads differently.
+    const regex = new RegExp(label('regex'))
+    // Compose turns `$$` into `$`, and Traefik's `${1}` is JavaScript's `$1`.
+    const replacement = label('replacement').replace('$${1}', '$1')
+    const redirect = (url) => (regex.test(url) ? url.replace(regex, replacement) : null)
+
+    expect(redirect('https://caballus.tech/privacy')).toBe(
+      'https://freedom-hill.caballus.tech/privacy',
+    )
+    expect(redirect('https://www.caballus.tech/shifts')).toBe(
+      'https://freedom-hill.caballus.tech/shifts',
+    )
+    expect(redirect('https://caballus.tech/')).toBe('https://freedom-hill.caballus.tech/')
+    expect(redirect('https://freedom-hill.caballus.tech/login')).toBeNull()
+    expect(redirect('https://dar.caballus.tech/login')).toBeNull()
+    expect(label('permanent')).toBe('false')
+    expect(compose).toContain('traefik.http.routers.caballus.middlewares=caballus-bare@docker')
+  })
+
   it.each([
     [
       'a host named twice',
-      '{"host":"caballus.tech","orgId":"01a03af7-0000-7000-8000-000000000009"}',
-      /names the host caballus.tech twice/,
+      '{"host":"freedom-hill.caballus.tech","orgId":"01a03af7-0000-7000-8000-000000000009"}',
+      /names the host freedom-hill.caballus.tech twice/,
     ],
     [
       'an organisation behind two hosts',
       `{"host":"third.caballus.tech","orgId":"${ORG}"}`,
       /two hosts to the same organisation/,
+    ],
+    [
+      'the bare domain, which only redirects',
+      `{"host":"caballus.tech","orgId":"${SECOND_ORG}"}`,
+      /names caballus\.tech, which only redirects/,
+    ],
+    [
+      'www, which only redirects',
+      `{"host":"www.caballus.tech","orgId":"${SECOND_ORG}"}`,
+      /names www\.caballus\.tech, which only redirects/,
     ],
     ['a line that is not JSON', '{"host": caballus', /is not JSON/],
     [
