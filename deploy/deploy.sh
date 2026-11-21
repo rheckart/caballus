@@ -48,6 +48,19 @@ fi
 REGISTRY_IMAGE=$(grep -E '^REGISTRY_IMAGE=' .env | cut -d= -f2-)
 REGISTRY_IMAGE="${REGISTRY_IMAGE:-ghcr.io/rheckart/caballus}"
 
+# The host the health check below knocks on: the first rescue in the map just
+# rendered, which is the existing rescue because `rescues.tpl` lists it first.
+# Read rather than written here, because no host is the application's own — the
+# bare domain is only a redirect now — and a rescue that moves host is a vault
+# edit that this script has to follow. No host is a refusal before anything is
+# touched, never a health check against nothing.
+CHECK_HOST=$(grep -E '^RESCUES=' .env | cut -d= -f2- |
+  python3 -c 'import json, sys; print(next(iter(json.loads(sys.stdin.read().strip().strip(chr(39))))))' 2>/dev/null || true)
+if ! printf '%s' "$CHECK_HOST" | grep -Eq '^[a-z0-9][a-z0-9.-]*[a-z0-9]$'; then
+  echo "deploy: .env carries no RESCUES host to check the deploy against" >&2
+  exit 1
+fi
+
 IMAGE="$REGISTRY_IMAGE:$TAG"
 PREVIOUS=$(grep -E '^CABALLUS_IMAGE=' .env | cut -d= -f2-)
 
@@ -89,10 +102,10 @@ say "waiting for health"
 # still on, is a green health check over an application that refuses every
 # page. The existing rescue's sign-in screen has to answer 200 too.
 for attempt in $(seq 1 30); do
-  if curl -sS -m 5 https://caballus.tech/health 2>/dev/null | grep -q '"database":"ok"'; then
-    say "healthy after ${attempt}0s or less"
-    curl -sS https://caballus.tech/health; echo
-    PAGE=$(curl -sS -m 10 -o /dev/null -w '%{http_code}' https://caballus.tech/login 2>/dev/null || true)
+  if curl -sS -m 5 "https://$CHECK_HOST/health" 2>/dev/null | grep -q '"database":"ok"'; then
+    say "healthy after ${attempt}0s or less, at $CHECK_HOST"
+    curl -sS "https://$CHECK_HOST/health"; echo
+    PAGE=$(curl -sS -m 10 -o /dev/null -w '%{http_code}' "https://$CHECK_HOST/login" 2>/dev/null || true)
     if [ "$PAGE" = "200" ]; then
       say "the sign-in page answers 200"
       say "deployed $IMAGE"

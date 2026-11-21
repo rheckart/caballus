@@ -731,9 +731,9 @@ function NewVolunteer({
             {SMS_CONSENT}
           </blockquote>
           <p className="m-0 mt-2 text-sm text-muted-foreground">
-            The same words are on the public page at{' '}
+            The same words are on this rescue&rsquo;s{' '}
             <Link to="/" target="_blank" rel="noreferrer">
-              caballus.tech
+              public page
             </Link>
             , if they would rather read them themselves. Leave the box empty if they say no, or if
             you have not asked.

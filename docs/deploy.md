@@ -15,7 +15,8 @@ Caballus adds one stack at `/docker/caballus/`, following the box's own
 convention — Traefik lives at `/docker/traefik/`.
 
 **One container serves every rescue** (ADR 0030). Each rescue is reached at its
-own host — `caballus.tech` is the existing one — and the application resolves
+own host — `freedom-hill.caballus.tech` is the existing one, and the bare
+`caballus.tech` only redirects to it — and the application resolves
 which rescue a request is for from the `Host` it arrived at, through `RESCUES`.
 Traefik routes every host in `deploy/rescues.tpl` to the one app service with a
 certificate from Traefik's resolver; one Postgres holds every rescue's rows behind row-level
@@ -138,9 +139,10 @@ without being mapped, or mapped without being routed. The check runs on
 it is ever missing. _Adding a rescue_, below, is the whole procedure.
 
 **The existing rescue is `rescue-freedom-hill`.** Its `hostname` is
-`caballus.tech`, its `org-id` is the id `bootstrap` minted on the box, and its
-`board-token` is the barn tablet's token, so the tablet keeps working with no
-re-enrolment. Its line in `rescues.tpl` alone carries `"sms": true`, because the
+`freedom-hill.caballus.tech` — it was the bare `caballus.tech` until _Moving
+the existing rescue off the bare domain_, below — its `org-id` is the id
+`bootstrap` minted on the box, and its `board-token` is the barn tablet's
+token. Its line in `rescues.tpl` alone carries `"sms": true`, because the
 one Twilio sender is registered for it alone (ADR 0028, #113). How the values
 got there, in the order the three tickets landed:
 
@@ -523,6 +525,53 @@ Somebody who also volunteers at the existing rescue signs in at each host
 separately and holds an Account at each — that is the design, not a fault
 (ADR 0030).
 
+### Moving the existing rescue off the bare domain
+
+Freedom Hill was served at the bare `caballus.tech`, which made the platform's
+own name one rescue's address. It moves to `freedom-hill.caballus.tech`, and
+the bare domain and `www` become a temporary redirect there, path and all
+(`docker-compose.yml`), so every link already out in the world still lands:
+a bookmark, an installed icon, a link in a text, and the three URLs the SMS
+campaign was registered with. `render-env.sh` refuses either bare name as a
+rescue's host from now on, and `deploy.sh` checks the deploy against the first
+host in `RESCUES` rather than a name of its own.
+
+**What it costs, once.** A session cookie is host-only, so **every Freedom
+Hill volunteer is signed out** and signs in again at the new host. The barn
+tablet keeps its token per origin, so **the Board is down until it is
+re-enrolled** at the new host. Do it outside a Shift. An icon installed from
+the bare domain still opens, through the redirect; reinstalling it from the new
+host saves the hop. Texts sent after the move link to the new host, while the
+campaign's registered samples (_The sample messages_, below) name the bare
+domain. Weigh whether to update the campaign, or to leave it for #117's
+re-registration.
+
+**The order, which matters.** A deploy carrying this compose file while the
+vault still says `caballus.tech` is refused by the render, with `.env`
+untouched, so nothing can redirect the rescue to an unmapped host. But a new
+host's DNS has to resolve before it is routed (step 1 above), so:
+
+1. Add an `A` record for `freedom-hill.caballus.tech` pointing at the VPS,
+   and check that it resolves.
+2. Change `Caballus` / `rescue-freedom-hill` / `hostname` to
+   `freedom-hill.caballus.tech`.
+3. Copy the three files to the box, render, and deploy the tag already running:
+
+   ```bash
+   scp deploy/render-env.sh deploy/deploy.sh deploy/docker-compose.yml caballus:/tmp/
+   ssh caballus 'sudo install -m 755 /tmp/render-env.sh /tmp/deploy.sh /docker/caballus/ \
+     && sudo /docker/caballus/render-env.sh \
+     && sudo install -m 644 /tmp/docker-compose.yml /docker/caballus/'
+   # Then Actions -> deploy -> Run workflow, with the tag already running.
+   ```
+
+4. Check. `https://freedom-hill.caballus.tech/login` is Freedom Hill's sign-in
+   screen. `curl -sI https://caballus.tech/privacy` answers a 302 or 307 with
+   `location: https://freedom-hill.caballus.tech/privacy`, and so does `www`.
+   `https://dar.caballus.tech/login` is unchanged.
+5. Re-enrol the tablet at
+   `https://freedom-hill.caballus.tech/board?token=<board-token>`.
+
 ## The image, and why it is the size it is
 
 The heavy layer is `node_modules`; the runtime stage installs `--omit=dev`
@@ -858,8 +907,8 @@ Proprietor brand onto its own EIN. Nothing in the code waits on it: a sender is
 an account SID, credentials and a number per rescue whichever way it goes.
 
 **Only the existing rescue texts** (#113, ADR 0030). The one sender — brand,
-campaign, number — is registered for the rescue `caballus.tech` serves and for
-nobody else, so its `RESCUES` entry carries `"sms": true` and every other
+campaign, number — is registered for the rescue at `freedom-hill.caballus.tech`,
+which was the bare `caballus.tech` when it was registered, and for nobody else, so its `RESCUES` entry carries `"sms": true` and every other
 rescue's entry does not. A rescue without it sends no text of any kind — not an
 Urgent Send, not the notice to a number somebody moved off — and its send
 screens say _Texting is not set up for this rescue_ before anybody confirms.
@@ -922,6 +971,12 @@ and a mismatch between the samples and the traffic is what carriers flag for:
 Caballus: Feed AM on 2026-09-03 at 07:00 is short. Cover it: https://caballus.tech/shifts Reply STOP to stop.
 Caballus: The farrier comes Thursday morning. More: https://caballus.tech Reply STOP to stop.
 ```
+
+**These no longer match the traffic exactly.** Since Freedom Hill moved to its
+own host (_Moving the existing rescue off the bare domain_), a sent link names
+`https://freedom-hill.caballus.tech`, and the bare domain redirects there. The
+samples above stay as the record of what the form was given, until the
+campaign is updated or re-registered (#117).
 
 **The campaign description, which vetting reads against the samples.** The
 first submission was rejected with Twilio's 30886 — _Invalid Campaign

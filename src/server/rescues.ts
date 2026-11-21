@@ -5,13 +5,13 @@
  * once and failing loudly on a malformed value, mapping every host this
  * deployment answers at to the organisation behind it:
  *
- *   RESCUES={"caballus.tech":{"orgId":"01a0…"},"localhost:3000":{"orgId":"…"}}
+ *   RESCUES={"freedom-hill.caballus.tech":{"orgId":"01a0…"},"localhost:3000":{"orgId":"…"}}
  *
  * A rescue's whole configuration is one entry — its organisation, its kiosk
  * token, whether it may text (#113) — so whatever else becomes one per rescue
  * joins that entry rather than becoming a second map keyed some other way:
  *
- *   {"caballus.tech":{"orgId":"01a0…","boardToken":"…","sms":true}}
+ *   {"freedom-hill.caballus.tech":{"orgId":"01a0…","boardToken":"…","sms":true}}
  *
  * **Configuration, and deliberately not a column on `orgs`.** The `orgs` policy
  * is keyed on `app.org_id`, so reading a host off it would be a read before the
@@ -28,7 +28,7 @@
  *
  * **A key is the `Host` header exactly** — lowercased, port included. A browser
  * sends no port for the scheme's default, so a production key is
- * `caballus.tech`, and a development key is `localhost:3000`. Only `Host` is
+ * `freedom-hill.caballus.tech`, and a development key is `localhost:3000`. Only `Host` is
  * read, never `X-Forwarded-Host`: Traefik passes the original `Host` through,
  * and a forwarded header is whatever the client chose to write.
  */
@@ -97,7 +97,10 @@ const map = z
   .record(
     z
       .string()
-      .regex(HOST, 'a key is a host as the browser sends it, like caballus.tech or localhost:3000'),
+      .regex(
+        HOST,
+        'a key is a host as the browser sends it, like freedom-hill.caballus.tech or localhost:3000',
+      ),
     entry,
   )
   .refine((rescues) => Object.keys(rescues).length > 0, 'RESCUES names no rescue at all')

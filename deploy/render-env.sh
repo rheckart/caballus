@@ -119,6 +119,10 @@ with open(sys.argv[1], encoding="utf-8") as lines:
         host = rescue["host"]
         if not isinstance(host, str) or not host_shape.match(host):
             sys.exit(where + " has a host that is not one: " + repr(host))
+        if host in ("caballus.tech", "www.caballus.tech"):
+            # docker-compose.yml redirects both to the existing rescue's own
+            # host, so a rescue mapped here would never be reached.
+            sys.exit(where + " names " + host + ", which only redirects; a rescue is <slug>.caballus.tech")
         if host in rescues:
             sys.exit("RESCUES names the host " + host + " twice")
         org = rescue["orgId"]
