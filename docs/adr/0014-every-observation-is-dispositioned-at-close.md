@@ -1,6 +1,7 @@
 ---
 status: accepted
 amends: 0010 (a fourth scope-free write; an Observation attaches to an Attendance rather than to a Shift; a Scope holder may escalate)
+amended-by: 0031, on an Observation attaching to a Shift where there is no Attendance
 ---
 
 # Every Observation is dispositioned at close, and the Escalation is the report

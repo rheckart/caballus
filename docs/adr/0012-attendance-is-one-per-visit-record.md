@@ -1,5 +1,6 @@
 ---
 status: accepted
+amended-by: 0031, on an Organisation that does not use Attendance
 ---
 
 # Attendance is one per-visit record, a sign-out is never invented, and the adult who attests is never a relative

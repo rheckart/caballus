@@ -1,6 +1,7 @@
 ---
 status: accepted
 amends: 0012 (the under-16 flag becomes a date of birth; a third gate on the roster)
+amended-by: 0031, on the Release and Consent being Settings, and switching one on being the arming act
 ---
 
 # The release is a signature against a version, a failing gate never empties a roster, and the Volunteer carries a date of birth

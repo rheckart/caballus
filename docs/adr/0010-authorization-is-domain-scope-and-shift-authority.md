@@ -1,5 +1,6 @@
 ---
 status: accepted
+amended-by: 0031, on Shift Authority where an Organisation has no Leads, and the Owner Role
 ---
 
 # Authorization is a domain scope and a roster position, and nothing else

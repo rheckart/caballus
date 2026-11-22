@@ -1,6 +1,7 @@
 ---
 status: accepted
 amends: 0005 (one carve-out, for commitments)
+amended-by: 0031, on Orientation being required only where the Organisation's Settings say so
 ---
 
 # Short is declared, Cover is claimed, and orientation is what makes a Volunteer rosterable

@@ -1,6 +1,7 @@
 ---
 status: accepted
 amends: 0003 (three new records join the versioned tier; a Feed Schedule line may carry a Condition)
+amended-by: 0031, on an Organisation-wide Task, a Task's place in the list, and an Item added by hand to one Shift
 ---
 
 # An item is one Task and one Subject, materialized once a day and never regenerated

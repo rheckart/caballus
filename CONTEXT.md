@@ -1,6 +1,6 @@
 # Caballus
 
-Operations for a horse rescue: the daily care of horses and the coordination of the volunteers who deliver it. This file is the glossary — the words the app and the barn agree to use. It is not a spec; decisions live in the issue tracker, and implementation detail lives nowhere near here.
+Operations for a place that keeps horses — a rescue first, and a working farm as well: the daily care of the animals and the chores, and the coordination of the people who do them. This file is the glossary — the words the app and the barn agree to use. It is not a spec; decisions live in the issue tracker, and implementation detail lives nowhere near here.
 
 Terms are added only once settled with the rescue. The barn's own words win over ours.
 
@@ -8,38 +8,56 @@ A term here is what the **model** calls a thing, not what a **screen** calls it.
 
 ## Language
 
+### The Organisation
+
+**Organisation**:
+One place that keeps horses and uses Caballus — a rescue, or a working farm — with its own people, its own records and its own Settings. Nothing is shared between two of them, and a person who works at both is two Workers.
+_Avoid_: tenant, customer, account, rescue (for the general case), farm (for the general case)
+
+**Setting**:
+One named choice an Organisation makes about how it works — _an Orientation is required before rostering_, _giving medication needs Medication Authority_. The list of Settings is fixed and every one has a decided consequence; an Organisation chooses its values and never invents a new one. Changed deliberately, with a reason, by whoever holds `grants`, and never set aside for one person. A gate switched back on flags the people who now fail it rather than taking them off anything.
+_Avoid_: flag, toggle, option, preference, override
+
+**Feature**:
+A named part of Caballus an Organisation either uses or does not — Compliance, Medication Authority, Leads, Weather, Supplies, the Board, Attendance, horse records — made of one or more Settings: Compliance is three, because requiring an Orientation, a Release and a minor's Consent are separate questions. A Feature switched off takes its screens with it, and the work it gated simply stops being gated; nothing recorded under it is deleted. Some need another — the Board, Medication Authority and per-horse Thresholds cannot run without horse records — and the one they need cannot be switched off beneath them.
+_Avoid_: module, plan, tier, add-on
+
 ### People
 
+**Worker**:
+A person who works at the Organisation, paid or not — one record for both, because every record of work credits whoever did it the same way. Created by the Volunteer Coordinator from a name and an email address or a mobile number — at least one, since either can be the credential — and rosterable once they hold whatever the Organisation's Settings require — at a rescue, an Orientation, a Release and, if under 18, a Consent — before they have logged in and possibly without ever doing so. Carries the date they enrolled, because that is when the insurer's cover begins, and a date of birth, because the rescue checks photo ID and celebrates birthdays. Shifts, ticks, observations and Attendance reference the Worker. The record outlives their leaving, because the work they did still happened.
+_Avoid_: user, member, helper, staff, employee, farm hand
+
 **Volunteer**:
-A person who works at the rescue. Created by the Volunteer Coordinator from a name and an email address, and rosterable once they hold an Orientation, a Release and — if under 18 — a Consent, before they have logged in and possibly without ever doing so. Carries the date they enrolled, because that is when the insurer's cover begins, and a date of birth, because the rescue checks photo ID and celebrates birthdays. Shifts, ticks, observations and Attendance reference the Volunteer. The record outlives their leaving, because the work they did still happened.
-_Avoid_: user, member, helper, staff
+A Worker who is not paid. Most of the people at a rescue, and the people the rescue's legal paperwork — the Release, a minor's Consent, a student's service-learning hours — was written about.
+_Avoid_: using it for every Worker, unpaid staff
 
 **Contact Details**:
-A Volunteer's name, mobile number and email address — the three facts a person is the best authority on, and the only three they may change about themselves. Everything else on the record is a statement somebody _else_ has to make: an Orientation is a Coordinator saying they oriented you, a Release records a piece of paper, a date of birth is checked against photo ID, a Role is a grant. Either the email or the mobile can be the credential a code is sent to, so moving either one takes a code at the new address or number first; the name takes effect at once. All three are audited and none carries a reason, because nobody asks why you changed your own phone number.
+A Worker's name, mobile number and email address — the three facts a person is the best authority on, and the only three they may change about themselves. Everything else on the record is a statement somebody _else_ has to make: an Orientation is a Coordinator saying they oriented you, a Release records a piece of paper, a date of birth is checked against photo ID, a Role is a grant. Either the email or the mobile can be the credential a code is sent to, so moving either one takes a code at the new address or number first, and the last one left can never be removed; the name takes effect at once. All three are audited and none carries a reason, because nobody asks why you changed your own phone number.
 _Avoid_: profile, my details, personal info, account settings
 
 **SMS Consent**:
-A Volunteer's recorded permission to be texted, captured when they are invited and withdrawable by replying STOP. It is the rescue's own record of a thing the carriers require evidence of, and it gates only the Urgent Send — a login code is asked for by the person receiving it and so needs no standing permission.
+A Worker's recorded permission to be texted, captured when they are invited and withdrawable by replying STOP. It is the rescue's own record of a thing the carriers require evidence of, and it gates only the Urgent Send — a login code is asked for by the person receiving it and so needs no standing permission.
 _Avoid_: opt-in, subscription, preference, notification settings
 
 **Reachable**:
-Whether a given Volunteer can actually receive an Urgent Send: a mobile number on the record, SMS Consent held, and no STOP against it. It is shown to whoever is about to send — _this reaches 47 of 60_ — because a sender who thinks they told everyone and did not is the failure the Facebook group already has.
+Whether a given Worker can actually receive an Urgent Send: a mobile number on the record, SMS Consent held, and no STOP against it. It is shown to whoever is about to send — _this reaches 47 of 60_ — because a sender who thinks they told everyone and did not is the failure the Facebook group already has.
 _Avoid_: contactable, subscribed, active, opted in
 
 **Candidate**:
-A Volunteer who has not yet been oriented — someone the rescue is still deciding about. It is the Coordinator's to-do list, and it is a state and not a separate kind of person: a Candidate holds a Volunteer record, may hold an Account and Roles, and reads everything. The word stops at Orientation. A volunteer of ten years whose Release has been obsoleted is not a Candidate; they are a Volunteer with a gap.
+A Worker who has not yet been oriented — someone the rescue is still deciding about. It is the Coordinator's to-do list, and it is a state and not a separate kind of person: a Candidate holds a Worker record, may hold an Account and Roles, and reads everything. The word stops at Orientation. A volunteer of ten years whose Release has been obsoleted is not a Candidate; they are a Worker with a gap.
 _Avoid_: applicant, prospect, trainee, new volunteer
 
 **Date of Birth**:
-Verified against photo ID at intake for anyone who has one, and provided by the parent for a minor who does not — so the record carries **how it was established** as well as the date. The rescue requires the ID; the app never stores it, in any form. Its day and month are readable by everyone, because that is what a birthday is; the year, and the age, sit behind `roster` with contact details. Under-18 is shown as a state rather than as a number: a Lead needs to know a minor is a minor.
+Verified against photo ID at intake for anyone who has one, and provided by the parent for a minor who does not — so the record carries **how it was established** as well as the date. The rescue requires the ID; the app never stores it, in any form. Its day and month are readable by everyone, because that is what a birthday is; the year, and the age, sit behind `roster` with contact details. Under-18 is shown as a state rather than as a number: a Lead needs to know a minor is a minor. Where the Organisation requires a Consent, a Worker whose date of birth is not recorded is not rosterable, because nobody can say whether they need one.
 _Avoid_: DOB, age, birthday
 
 **Consent**:
-The written permission of a parent or guardian for a Volunteer under 18 to work here. Maryland exempts unpaid minor volunteers from child-labour law only where it exists, so it is a hard gate on rostering anyone under 18, with no override — the same shape as an Orientation and for the same reason. It becomes historical on the volunteer's eighteenth birthday and is kept, because it was true. Distinct from the Release, which every Volunteer signs and which answers a different question.
+The written permission of a parent or guardian for a Worker under 18 to work here. Maryland exempts unpaid minor volunteers from child-labour law only where it exists, so where the Organisation requires it, it is a hard gate on rostering anyone under 18, with no override — the same shape as an Orientation and for the same reason. It becomes historical on the volunteer's eighteenth birthday and is kept, because it was true. Distinct from the Release, which every Worker signs where one is required and which answers a different question.
 _Avoid_: permission slip, parental approval, sign-off
 
 **Release**:
-A Volunteer's signature against one Release Version, with the date it was given and who recorded it. The signed paper is the original and stays in the rescue's filing cabinet; this is the record that it exists. It is a hard gate on rostering with no override, at the same two doors as an Orientation and never at sign-in — the app will not refuse to record that someone was present. Unlike an Orientation it can go stale: a new Version may obsolete it, an eighteenth birthday obsoletes a parent's signature, and it may be revoked in writing. Never self-recorded, because it is a statement about a piece of paper only the recorder can see.
+A Worker's signature against one Release Version, with the date it was given and who recorded it. The signed paper is the original and stays in the rescue's filing cabinet; this is the record that it exists. Where the Organisation requires one, it is a hard gate on rostering with no override, at the same two doors as an Orientation and never at sign-in — the app will not refuse to record that someone was present. Unlike an Orientation it can go stale: a new Version may obsolete it, an eighteenth birthday obsoletes a parent's signature, and it may be revoked in writing. Never self-recorded, because it is a statement about a piece of paper only the recorder can see.
 _Avoid_: waiver, liability form, hold harmless, sign-off
 
 **Release Version**:
@@ -47,17 +65,17 @@ One issue of the release text — a valid-from date, the blank document itself, 
 _Avoid_: template, revision, form version
 
 **Orientation**:
-The date a Volunteer was oriented, and who recorded it. It is the first of the three things that make a Volunteer rosterable, and the one the barn treats as the moment someone joins: the ID is sighted and the Release is signed at the same desk, in the same minute. Never lapses and never revoked — leaving the rescue is the act that exists for that. Not yet oriented is a real state, and its name is Candidate.
+The date a Worker was oriented, and who recorded it. Where the Organisation requires it, it is the first of the three things that make a Worker rosterable, and the one the barn treats as the moment someone joins: the ID is sighted and the Release is signed at the same desk, in the same minute. Never lapses and never revoked — leaving the rescue is the act that exists for that. Not yet oriented is a real state, and its name is Candidate.
 _Avoid_: onboarding, training, induction, sign-off
 
 **Account**:
-A Volunteer's means of signing in, claimed by verifying a code sent to their email address. A Volunteer may have none — someone who never onboards, or a child too young for one — and may have theirs revoked. An Account belongs to one rescue: a person who volunteers at two holds two, and signs in at each. Student volunteers are not that case: they take an Orientation and hold an Account like anyone else. Nothing in the care record ever references an Account.
+A Worker's means of signing in, claimed by verifying a code sent to their email address or their mobile. A Worker may have none — someone who never onboards, or a child too young for one — and may have theirs revoked. An Account belongs to one rescue: a person who volunteers at two holds two, and signs in at each. Student volunteers are not that case: they take an Orientation and hold an Account like anyone else. Nothing in the care record ever references an Account.
 _Avoid_: login, user account, profile, credentials
 
 ### Roles and permissions
 
 **Role**:
-A named position in the rescue, held by a Volunteer and carrying Domain Scopes — President, Board Member, Head of Horse Welfare, Head of Maintenance, Volunteer Coordinator, Barn Manager, Treasurer, Event Coordinator. A Volunteer holds any number, including none. Roles attach to the Volunteer and never to the Account, because a report routed to a Head must reach them whether or not they have ever signed in. Feed Shift Lead is _not_ a Role — see Shift Authority.
+A named position in the rescue, held by a Worker and carrying Domain Scopes — President, Board Member, Owner, Head of Horse Welfare, Head of Maintenance, Volunteer Coordinator, Barn Manager, Treasurer, Event Coordinator. A Worker holds any number, including none, and holding any needs an email address, because the reports a Role is routed are sent there. Roles attach to the Worker and never to the Account, because a report routed to a Head must reach them whether or not they have ever signed in. Feed Shift Lead is _not_ a Role — see Shift Authority.
 _Avoid_: permission, group, title, position
 
 **Domain Scope**:
@@ -65,7 +83,7 @@ An area of the rescue's work that a Role grants authority over — `horse_care`,
 _Avoid_: scope (unqualified), permission, area, department
 
 **Shift Authority**:
-Final say over one Shift, held by whoever is its Lead, Co-Lead or Acting Lead — setting the start time, assigning checklist items, dropping Discretionary Work, curating Shift Notes, escalating Observations and closing the Shift. It is authority to **deviate from a care instruction and be accountable for it**, not to rewrite one: changing a Feed Schedule is horse_care work and creates a version. It is held over a particular Shift and expires when that Shift closes; nobody holds it between Shifts.
+Final say over one Shift, held by whoever is its Lead, Co-Lead or Acting Lead — setting the start time, assigning checklist items, dropping Discretionary Work, curating Shift Notes, escalating Observations and closing the Shift. It is authority to **deviate from a care instruction and be accountable for it**, not to rewrite one: changing a Feed Schedule is horse_care work and creates a version. It is held over a particular Shift and expires when that Shift closes; nobody holds it between Shifts. At an Organisation that does not use Leads, everyone rostered on a Shift holds it.
 _Avoid_: lead permission, shift admin, supervisor rights
 
 **Acting Lead**:
@@ -81,7 +99,7 @@ _Avoid_: link, page, route, menu item, nav item
 ### Reports
 
 **Observation**:
-Something a volunteer noticed and recorded on the Attendance they were working under — a lame horse, a leaning fence post, a bucket nearly empty, a record that no longer matches what the rescue actually does. Free text, with an optional subject taken from wherever it was recorded rather than chosen from a list: a Horse, a Space, a Product, or the record that is wrong. Recorded by anyone present and needing no Domain Scope, because a volunteer should never have to know who to tell; Shift Authority may record one on a rostered volunteer's behalf, naming them as the observer. Never edited or deleted once it reaches the server, and it goes no further until it is given a Disposition.
+Something a volunteer noticed and recorded on the Attendance they were working under — or, at an Organisation that does not use Attendance, on the Shift they are rostered on: a lame horse, a leaning fence post, a bucket nearly empty, a record that no longer matches what the rescue actually does. Free text, with an optional subject taken from wherever it was recorded rather than chosen from a list: a Horse, a Space, a Product, or the record that is wrong. Recorded by anyone present and needing no Domain Scope, because a volunteer should never have to know who to tell; Shift Authority may record one on a rostered volunteer's behalf, naming them as the observer. Never edited or deleted once it reaches the server, and it goes no further until it is given a Disposition.
 _Avoid_: report, issue, note, ticket
 
 **Escalation**:
@@ -93,7 +111,7 @@ What became of an Observation, and a thing that is always decided rather than al
 _Avoid_: triage, outcome, resolution, verdict
 
 **Contacts** _(provisional — the board just gives names and numbers to text)_:
-Who to phone: a name, a number, the hours it is answered, and what it is for — the barn's posted numbers, the equine clinic's office and emergency lines, the property owner. Read-only, readable by everyone because five posted escalation numbers are not the same artifact as sixty volunteers' mobile numbers, and maintained under `roster`. It sits outside routing entirely: the app never resolves an Escalation to it, and the hours are there to be read by a person at 2am rather than acted on by the app. The same screen carries the rescue's **standing rules** — take turns wide, no scissors in fields — the handful of the board's Reminders that belong to no Task and so have nowhere better to be.
+Who to phone: a name, a number, the hours it is answered, and what it is for — the barn's posted numbers, the equine clinic's office and emergency lines, the property owner. Read-only, readable by everyone because five posted escalation numbers are not the same artifact as sixty volunteers' mobile numbers, and maintained under `roster`. One may be pinned where a Worker meets it during a Shift — a farm's _Boss_ — so that calling or texting them is one tap into the phone's own apps. It sits outside routing entirely: the app never resolves an Escalation to it, and the hours are there to be read by a person at 2am rather than acted on by the app. The same screen carries the rescue's **standing rules** — take turns wide, no scissors in fields — the handful of the board's Reminders that belong to no Task and so have nowhere better to be.
 _Avoid_: directory, phone book, escalation list, on-call
 
 **Announcement**:
@@ -115,7 +133,7 @@ One dated occurrence of work at the rescue. The thing that has a roster, a start
 _Avoid_: shift instance, occurrence, event
 
 **Shift Type**:
-What kind of work a Shift is. Currently Feed AM, Feed PM, Lunch, and Pop-up.
+What kind of work a Shift is, named by the Organisation in its own words — this rescue's are Feed AM, Feed PM and Lunch, a farm's might be one morning Job. Pop-up is the one kind every Organisation has, because it is defined by how it is staffed rather than by what it is called. Renamed in place and Retired rather than deleted, because Patterns, Feed Schedules and Task Assignments all name one.
 _Avoid_: category, kind
 
 **Lunch**:
@@ -135,7 +153,7 @@ How a Shift gets its people: from a Standing Roster, or by Sign-up. A property o
 _Avoid_: assignment mode, staffing type
 
 **Standing Roster**:
-The set of volunteers normally expected on a Shift Pattern, assigned by the Volunteer Coordinator. The norm at this rescue; Sign-up is the exception path.
+The set of Workers normally expected on a Shift Pattern, assigned by the Volunteer Coordinator. The norm at this rescue; Sign-up is the exception path.
 _Avoid_: rota, schedule, the regulars
 
 **Sign-up**:
@@ -181,11 +199,11 @@ _Avoid_: handover, comments, log, remarks
 ### Checklists
 
 **Task**:
-A kind of work the rescue does — feeding, watering, mucking, grooming, checking the salt blocks. Catalogue data the rescue edits rather than a list in the app, because the whiteboard's list was already longer than the brief's. A Task fixes what the app acts on: what kind of thing it applies to, whether it is Essential or Discretionary, whether it is wanted once a Shift or once a day, whether it needs Medication Authority, what Condition it waits for, its tolerance, and what it says to do. The rescue chooses among those; it does not add to them. A standing fact about a horse that generates no work is not a Task; it is an Alert.
+A kind of work the rescue does — feeding, watering, mucking, grooming, checking the salt blocks. Catalogue data the rescue edits rather than a list in the app, because the whiteboard's list was already longer than the brief's. A Task fixes what the app acts on: what kind of thing it applies to, whether it is Essential or Discretionary, whether it is wanted once a Shift or once a day, whether it needs Medication Authority, what Condition it waits for, its tolerance, and what it says to do. The rescue chooses among those; it does not add to them. A standing fact about a horse that generates no work is not a Task; it is an Alert. A Task may be about the whole Organisation rather than one horse or Space, which is where an animal Caballus keeps no record of lives — _Feed pigs_ is a Task over the farm, and the pigs are words in it — and where work away from the barn lives too. A Task may ask for a photograph of the work done, and carries a place in the order the Organisation wants its own work listed.
 _Avoid_: chore, job, activity, checklist type
 
 **Item**:
-One Task applied to one subject — Feed × Apollo, Water × Field D, Sweep × the rescue. It is the thing a volunteer ticks, and the reason completion was never a single box on a Shift. Quantities, exceptions and sub-procedures are what an Item _says_, not more Items: hay in Field C is one Item whose instruction carries every receptacle's target. An Item ends Done, Dropped, Not done, or blank, and blank is always shown as blank.
+One Task applied to one subject — Feed × Apollo, Water × Field D, Sweep × the rescue. It is the thing a volunteer ticks, and the reason completion was never a single box on a Shift. Quantities, exceptions and sub-procedures are what an Item _says_, not more Items: hay in Field C is one Item whose instruction carries every receptacle's target. Most Items are made from the catalogue for every Shift that owes them; a holder of `roster` may also add one by hand to a single dated Shift — the dead animal call that came in this morning — and it is still one Task applied to one subject, carrying at most a note for that one occasion, such as the address. The same Task may be added twice. An Item ends Done, Dropped, Not done, or blank, and blank is always shown as blank. A photograph is evidence attached to a Done, never a condition of it: a dead camera or no signal never stops somebody saying the work happened. It is kept as long as the record it is evidence for, and read by whoever may read that record.
 _Avoid_: task (for the instance), checkbox, step, todo
 
 **Task Assignment**:
@@ -217,7 +235,7 @@ _Avoid_: snapshot, forecast, weather data, conditions
 ### Attendance
 
 **Attendance** _(provisional — the barn says "sign in" and "sign out" and has no word for the record itself)_:
-One record of a Volunteer being at the rescue: an arrival, a departure, the Shift it belongs to if it belongs to one, and what they came to do if it does not. It is what replaces the sign-in sheet, and it is per-visit rather than per-Shift, because the sheet's bottom section already records people who are here on no Shift at all. Queues like any other record of work. Never inferred from a tick and never closed by the app.
+One record of a Worker being at the Organisation: an arrival, a departure, the Shift it belongs to if it belongs to one, and what they came to do if it does not. It is what replaces the sign-in sheet, and it is per-visit rather than per-Shift, because the sheet's bottom section already records people who are here on no Shift at all. Queues like any other record of work. Never inferred from a tick and never closed by the app.
 _Avoid_: check-in, timesheet, hours log, presence
 
 **Visit**:
@@ -225,11 +243,11 @@ An Attendance with no Shift behind it — mowing, a repair, a welfare check by s
 _Avoid_: drop-in, casual shift, ad-hoc work
 
 **Open**:
-An Attendance signed in and not yet signed out. A fact, never a guess: the app will not invent a departure time, so an Open Attendance stays open, is visible on the item it belongs to, and **blocks its Shift from closing** — the same treatment as Unsent work, for the same reason. Whoever holds Shift Authority may close it on the Volunteer's behalf, which is what the Lead already does with the paper.
+An Attendance signed in and not yet signed out. A fact, never a guess: the app will not invent a departure time, so an Open Attendance stays open, is visible on the item it belongs to, and **blocks its Shift from closing** — the same treatment as Unsent work, for the same reason. Whoever holds Shift Authority may close it on the Worker's behalf, which is what the Lead already does with the paper.
 _Avoid_: dangling, unclosed, missing sign-out, pending
 
 **Supervising Adult**:
-Who was responsible for a Volunteer on a Shift, recorded separately from who was merely present with them. It matters for one reason: a student's service-learning hours may not be verified by their own parent, guardian or relative, and at this rescue the accompanying adult for an under-16 is usually exactly that person. Captured when the Shift closes, and carries a phone number a school can ring.
+Who was responsible for a Worker on a Shift, recorded separately from who was merely present with them. It matters for one reason: a student's service-learning hours may not be verified by their own parent, guardian or relative, and at this rescue the accompanying adult for an under-16 is usually exactly that person. Captured when the Shift closes, and carries a phone number a school can ring.
 _Avoid_: chaperone, responsible adult, mentor
 
 **Attestation** _(provisional)_:
@@ -291,7 +309,7 @@ How a Product reaches the horse — in feed, orally by syringe or paste, topical
 _Avoid_: method, delivery, administration
 
 **Medication Authority**:
-Permission to prepare and administer medication — a qualification granted to a **Volunteer** under `horse_care`, not something conferred by leading a Shift. Someone may medicate on a Shift if they are rostered on it and hold the qualification; that the rescue grants it to Leads and Co-Leads is its policy for handing it out, not the definition. A Shift needs someone holding it only when that Shift's work actually includes medication — which is why Lunch, being grain and water, runs legally with one non-Lead. Preparing food carries no such requirement, despite the feed room sign saying otherwise.
+Permission to prepare and administer medication — a qualification granted to a **Worker** under `horse_care`, not something conferred by leading a Shift. Someone may medicate on a Shift if they are rostered on it and hold the qualification; that the rescue grants it to Leads and Co-Leads is its policy for handing it out, not the definition. A Shift needs someone holding it only when that Shift's work actually includes medication — which is why Lunch, being grain and water, runs legally with one non-Lead. Preparing food carries no such requirement, despite the feed room sign saying otherwise. Whether giving medication needs it at all is a Setting: an Organisation that does not require it still records each dose as its own Item, ticked by anyone on the Shift, because a missed dose must never be hidden inside a feeding.
 _Avoid_: lead permission, med rights
 
 ### Supplies
@@ -317,7 +335,7 @@ The phone screens a volunteer records work on during a Shift. Distinct from the 
 _Avoid_: the app, mobile view, shift screen
 
 **Unsent**:
-Work a volunteer has recorded on their phone that has not yet reached the server. Visible on the item it belongs to, never silently dropped, and blocks a Shift from closing — because a record that looks complete and isn't is the lie the paper system already tells.
+Work a Worker has recorded on their phone that has not yet reached the server. A photograph still waiting to upload is not Unsent work: it shows on its Item, and does not hold the Shift open. Visible on the item it belongs to, never silently dropped, and blocks a Shift from closing — because a record that looks complete and isn't is the lie the paper system already tells.
 _Avoid_: pending, queued, unsynced, offline
 
 ### Setting up

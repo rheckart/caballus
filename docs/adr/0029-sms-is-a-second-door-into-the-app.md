@@ -1,7 +1,7 @@
 ---
 status: accepted
 amends: 0009 (login no longer stays on email permanently), 0027 (a Volunteer changes their own mobile, verified)
-amended-by: 0030, on which Account the session after Verify belongs to
+amended-by: 0030, on which Account the session after Verify belongs to; 0031, on a Worker created from a mobile number alone
 ---
 
 # SMS is a second door into the app, and Verify keeps login off the carrier queue
